@@ -1,0 +1,76 @@
+# docker-compose.yml — entorno de desarrollo de NaviCash
+# ---------------------------------------------------------------------------
+# Levanta los 3 servicios contenerizados:
+#   1. db   : PostgreSQL 17 (base de datos)
+#   2. api  : Django + DRF (backend REST)
+#   3. web  : Vite + React + TS (frontend con proxy hacia la API)
+#
+# Uso:
+#   cp .env.example .env
+#   docker compose -f infra/docker-compose.yml up --build
+# ---------------------------------------------------------------------------
+services:
+  db:
+    image: postgres:17
+    container_name: navicash-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-navicash}
+      POSTGRES_USER: ${POSTGRES_USER:-navicash}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-navicash-dev-password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-navicash} -d ${POSTGRES_DB:-navicash}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../services/api
+      dockerfile: Dockerfile
+    container_name: navicash-api
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py refresh_rates &&
+             python manage.py runserver 0.0.0.0:8000"
+    env_file:
+      - ../.env
+    environment:
+      DJANGO_DB_ENGINE: django.db.backends.postgresql
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    volumes:
+      - ../services/api:/app          # código en vivo para desarrollo
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    container_name: navicash-web
+    restart: unless-stopped
+    command: ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0 --port 5173"]
+    env_file:
+      - ../.env
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8000
+    volumes:
+      - ../apps/web:/app               # código en vivo
+      - web_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  web_node_modules:

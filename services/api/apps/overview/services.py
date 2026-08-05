@@ -1,0 +1,135 @@
+"""services — Agregado de datos para el resumen del dashboard.
+
+Responsabilidad: recoger wallets, operaciones y tasa del día en una sola
+estructura plana *lista para serializar*. Todas las conversiones usan
+``core.currency`` (decimales, nunca float).
+
+Nota de conversión: la tasa oficial es VES por 1 USD. Las billeteras y los
+totales se convierten con la tasa del día (valor actual), mientras que cada
+operación conserva su equivalencia USD *congelada* al momento de registrarse.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from datetime import date
+from decimal import Decimal
+
+from django.db.models import Sum
+from django.utils import timezone
+
+from apps.core.currency import convert_to_usd, round_money, usd_to_currency
+from apps.rates.service import get_current_official_rate
+from apps.transactions.models import Transaction
+from apps.wallets.models import Wallet
+
+
+def build_summary(user, today: date | None = None) -> dict:
+    """Construye el resumen de home para un usuario.
+
+    Valores devueltos:
+    - ``base_currency``: moneda base del usuario.
+    - ``rate``: tasa oficial del día (VES por 1 USD) o ``None`` si no hay.
+    - ``total_balance_usd``: suma de saldos de billeteras en USD.
+    - ``to_receive`` / ``to_pay``: totales pendientes vencidos en moneda base.
+    - ``overdue``: total de operaciones retrasadas (por recibir + por pagar).
+    - ``wallets``: billeteras con saldo local y ``usd_value`` virtual.
+    - ``upcoming``: próximas 5 operaciones pendientes por vencimiento.
+
+    Args:
+        user: usuario autenticado (tiene ``wallets`` y ``transactions``).
+        today: fecha de corte (por defecto, la local actual).
+
+    Returns:
+        Diccionario con los agregados listos para serializar.
+    """
+    today = today or timezone.localdate()
+    base = user.base_currency
+    rate = get_current_official_rate()
+    rate_value: "Decimal | None" = rate.effective_rate if rate else None
+
+    # --- Billeteras --------------------------------------------------------
+    # Solo convertimos a USD las monedas para las que tenemos tasa (USD/VES);
+    # EUR queda reportado en su moneda sin valor USD.
+    wallets = list(Wallet.objects.filter(user=user).all())
+    total_balance_usd = Decimal("0.00")
+    for w in wallets:
+        usd_value = _to_usd_known(w.saldo, w.currency, rate_value)
+        if usd_value is not None:
+            total_balance_usd += usd_value
+        w.usd_value = usd_value  # atributo virtual para el serializer
+
+    # --- Operaciones pendientes --------------------------------------------
+    pending = Transaction.objects.filter(user=user, estado="pendiente").select_related(
+        "wallet", "category", "contact"
+    )
+
+    def sum_usd(qs_sub) -> Decimal:
+        """Suma del equivalente USD congelado de un queryset."""
+        total = qs_sub.aggregate(total=Sum("monto_usd"))["total"]
+        return total or Decimal("0.00")
+
+    to_receive_usd = sum_usd(pending.filter(tipo="cobro", fecha_vencimiento__lte=today))
+    to_pay_usd = sum_usd(pending.filter(tipo="pago", fecha_vencimiento__lte=today))
+
+    to_receive = usd_to_currency(to_receive_usd, base, rate_value or Decimal("1"))
+    to_pay = usd_to_currency(to_pay_usd, base, rate_value or Decimal("1"))
+
+    # --- Próximas operaciones ------------------------------------------------
+    upcoming = list(
+        pending.filter(fecha_vencimiento__gt=today).order_by("fecha_vencimiento")[:5]
+    )
+
+    return {
+        "base_currency": base,
+        "rate": rate_value,
+        "total_balance_usd": round_money(total_balance_usd),
+        "to_receive": to_receive,
+        "to_pay": to_pay,
+        "overdue": round_money(to_receive + to_pay),
+        "wallets": wallets,
+        "upcoming": upcoming,
+    }
+
+
+def _to_usd_known(amount: Decimal, currency: str, rate_value: "Decimal | None") -> "Decimal | None":
+    """Convierte a USD solo si existe tasa para la moneda; si no, ``None``.
+
+    Args:
+        amount: cantidad en la moneda original.
+        currency: código ISO de la moneda (USD, VES, EUR...).
+        rate_value: unidades de VES por 1 USD (o ``None`` si no hay tasa).
+
+    Returns:
+        Equivalente USD redondeado, o ``None`` si no hay tasa aplicable.
+    """
+    if currency == "USD":
+        return round_money(amount)
+    if currency == "VES" and rate_value and rate_value > 0:
+        return convert_to_usd(amount, currency, rate_value)
+    return None
+
+
+def aggregate_by_category(user, kind: str) -> list[dict]:
+    """Operaciones de un tipo agrupadas por categoría (para gráficos).
+
+    Args:
+        user: usuario autenticado.
+        kind: tipo de operación ("cobro" o "pago").
+
+    Returns:
+        Lista de ``{"category": nombre, "total": monto en moneda base}``
+        ordenada de mayor a menor.
+    """
+    rate = get_current_official_rate()
+    rate_value: "Decimal | None" = rate.effective_rate if rate else None
+
+    rows = Transaction.objects.filter(user=user, tipo=kind).select_related("category")
+    buckets: dict[str, Decimal] = defaultdict(Decimal)
+    for t in rows:
+        key = t.category.name if t.category else "Sin categoría"
+        buckets[key] += usd_to_currency(t.monto_usd, user.base_currency, rate_value or Decimal("1"))
+    return [
+        {"category": name, "total": round_money(value)}
+        for name, value in sorted(buckets.items(), key=lambda kv: kv[1], reverse=True)
+    ]

@@ -1,0 +1,20 @@
+# Dependencias del backend de NaviCash
+# Rangos compatibles (>=,<) para builds reproducibles sin fijar parches obsoletos.
+Django>=5.2,<5.3
+djangorestframework>=3.16,<3.17
+djangorestframework-simplejwt>=5.5,<6
+psycopg[binary]>=3.2,<4
+django-cors-headers>=4.7,<5
+django-environ>=0.12,<1
+
+# Cliente HTTP para la integración con DolarApi (tasas del dólar)
+httpx>=0.28,<1
+
+# Hashing de contraseñas robusto (Argon2, preferido sobre PBKDF2)
+argon2-cffi>=23.1,<24
+
+# Tests y calidad
+pytest>=8,<9
+pytest-django>=4.9,<5
+factory-boy>=3.3,<4
+ruff>=0.9,<1

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<title>NaviCash - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "secondary-fixed": "#d8e3fb",
+                        "primary-container": "#29a195",
+                        "status-paid": "#2DD4BF",
+                        "outline-variant": "#e2e8f0",
+                        "on-surface": "#1e293b",
+                        "status-pending": "#FB7185",
+                        "secondary-container": "#e2e8f0",
+                        "expense": "#FB7185",
+                        "surface-container-high": "#f1f5f9",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#475569",
+                        "tertiary": "#ffb59a",
+                        "on-primary": "#ffffff",
+                        "on-primary-fixed": "#00201d",
+                        "outline": "#cbd5e1",
+                        "glass-surface": "rgba(255, 255, 255, 0.8)",
+                        "surface-tint": "#6bd8cb",
+                        "surface": "#ffffff",
+                        "on-primary-container": "#ffffff",
+                        "surface-container-highest": "#e2e8f0",
+                        "tertiary-fixed": "#ffdbce",
+                        "error-container": "#ffdad6",
+                        "inverse-on-surface": "#f1f5f9",
+                        "income": "#4ADE80",
+                        "surface-container-lowest": "#ffffff",
+                        "error": "#ffb4ab",
+                        "status-warning": "#FBBF24",
+                        "secondary-fixed-dim": "#bcc7de",
+                        "status-delayed": "#F43F5E",
+                        "on-tertiary-fixed-variant": "#773215",
+                        "surface-container-low": "#f8fafc",
+                        "surface-dim": "#cbd5e1",
+                        "inverse-surface": "#1e293b",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed-dim": "#6bd8cb",
+                        "surface-container": "#f1f5f9",
+                        "tertiary-container": "#d27956",
+                        "primary": "#006a61",
+                        "primary-fixed": "#89f5e7",
+                        "on-secondary-fixed": "#111c2d",
+                        "surface-variant": "#f1f5f9",
+                        "on-primary-fixed-variant": "#005049",
+                        "on-error-container": "#410002",
+                        "on-tertiary-fixed": "#370e00",
+                        "on-tertiary-container": "#ffffff",
+                        "glass-border": "rgba(0, 0, 0, 0.08)",
+                        "secondary": "#64748b",
+                        "on-secondary-container": "#0f172a",
+                        "background": "#ffffff",
+                        "on-background": "#1e293b",
+                        "inverse-primary": "#6bd8cb",
+                        "tertiary-fixed-dim": "#ffb59a",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed-variant": "#3c475a",
+                        "surface-bright": "#ffffff"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    spacing: {
+                        "element-gap": "1rem",
+                        "bottom-nav-height": "80px",
+                        "container-padding": "1.25rem",
+                        "section-margin": "2rem",
+                        "stack-tight": "0.5rem"
+                    },
+                    fontFamily: {
+                        "body-lg": ["Geist"],
+                        "label-md": ["Geist"],
+                        "numeric-display": ["Geist"],
+                        "label-sm": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "headline-xl": ["Geist"],
+                        "body-md": ["Geist"],
+                        "headline-lg-mobile": ["Geist"],
+                        "headline-lg": ["Geist"]
+                    },
+                    fontSize: {
+                        "body-lg": ["18px", { lineHeight: "28px", fontWeight: "400" }],
+                        "label-md": ["14px", { lineHeight: "20px", letterSpacing: "0.01em", fontWeight: "500" }],
+                        "numeric-display": ["36px", { lineHeight: "44px", letterSpacing: "-0.03em", fontWeight: "700" }],
+                        "label-sm": ["12px", { lineHeight: "16px", letterSpacing: "0.05em", fontWeight: "600" }],
+                        "headline-md": ["24px", { lineHeight: "32px", fontWeight: "600" }],
+                        "headline-xl": ["40px", { lineHeight: "48px", letterSpacing: "-0.02em", fontWeight: "700" }],
+                        "body-md": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+                        "headline-lg-mobile": ["28px", { lineHeight: "36px", fontWeight: "600" }],
+                        "headline-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.01em", fontWeight: "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #ffffff;
+            min-height: 100vh;
+            color: #1e293b;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        }
+        .glass-panel-elevated {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid rgba(0, 106, 97, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="pb-24 pt-20">
+<!-- TopAppBar (from JSON) -->
+<div class="flex justify-between items-center px-container-padding py-4 w-full fixed top-0 z-50 bg-glass-surface backdrop-blur-xl border-b border-glass-border shadow-sm">
+<div class="flex items-center gap-3">
+<img class="w-10 h-10 rounded-full object-cover border border-glass-border shadow-sm" data-alt="A small, stylized circular profile picture of a young professional wearing a teal collared shirt. The lighting is soft and modern, with a dark, subtle background that perfectly matches the app's dark theme. The avatar has a very faint inner glow reflecting the Liquid Glass design aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDcbVOn-Emg_hNI3kgKACjCoJMHnyKKCiATkv0IbWBrxRM4OGTycYaFYav9-_WxPEaoG0BFHi0NWdlV2igt4u9lj3aJCPrSmKUKGLC6mE9muZBZa2pJeFufs3cQcfoQtBQ-z2aQ3pYHltkugd2ACdLh56kcpFCzY1L8mLGLGtsix4PTzwXzjl14NaceFc4mK8vT6DEBUYuC0advOyXNQ2wtUYPUMIH5wBpe3B_jXhQbUfPbkNo1nYmKJA"/>
+<h1 class="font-headline-md text-headline-md font-bold text-primary tracking-tight">NaviCash</h1>
+</div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</div>
+<main class="px-container-padding space-y-section-margin">
+<!-- Balance Header -->
+<section class="glass-panel rounded-xl p-6 mt-4 relative overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-50"></div>
+<div class="relative z-10 flex flex-col items-center text-center space-y-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Total Balance</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline-md text-headline-md text-primary">$</span>
+<span class="font-numeric-display text-numeric-display text-on-surface">12,450.00</span>
+</div>
+<div class="glass-panel rounded-full px-4 py-1.5 mt-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-primary">currency_exchange</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">BCV: 45.50 VES</span>
+</div>
+</div>
+</section>
+<!-- Quick Stats Bento -->
+<section class="grid grid-cols-2 gap-stack-tight">
+<!-- Por Cobrar -->
+<div class="glass-panel rounded-lg p-4 flex flex-col justify-between aspect-[4/3]">
+<div class="flex items-start justify-between">
+<div class="w-8 h-8 rounded-full bg-income/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px] text-income">arrow_downward</span>
+</div>
+<span class="font-label-sm text-label-sm text-income bg-income/10 px-2 py-0.5 rounded-full">Por Cobrar</span>
+</div>
+<div>
+<div class="font-headline-md text-headline-md text-on-surface">$3,200</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant">5 invoices</div>
+</div>
+</div>
+<div class="flex flex-col gap-stack-tight">
+<!-- Por Pagar -->
+<div class="glass-panel rounded-lg p-3 flex items-center justify-between flex-1">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-expense/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-expense">arrow_upward</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">Por Pagar</span>
+</div>
+<span class="font-body-md text-body-md text-on-surface font-semibold">$850</span>
+</div>
+<!-- Retrasados -->
+<div class="glass-panel rounded-lg p-3 flex items-center justify-between flex-1 border-error/30">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-status-delayed/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-status-delayed">warning</span>
+</div>
+<span class="font-label-md text-label-md text-status-delayed">Retrasados</span>
+</div>
+<span class="font-body-md text-body-md text-on-surface font-semibold">$420</span>
+</div>
+</div>
+</section>
+<!-- Recent Transactions -->
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-headline-md text-headline-md text-on-surface">Recent Activity</h2>
+<button class="font-label-sm text-label-sm text-primary hover:opacity-80 transition-opacity">View All</button>
+</div>
+<div class="space-y-stack-tight">
+<!-- Tx 1 -->
+<div class="glass-panel rounded-lg p-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">storefront</span>
+</div>
+<div>
+<div class="font-label-md text-label-md text-on-surface">Distribuidora XYZ</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant">Today, 10:45 AM</div>
+</div>
+</div>
+<div class="text-right">
+<div class="font-body-md text-body-md text-on-surface font-semibold">-$150.00</div>
+<div class="font-label-sm text-label-sm text-status-paid bg-status-paid/10 px-2 py-0.5 rounded-full inline-block mt-1">Paid</div>
+</div>
+</div>
+<!-- Tx 2 -->
+<div class="glass-panel rounded-lg p-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">person</span>
+</div>
+<div>
+<div class="font-label-md text-label-md text-on-surface">Carlos Mendoza</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant">Yesterday</div>
+</div>
+</div>
+<div class="text-right">
+<div class="font-body-md text-body-md text-income font-semibold">+$450.00</div>
+<div class="font-label-sm text-label-sm text-status-warning bg-status-warning/10 px-2 py-0.5 rounded-full inline-block mt-1">Pending</div>
+</div>
+</div>
+<!-- Tx 3 -->
+<div class="glass-panel rounded-lg p-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">build</span>
+</div>
+<div>
+<div class="font-label-md text-label-md text-on-surface">Servicios Técnicos</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant">Oct 24</div>
+</div>
+</div>
+<div class="text-right">
+<div class="font-body-md text-body-md text-on-surface font-semibold">-$85.50</div>
+<div class="font-label-sm text-label-sm text-status-paid bg-status-paid/10 px-2 py-0.5 rounded-full inline-block mt-1">Paid</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (from JSON) -->
+<div class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2.5rem)] max-w-md z-50 flex justify-around items-center p-2 bg-glass-surface backdrop-blur-2xl border border-glass-border shadow-[0_8px_32px_0_rgba(0,0,0,0.1)] rounded-full">
+<a class="flex items-center justify-center bg-primary-container text-on-primary-container rounded-full w-12 h-12 hover:bg-black/5 transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+</a>
+<a class="flex items-center justify-center text-on-surface-variant w-12 h-12 hover:bg-black/5 transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+</a>
+<a class="flex items-center justify-center text-on-primary-fixed bg-primary text-white rounded-full w-14 h-14 -mt-6 shadow-lg shadow-primary/30 border-2 border-surface hover:opacity-90 transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add_circle</span>
+</a>
+<a class="flex items-center justify-center text-on-surface-variant w-12 h-12 hover:bg-black/5 transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+</a>
+<a class="flex items-center justify-center text-on-surface-variant w-12 h-12 hover:bg-black/5 transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">person</span>
+</a>
+</div>
+</body></html>

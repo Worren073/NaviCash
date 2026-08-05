@@ -1,0 +1,50 @@
+# Secretos y entorno
+.env
+.env.*
+!.env.example
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+*.local
+*.tsbuildinfo
+*.tsbuildinfo.*
+
+# Python / backend
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+db.sqlite3
+
+# Editor y SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Deploy
+.vercel/
+.serverless/
+serverless.yml.bak
+
+# Backups y datos
+*.dump
+*.sql.gz
+pgdata/
+data/
+
+# Backup del paquete de diseño (el contenido vive en stitch_liquid_finance_ledger/)
+stitch_liquid_finance_ledger.zip

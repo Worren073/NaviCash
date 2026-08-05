@@ -1,0 +1,159 @@
+"""services — Reglas de negocio de operaciones (transiciones, conversión, saldos).
+
+Todas las funciones mutan estado en una transacción de BD atómica (R9):
+
++------------------+---------------------------------------------------------+
+| Transición        | Efecto sobre la billetera                                |
++------------------+---------------------------------------------------------+
+| pendiente→pagado  | Cobro suma / Pago resta al saldo                        |
+| pagado→cancelado  | Se revierte el efecto anterior                          |
+| pagado→pendiente  | Se revierte el efecto anterior                          |
++------------------+---------------------------------------------------------+
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+
+from django.db import transaction
+from django.utils import timezone
+
+from apps.core.currency import (  # noqa: F401
+    REFERENCE_CURRENCY,
+    convert_to_usd,
+    is_valid_amount,
+)
+from apps.core.exceptions import BusinessRuleError
+from apps.rates.service import get_usd_rate_for_conversion
+from apps.transactions.models import TRANSACTION_STATES, Transaction
+from apps.wallets.services import adjust_balance
+
+
+def compute_usd_equivalent(monto: Decimal, moneda: str) -> dict:
+    """Calcula la conversión a USD congelada para una operación.
+
+    Args:
+        monto: cantidad en la moneda original.
+        moneda: código ISO de la moneda original.
+
+    Returns:
+        Dict con ``monto_usd``, ``tasa_usd`` y ``fuente_tasa``.
+    """
+    if moneda == REFERENCE_CURRENCY:
+        # Operación directa en USD: tasa = 1, sin consultar a la API.
+        return {"monto_usd": monto, "tasa_usd": Decimal("1"), "fuente_tasa": "usd"}
+
+    rate = get_usd_rate_for_conversion()
+    monto_usd = convert_to_usd(monto, moneda, rate)
+    return {"monto_usd": monto_usd, "tasa_usd": rate, "fuente_tasa": "oficial"}
+
+
+def _apply_to_wallet(tx: Transaction, *, reverse: bool = False) -> None:
+    """Aplica (o revierte) el efecto de una operación pagada sobre su billetera.
+
+    Args:
+        tx: operación (debe tener wallet y estado coherente).
+        reverse: si True, deshace el efecto (para cancelar/revertir).
+
+    Raises:
+        BusinessRuleError: si no hay billetera o el saldo quedaría negativo.
+    """
+    if tx.wallet is None:
+        return  # Sin billetera asignada no hay efecto de saldo.
+    delta = tx.monto if tx.tipo == "cobro" else -tx.monto
+    if reverse:
+        delta = -delta
+    try:
+        adjust_balance(tx.wallet, delta, reason=f"transaction-{tx.pk}")
+    except ValueError as exc:  # saldo insuficiente al revertir
+        raise BusinessRuleError(str(exc)) from exc
+
+
+@transaction.atomic
+def mark_paid(tx: Transaction, paid_at: datetime | None = None) -> Transaction:
+    """Marca la operación como pagada y actualiza la billetera (ADR-08).
+
+    Args:
+        tx: operación pendiente (o cancelada) a pagar.
+        paid_at: instante del pago (por defecto ahora).
+
+    Returns:
+        La misma operación con estado ``pagado``.
+
+    Raises:
+        BusinessRuleError: si ya estaba pagada.
+    """
+    if tx.estado == "pagado":
+        raise BusinessRuleError("Esta operación ya está pagada.")
+    if tx.estado == "cancelado":
+        # Se permite reactivar una cancelada: no había efecto de saldo previo.
+        pass
+    _apply_to_wallet(tx)
+    tx.estado = "pagado"
+    tx.fecha_pagado = paid_at or timezone.now()
+    tx.save(update_fields=["estado", "fecha_pagado", "updated_at"])
+    return tx
+
+
+@transaction.atomic
+def cancel(tx: Transaction) -> Transaction:
+    """Cancela la operación; si estaba pagada revierte la billetera.
+
+    Args:
+        tx: operación a cancelar.
+
+    Returns:
+        La operación con estado ``cancelado``.
+    """
+    if tx.estado == "pagado":
+        _apply_to_wallet(tx, reverse=True)
+    tx.estado = "cancelado"
+    tx.fecha_pagado = None
+    tx.save(update_fields=["estado", "fecha_pagado", "updated_at"])
+    return tx
+
+
+@transaction.atomic
+def revert_to_pending(tx: Transaction) -> Transaction:
+    """Devuelve la operación a estado pendiente (revierte billetera si pagó).
+
+    Args:
+        tx: operación pagada o cancelada.
+
+    Returns:
+        La operación con estado ``pendiente``.
+    """
+    if tx.estado == "pagado":
+        _apply_to_wallet(tx, reverse=True)
+    tx.estado = "pendiente"
+    tx.fecha_pagado = None
+    tx.save(update_fields=["estado", "fecha_pagado", "updated_at"])
+    return tx
+
+
+@transaction.atomic
+def set_state(tx: Transaction, new_state: str) -> Transaction:
+    """Punto único de cambio de estado con las reglas de negocio.
+
+    Args:
+        tx: operación.
+        new_state: uno de los estados de ``TRANSACTION_STATES``.
+
+    Returns:
+        La operación actualizada.
+
+    Raises:
+        BusinessRuleError: si la transición no es válida o ya está en ese estado.
+    """
+    valid = {s[0] for s in TRANSACTION_STATES}
+    if new_state not in valid:
+        raise BusinessRuleError(f"Estado inválido: {new_state}.")
+    if new_state == tx.estado:
+        raise BusinessRuleError(f"La operación ya está {tx.get_estado_display().lower()}.")
+
+    if new_state == "pagado":
+        return mark_paid(tx)
+    if new_state == "cancelado":
+        return cancel(tx)
+    return revert_to_pending(tx)

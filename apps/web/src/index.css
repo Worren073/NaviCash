@@ -1,0 +1,231 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   NaviCash — Design tokens "Liquid Glass" (light-first)
+   Basado en las vistas stitch (navicash_dashboard_light / mis_billeteras
+   / nueva_operación). Fuente Geist, paleta teal sobre white, superficies
+   translúcidas con backdrop-blur.
+   ========================================================================== */
+
+@theme {
+  /* Superficies */
+  --color-surface: #ffffff;
+  --color-surface-bright: #ffffff;
+  --color-surface-dim: #cbd5e1;
+  --color-surface-container: #f1f5f9;
+  --color-surface-container-low: #f8fafc;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-high: #f1f5f9;
+  --color-surface-container-highest: #e2e8f0;
+  --color-surface-variant: #f1f5f9;
+
+  /* Texto / iconos */
+  --color-on-surface: #1e293b;
+  --color-on-surface-variant: #475569;
+  --color-inverse-surface: #1e293b;
+  --color-inverse-on-surface: #f1f5f9;
+
+  /* Contorno */
+  --color-outline: #cbd5e1;
+  --color-outline-variant: #e2e8f0;
+
+  /* Primario (teal financiero) */
+  --color-primary: #006a61;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #29a195;
+  --color-on-primary-container: #ffffff;
+  --color-primary-fixed: #89f5e7;
+  --color-primary-fixed-dim: #6bd8cb;
+  --color-on-primary-fixed: #00201d;
+  --color-on-primary-fixed-variant: #005049;
+  --color-inverse-primary: #6bd8cb;
+  --color-surface-tint: #6bd8cb;
+
+  /* Secundario (slate) */
+  --color-secondary: #64748b;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #e2e8f0;
+  --color-on-secondary-container: #0f172a;
+  --color-secondary-fixed: #d8e3fb;
+  --color-secondary-fixed-dim: #bcc7de;
+  --color-on-secondary-fixed: #111c2d;
+  --color-on-secondary-fixed-variant: #3c475a;
+
+  /* Semántico */
+  --color-income: #4ade80;
+  --color-expense: #fb7185;
+  --color-status-paid: #2dd4bf;
+  --color-status-pending: #fb7185;
+  --color-status-delayed: #f43f5e;
+  --color-status-warning: #fbbf24;
+
+  /* Errores */
+  --color-error: #ffb4ab;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #410002;
+
+  /* Vidrio (glass) */
+  --color-glass-surface: rgba(255, 255, 255, 0.8);
+  --color-glass-border: rgba(0, 0, 0, 0.08);
+
+  /* Tipografía Geist */
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+
+  /* Radios alineados con el diseño */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1.5rem;
+}
+
+/* ==========================================================================
+   Utilidades de vidrio compartidas
+   ========================================================================== */
+@utility glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow:
+    0 4px 15px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+@utility glass-panel-elevated {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(0, 106, 97, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+@utility glass-card {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.7) 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.06);
+  transition:
+    transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    box-shadow 0.3s ease,
+    border-color 0.3s ease;
+}
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Animaciones de carga y transiciones de vista
+   ========================================================================== */
+
+/* Brillo deslizante para skeletons (efecto "liquid glass" en movimiento) */
+@utility skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  filter: blur(0.5px);
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.65),
+      transparent
+    );
+    animation: skeleton-shimmer 1.6s infinite;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Desenfoque de la página mientras carga contenido */
+@utility page-loading-blur {
+  position: relative;
+  & > * {
+    filter: blur(6px);
+    opacity: 0.55;
+    transition:
+      filter 0.4s ease,
+      opacity 0.4s ease;
+  }
+}
+
+@utility page-loading-ready {
+  & > * {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+/* Transición de entrada de cada vista (fade + slide-up suave) */
+@utility view-enter {
+  animation: view-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Desvanecido del splash de carga inicial */
+@utility splash-fade-out {
+  animation: splash-fade-out 0.4s ease 0.15s both;
+}
+
+@keyframes splash-fade-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+html {
+  font-family: var(--font-sans);
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  -webkit-tap-highlight-color: transparent;
+  min-height: 100vh;
+}
+
+/* Ocultar spinners de inputs numéricos (diseño stitch) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
