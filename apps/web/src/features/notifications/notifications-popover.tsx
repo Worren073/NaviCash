@@ -69,7 +69,11 @@ export function NotificationsPopover({
   const unread = data?.unread_count ?? 0;
 
   return (
-    <GlassPopover open={open} onClose={onClose} className="w-[22rem]">
+    <GlassPopover
+      open={open}
+      onClose={onClose}
+      className="w-[24rem] bg-white/90 backdrop-blur-[60px]"
+    >
       <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
         <span className="text-sm font-semibold text-on-surface">{t("notifications.title")}</span>
         {unread > 0 && (

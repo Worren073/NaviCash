@@ -33,7 +33,7 @@ function MenuLink({
 export function AppMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   return (
-    <GlassPopover open={open} onClose={onClose} className="w-60">
+    <GlassPopover open={open} onClose={onClose} className="w-60 bg-white/90 backdrop-blur-[60px]">
       <div className="p-2">
         <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
           {t("menu.title")}

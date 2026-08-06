@@ -78,6 +78,18 @@ class TestNotifications:
         assert resp.status_code == 200
         assert not Notification.objects.filter(user=api_client.user, read=False).exists()
 
+    def test_read_all_does_not_regenerate(self, api_client) -> None:
+        """Marcar como leído no vuelve a crear la misma alerta en el siguiente GET."""
+        TransactionFactory(
+            user=api_client.user, fecha_vencimiento=date.today() + timedelta(days=1)
+        )
+        api_client.get(self.URL)
+        total_before = Notification.objects.filter(user=api_client.user).count()
+        api_client.post(f"{self.URL}/read-all")
+        api_client.get(self.URL)
+        assert Notification.objects.filter(user=api_client.user).count() == total_before
+        assert not Notification.objects.filter(user=api_client.user, read=False).exists()
+
     def test_scoped_to_user(self, api_client) -> None:
         """Las alertas de otros usuarios no se ven ni se cuentan."""
         other = UserFactory()

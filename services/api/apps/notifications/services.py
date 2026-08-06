@@ -2,8 +2,8 @@
 
 Al consultar ``GET /api/notifications`` se evalúa el estado actual y se crean
 las alertas que aún no existan (deduplicadas por ``kind`` + referencia en
-``extra`` + sin leer), para no duplicar el mismo aviso mientras el usuario no
-la marque como leída.
+``extra``), para no repetir la misma alerta cada vez; el estado "leída" lo
+gestiona el usuario sin regenerar notificaciones nuevas.
 """
 
 from __future__ import annotations
@@ -24,9 +24,9 @@ def _reminder_days(tx: Transaction, user) -> int:
 
 
 def _notify_once(user, kind: str, ident: dict, title: str, message: str) -> None:
-    """Crea la notificación solo si no existe otra igual sin leer."""
+    """Crea la notificación solo si no existe otra igual (leída o no)."""
     exists = Notification.objects.filter(
-        user=user, kind=kind, read=False, extra=ident
+        user=user, kind=kind, extra=ident
     ).exists()
     if exists:
         return

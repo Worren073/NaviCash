@@ -37,7 +37,7 @@ export function AnimatedIconButton({
         onClick?.();
       }}
       className={cn(
-        "relative flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high active:scale-95",
+        "relative flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors active:scale-95",
         className
       )}
     >
