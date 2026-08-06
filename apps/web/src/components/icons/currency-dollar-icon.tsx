@@ -49,8 +49,6 @@ const CurrencyDollarIcon = forwardRef<AnimatedIconHandle, AnimatedIconProps>(
     return (
       <motion.div
         ref={scope}
-        onHoverStart={start}
-        onHoverEnd={stop}
         className={`inline-flex cursor-pointer items-center justify-center ${className}`}
       >
         <svg

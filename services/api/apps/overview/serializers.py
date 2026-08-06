@@ -42,6 +42,19 @@ class TransactionBriefSerializer(serializers.Serializer):
         return contact.name if contact else None
 
 
+class RecentTransactionSerializer(serializers.Serializer):
+    """Serializador de una operación ya pagada para la actividad reciente."""
+
+    id = serializers.UUIDField()
+    tipo = serializers.CharField()
+    estado = serializers.CharField()
+    concepto = serializers.CharField()
+    monto = serializers.DecimalField(max_digits=20, decimal_places=2)
+    moneda = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    fecha_pagado = serializers.DateTimeField(allow_null=True, required=False)
+
+
 class OverviewSerializer(serializers.Serializer):
     """Resumen agregado de la home (solo lectura)."""
 
@@ -50,11 +63,15 @@ class OverviewSerializer(serializers.Serializer):
         max_digits=20, decimal_places=4, allow_null=True, required=False
     )
     total_balance_usd = serializers.DecimalField(max_digits=20, decimal_places=2)
+    total_balance_ves = serializers.DecimalField(
+        max_digits=20, decimal_places=2, allow_null=True, required=False
+    )
     to_receive = serializers.DecimalField(max_digits=20, decimal_places=2)
     to_pay = serializers.DecimalField(max_digits=20, decimal_places=2)
     overdue = serializers.DecimalField(max_digits=20, decimal_places=2)
     wallets = WalletSummarySerializer(many=True)
     upcoming = TransactionBriefSerializer(many=True)
+    recent = RecentTransactionSerializer(many=True)
 
     def to_representation(self, instance: dict) -> dict[str, Any]:
         """Prepara el dict plano para JSON (ya viene agregado el rate como Decimal)."""

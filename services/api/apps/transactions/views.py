@@ -49,6 +49,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
             if value:
                 qs = qs.filter(**{field: value})
 
+        fecha = self.request.query_params.get("fecha")
+        if fecha:
+            qs = qs.filter(fecha=fecha)
+
         estado = self.request.query_params.get("estado")
         if estado == "retrasado":
             # "retrasado" es un estado derivado: se filtra en Python, no en SQL.

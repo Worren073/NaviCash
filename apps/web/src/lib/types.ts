@@ -8,6 +8,9 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
   base_currency: Currency;
   timezone_name: string;
   reminder_days: number;
@@ -18,7 +21,8 @@ export interface Wallet {
   name: string;
   currency: Currency;
   saldo: string;
-  tipo: "cash" | "bank" | "other";
+  tipo: "cash" | "bank" | "saving" | "other";
+  color: string;
   created_at: string;
 }
 
@@ -56,6 +60,7 @@ export interface Transaction {
   fecha_vencimiento: string | null;
   fecha_pagado: string | null;
   remind_me: boolean;
+  reminder_days: number | null;
   nota: string;
   created_at: string;
 }
@@ -83,13 +88,15 @@ export interface Shortcut {
 
 export interface Overview {
   base_currency: Currency;
-  rate: string;
+  rate: string | null;
   total_balance_usd: string;
+  total_balance_ves: string | null;
   to_receive: string;
   to_pay: string;
   overdue: string;
   wallets: Array<WalletSummary>;
   upcoming: Transaction[];
+  recent: Transaction[];
 }
 
 export interface WalletSummary {
@@ -110,4 +117,34 @@ export interface Paginated<T> {
   next: string | null;
   previous: string | null;
   results: T[];
+}
+
+export interface NotificationItem {
+  id: string;
+  kind: "due_soon" | "overdue" | "goal_reached" | "system";
+  title: string;
+  message: string;
+  extra: Record<string, unknown>;
+  read: boolean;
+  created_at: string;
+}
+
+export interface NotificationsResponse {
+  results: NotificationItem[];
+  unread_count: number;
+}
+
+export type SubscriptionStatus = "proxima" | "activa" | "finalizada";
+
+export interface Subscription {
+  id: string;
+  name: string;
+  color: string;
+  start_date: string;
+  end_date: string;
+  progress_percent: string;
+  days_total: number;
+  days_elapsed: number;
+  status: SubscriptionStatus;
+  created_at: string;
 }

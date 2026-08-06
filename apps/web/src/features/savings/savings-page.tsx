@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Plus, Wallet2 } from "lucide-react";
 import { TargetIcon } from "@/components/icons";
 
+import { useOverview, useWallets, queryKeys } from "@/hooks/use-queries";
 import { api, ApiErrorClass } from "@/lib/api";
-import { queryKeys } from "@/hooks/use-queries";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlurLoading } from "@/components/ui/blur-loading";
@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatMoney } from "@/lib/format";
+import { NewWalletDialog, EditWalletDialog } from "@/features/wallets/wallets-page";
 import type { Paginated, SavingsGoal } from "@/lib/types";
 
 function GoalCard({ goal }: { goal: SavingsGoal }) {
@@ -127,6 +128,9 @@ export default function SavingsPage() {
   const [target, setTarget] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const { data: overview } = useOverview();
+  const { data: wallets, isLoading: walletsLoading } = useWallets();
+
   const { data, isLoading, isError } = useQuery({
     queryKey: queryKeys.savings,
     queryFn: () => api.get<Paginated<SavingsGoal>>("/savings").then((d) => d.results),
@@ -151,8 +155,26 @@ export default function SavingsPage() {
     },
   });
 
+  // Cuentas de ahorro (tipo "saving") con su valor en USD desde el overview.
+  const savingWallets = (wallets ?? []).filter((w) => w.tipo === "saving");
+  const usdValues = new Map<string, string>(
+    (overview?.wallets ?? []).map((w) => [w.id, w.usd_value])
+  );
+  const rate = Number(overview?.rate ?? 0);
+
+  const accountsUsd = savingWallets.reduce(
+    (acc, w) => acc + Number(usdValues.get(w.id) ?? w.saldo),
+    0
+  );
+  const goalsUsd = (data ?? []).reduce((acc, g) => {
+    const value = Number(g.total_contributed);
+    return acc + (g.currency === "USD" || rate <= 0 ? value : value / rate);
+  }, 0);
+  const totalSavedUsd = accountsUsd + goalsUsd;
+
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 space-y-6">
+      {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -168,25 +190,76 @@ export default function SavingsPage() {
         </Button>
       </div>
 
-      <BlurLoading loading={isLoading}>
-        {isError ? (
-          <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
-            {t("errors.generic")}
+      {/* Dashboard: total ahorrado */}
+      <BlurLoading loading={isLoading || walletsLoading}>
+        <div className="glass-card relative overflow-hidden rounded-xl bg-surface-container-low p-6">
+          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl" />
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+            {t("savings.totalSaved")}
           </p>
-        ) : isLoading ? (
-          <Skeleton className="h-32 w-full" />
-        ) : (data ?? []).length === 0 ? (
+          <div className="flex items-end gap-2">
+            <span className="text-4xl font-bold tracking-tight text-on-surface">
+              {formatMoney(totalSavedUsd, "USD", { symbol: true })}
+            </span>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <span className="rounded-full bg-surface-container-high px-3 py-1 text-xs font-medium text-on-surface-variant">
+              {t("savings.countAccounts", { count: savingWallets.length })}
+            </span>
+            <span className="rounded-full bg-surface-container-high px-3 py-1 text-xs font-medium text-on-surface-variant">
+              {t("savings.countGoals", { count: (data ?? []).length })}
+            </span>
+          </div>
+        </div>
+      </BlurLoading>
+
+      {/* Cuentas de ahorro */}
+      <section className="space-y-2">
+        <h3 className="text-lg font-semibold text-on-surface">{t("savings.accounts")}</h3>
+        {walletsLoading ? (
+          <>
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-28 w-full" />
+          </>
+        ) : savingWallets.length === 0 ? (
           <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
-            {t("savings.empty")}
+            {t("savings.noAccounts")}
           </p>
         ) : (
-          <div className="space-y-2">
-            {(data ?? []).map((goal) => (
-              <GoalCard key={goal.id} goal={goal} />
-            ))}
-          </div>
+          savingWallets.map((wallet) => (
+            <EditWalletDialog
+              key={wallet.id}
+              wallet={wallet}
+              usdValue={usdValues.get(wallet.id) ?? wallet.saldo}
+            />
+          ))
         )}
-      </BlurLoading>
+        <NewWalletDialog defaultTipo="saving" />
+      </section>
+
+      {/* Metas de ahorro */}
+      <section className="space-y-2">
+        <h3 className="text-lg font-semibold text-on-surface">{t("savings.goals")}</h3>
+        <BlurLoading loading={isLoading}>
+          {isError ? (
+            <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+              {t("errors.generic")}
+            </p>
+          ) : isLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : (data ?? []).length === 0 ? (
+            <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+              {t("savings.empty")}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {(data ?? []).map((goal) => (
+                <GoalCard key={goal.id} goal={goal} />
+              ))}
+            </div>
+          )}
+        </BlurLoading>
+      </section>
 
       {/* Create goal dialog */}
       <Dialog open={open} onOpenChange={setOpen}>

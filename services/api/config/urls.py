@@ -17,4 +17,6 @@ urlpatterns = [
     path("api/", include("apps.savings.urls")),
     path("api/", include("apps.shortcuts.urls")),
     path("api/", include("apps.overview.urls")),
+    path("api/", include("apps.notifications.urls")),
+    path("api/", include("apps.subscriptions.urls")),
 ]

@@ -22,7 +22,9 @@ export default function ProfilePage() {
     queryFn: () => api.get<User>("/auth/me"),
   });
 
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
   const [reminderDays, setReminderDays] = useState("3");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -30,7 +32,9 @@ export default function ProfilePage() {
   const save = useMutation({
     mutationFn: () =>
       api.patch<User>("/auth/me", {
-        name,
+        first_name: firstName,
+        last_name: lastName,
+        phone,
         reminder_days: Number(reminderDays),
       }),
     onSuccess: () => {
@@ -54,7 +58,9 @@ export default function ProfilePage() {
 
 useEffect(() => {
     if (me) {
-      setName(me.name ?? "");
+      setFirstName(me.first_name ?? "");
+      setLastName(me.last_name ?? "");
+      setPhone(me.phone ?? "");
       setReminderDays(String(me.reminder_days ?? 3));
     }
   }, [me]);
@@ -76,9 +82,34 @@ useEffect(() => {
               save.mutate();
             }}
           >
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="pfirst">{t("auth.firstName")}</Label>
+                <Input
+                  id="pfirst"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="plast">{t("auth.lastName")}</Label>
+                <Input
+                  id="plast"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
+            </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="pname">{t("profile.name")}</Label>
-              <Input id="pname" value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="pphone">{t("auth.phone")}</Label>
+              <Input
+                id="pphone"
+                type="tel"
+                placeholder="+58 424 123 4567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
             </div>
 
             <div className="space-y-1.5">

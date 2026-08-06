@@ -85,6 +85,7 @@ class TransactionWriteSerializer(serializers.ModelSerializer):
             "fecha",
             "fecha_vencimiento",
             "remind_me",
+            "reminder_days",
             "nota",
             "monto_usd",  # solo lectura de detalle
             "tasa_usd",   # solo lectura de detalle
@@ -209,6 +210,7 @@ class TransactionReadSerializer(serializers.ModelSerializer):
             "fecha_vencimiento",
             "fecha_pagado",
             "remind_me",
+            "reminder_days",
             "nota",
             "created_at",
         ]

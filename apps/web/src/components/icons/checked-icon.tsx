@@ -27,7 +27,7 @@ const CheckedIcon = forwardRef<AnimatedIconHandle, AnimatedIconProps>(
     }));
 
     return (
-      <motion.div ref={scope} onHoverStart={start} onHoverEnd={stop}>
+      <motion.div ref={scope}>
         <motion.svg
           xmlns="http://www.w3.org/2000/svg"
           width={size}

@@ -42,6 +42,13 @@ env = environ.Env(
     # Proveedor de tasas activo: "dolarapi" (producción) o "static" (tests).
     RATE_PROVIDER=(str, "dolarapi"),
     APP_BASE_URL=(str, "http://localhost:5173"),
+    # Cloudflare Turnstile (CAPTCHA del registro).
+    TURNSTILE_SECRET_KEY=(str, ""),
+    TURNSTILE_VERIFY_URL=(str, "https://challenges.cloudflare.com/turnstile/v0/siteverify"),
+    # En desarrollo, sin clave configurada, la verificación se omite.
+    CAPTCHA_DEV_BYPASS=(bool, True),
+    # Versión vigente de los términos que se graba al aceptar.
+    TERMS_VERSION=(str, "v1-2026-08"),
 )
 
 # ---------------------------------------------------------------------------
@@ -75,6 +82,8 @@ INSTALLED_APPS = [
     "apps.savings",
     "apps.shortcuts",
     "apps.overview",
+    "apps.notifications",
+    "apps.subscriptions",
 ]
 
 MIDDLEWARE = [
@@ -172,6 +181,14 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_SAMESITE": "Lax",
     "AUTH_COOKIE_PATH": "/api/auth/",
 }
+
+# ---------------------------------------------------------------------------
+# CAPTCHA (Cloudflare Turnstile) y términos de servicio
+# ---------------------------------------------------------------------------
+TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY")
+TURNSTILE_VERIFY_URL = env("TURNSTILE_VERIFY_URL")
+CAPTCHA_DEV_BYPASS = env("CAPTCHA_DEV_BYPASS")
+TERMS_VERSION = env("TERMS_VERSION")
 
 # ---------------------------------------------------------------------------
 # CORS

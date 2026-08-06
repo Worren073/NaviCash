@@ -92,15 +92,28 @@ export default function DashboardPage() {
                 </span>
               </div>
             )}
-            {data?.rate && (
+            {data?.total_balance_ves != null && (
               <div className="glass-panel mt-2 flex items-center gap-2 rounded-full px-4 py-1.5">
-                <CurrencyDollarIcon size={16} className="text-primary" />
                 <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-                  {t("dashboard.bcvRate", {
-                    rate: Number(data.rate).toFixed(2),
-                  })}
+                  {t("dashboard.totalBs")}
+                </span>
+                <span className="text-sm font-bold text-on-surface">
+                  {formatMoney(data.total_balance_ves, "VES", { symbol: true })}
                 </span>
               </div>
+            )}
+            {data?.rate && (
+              <>
+                <div className="my-0.5 h-px w-24 bg-glass-border" />
+                <div className="glass-panel flex items-center gap-2 rounded-full px-4 py-1.5">
+                  <CurrencyDollarIcon size={16} className="text-primary" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                    {t("dashboard.bcvRate", {
+                      rate: Number(data.rate).toFixed(2),
+                    })}
+                  </span>
+                </div>
+              </>
             )}
           </div>
         </BlurLoading>
@@ -109,7 +122,10 @@ export default function DashboardPage() {
       {/* Quick Stats Bento */}
       <BlurLoading loading={isLoading}>
         <section className="grid grid-cols-2 gap-2">
-        <div className="glass-panel flex aspect-[4/3] flex-col justify-between rounded-lg p-4">
+        <Link
+          to="/transactions?tipo=cobro&estado=pendiente"
+          className="glass-panel flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+        >
           <div className="flex items-start justify-between">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-income/20">
               <ArrowDown className="h-4 w-4 text-income" />
@@ -132,10 +148,13 @@ export default function DashboardPage() {
               })}
             </div>
           </div>
-        </div>
+        </Link>
 
         <div className="flex flex-col gap-2">
-          <div className="glass-panel flex flex-1 items-center justify-between rounded-lg p-3">
+          <Link
+            to="/transactions?tipo=pago&estado=pendiente"
+            className="glass-panel flex flex-1 items-center justify-between rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          >
             <div className="flex items-center gap-2">
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-expense/20">
                 <ArrowUp className="h-3.5 w-3.5 text-expense" />
@@ -149,8 +168,11 @@ export default function DashboardPage() {
                 {formatCompact(Number(data?.to_pay ?? 0), "USD")}
               </span>
             )}
-          </div>
-          <div className="glass-panel flex flex-1 items-center justify-between rounded-lg border-error/30 p-3">
+          </Link>
+          <Link
+            to="/transactions?estado=retrasado"
+            className="glass-panel flex flex-1 items-center justify-between rounded-lg border-error/30 p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          >
             <div className="flex items-center gap-2">
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-status-delayed/20">
                 <TriangleAlert className="h-3.5 w-3.5 text-status-delayed" />
@@ -164,7 +186,7 @@ export default function DashboardPage() {
                 {formatCompact(Number(data?.overdue ?? 0), "USD")}
               </span>
             )}
-          </div>
+          </Link>
         </div>
       </section>
       </BlurLoading>
@@ -198,10 +220,10 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {(data?.upcoming ?? []).map((tx) => <TxRow key={tx.id} tx={tx} />)}
-            {(data?.upcoming ?? []).length === 0 && (
+            {(data?.recent ?? []).map((tx) => <TxRow key={tx.id} tx={tx} />)}
+            {(data?.recent ?? []).length === 0 && (
               <div className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
-                {t("dashboard.noUpcoming")}
+                {t("dashboard.noRecent")}
               </div>
             )}
           </div>

@@ -11,5 +11,6 @@ export { default as PenIcon } from "./pen-icon";
 export { default as SaveIcon } from "./save-icon";
 export { default as LogoutIcon } from "./logout-icon";
 export { default as CurrencyDollarIcon } from "./currency-dollar-icon";
+export { default as ListIcon } from "./list-icon";
 
 export type { AnimatedIconProps, AnimatedIconHandle } from "./types";

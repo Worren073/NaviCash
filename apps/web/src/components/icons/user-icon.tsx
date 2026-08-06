@@ -39,8 +39,6 @@ const UserIcon = forwardRef<AnimatedIconHandle, AnimatedIconProps>(
         strokeLinecap="round"
         strokeLinejoin="round"
         className={`cursor-pointer ${className}`}
-        onHoverStart={start}
-        onHoverEnd={stop}
       >
         <path stroke="none" d="M0 0h24v24H0z" fill="none" />
         <motion.g

@@ -15,9 +15,11 @@ import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys } from "@/hooks/use-queries";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/utils";
 import { formatSymbol } from "@/lib/format";
-import type { Category, Contact, Paginated, Wallet } from "@/lib/types";
+import type { Category, Contact, Currency, Paginated, Wallet } from "@/lib/types";
 
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
   restaurant: Tag,
@@ -30,6 +32,24 @@ const TX_TYPES = [
   { value: "cobro", labelKey: "addOperation.typeCobro" },
   { value: "pago", labelKey: "addOperation.typePago" },
 ] as const;
+
+const CURRENCIES = [
+  { value: "USD", label: "USD" },
+  { value: "VES", label: "VES" },
+] as const;
+
+function convertAmount(
+  value: string,
+  from: Currency,
+  to: Currency,
+  rate: number | null
+): string {
+  if (from === to || !rate || rate <= 0) return value;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return value;
+  const out = from === "USD" ? num * rate : num / rate;
+  return String(Math.round(out * 100) / 100);
+}
 
 export default function NewOperationPage() {
   const { t } = useTranslation();
@@ -44,6 +64,9 @@ export default function NewOperationPage() {
   const [contact, setContact] = useState<string>("");
   const [wallet, setWallet] = useState<string>("");
   const [remindMe, setRemindMe] = useState(false);
+  const [dueDate, setDueDate] = useState("");
+  const [reminderDays, setReminderDays] = useState("");
+  const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: categories } = useQuery({
@@ -60,6 +83,28 @@ export default function NewOperationPage() {
     queryKey: queryKeys.wallets,
     queryFn: () => api.get<Paginated<Wallet>>("/wallets").then((d) => d.results),
   });
+  const { data: rateData } = useQuery({
+    queryKey: queryKeys.rates,
+    queryFn: () => api.get<{ rate: string }>("/rates/current"),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const rate = rateData?.rate ? Number(rateData.rate) : null;
+
+  const changeCurrency = (c: Currency) => {
+    if (c === currency) return;
+    setMonto(convertAmount(monto, currency, c, rate));
+    setCurrency(c);
+  };
+
+  const changeWallet = (id: string) => {
+    setWallet(id);
+    const w = (wallets ?? []).find((x) => x.id === id);
+    if (w && w.currency !== currency) {
+      setMonto(convertAmount(monto, currency, w.currency, rate));
+      setCurrency(w.currency);
+    }
+  };
 
   const create = useMutation({
     mutationFn: () =>
@@ -71,7 +116,10 @@ export default function NewOperationPage() {
         category: category ?? undefined,
         contact: contact || undefined,
         wallet: wallet || undefined,
+        estado: done ? "pagado" : "pendiente",
         remind_me: remindMe,
+        fecha_vencimiento: remindMe && dueDate ? dueDate : undefined,
+        reminder_days: remindMe ? (reminderDays === "" ? null : Number(reminderDays)) : undefined,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
@@ -109,43 +157,26 @@ export default function NewOperationPage() {
       {/* Scrollable form */}
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-5 pb-32 pt-2">
         {/* Tipo cobro/pago */}
-        <section className="flex rounded-full border border-glass-border bg-surface-container-highest p-1">
-          {TX_TYPES.map(({ value, labelKey }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTipo(value)}
-              className={cn(
-                "flex-1 rounded-full px-4 py-2 text-sm font-medium transition-all",
-                tipo === value
-                  ? "bg-primary text-white shadow-[0_2px_8px_rgba(0,106,97,0.2)]"
-                  : "text-on-surface-variant"
-              )}
-            >
-              {t(labelKey)}
-            </button>
-          ))}
-        </section>
+        <Segmented
+          layoutId="seg-tipo"
+          options={TX_TYPES.map(({ value, labelKey }) => ({
+            value,
+            label: t(labelKey),
+          }))}
+          value={tipo}
+          onChange={setTipo}
+        />
 
         {/* Amount + currency */}
         <section className="glass-panel-elevated relative flex flex-col items-center justify-center gap-5 overflow-hidden rounded-[2rem] p-8">
           <div className="pointer-events-none absolute top-1/2 left-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
-          <div className="relative z-10 flex rounded-full border border-glass-border bg-surface-container-highest p-1">
-            {(["USD", "VES"] as const).map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCurrency(c)}
-                className={cn(
-                  "rounded-full px-6 py-2 text-sm font-medium transition-all",
-                  currency === c
-                    ? "bg-primary text-white shadow-[0_2px_8px_rgba(0,106,97,0.2)]"
-                    : "text-on-surface-variant"
-                )}
-              >
-                {c}
-              </button>
-            ))}
+          <div className="relative z-10 w-full max-w-[240px]">
+            <Segmented
+              layoutId="seg-currency"
+              options={CURRENCIES.map((c) => ({ value: c.value, label: c.label }))}
+              value={currency}
+              onChange={changeCurrency}
+            />
           </div>
           <div className="relative z-10 flex w-full items-baseline justify-center">
             <span className="mr-2 text-4xl font-bold tracking-tight text-primary">
@@ -189,7 +220,7 @@ export default function NewOperationPage() {
             </div>
             <select
               value={wallet}
-              onChange={(e) => setWallet(e.target.value)}
+              onChange={(e) => changeWallet(e.target.value)}
               aria-label={t("addOperation.wallet")}
               className="w-full bg-transparent text-base text-on-surface outline-none"
             >
@@ -253,17 +284,76 @@ export default function NewOperationPage() {
         </section>
 
         {/* Remind me */}
+        <section className="glass-panel flex flex-col rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-container-high">
+                <BellRing className="h-4 w-4 text-status-warning" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-on-surface">{t("addOperation.remindMe")}</p>
+                <p className="text-xs text-on-surface-variant">{t("addOperation.remindMeHint")}</p>
+              </div>
+            </div>
+            <Switch checked={remindMe} onCheckedChange={setRemindMe} />
+          </div>
+
+          {remindMe && (
+            <div className="mt-4 space-y-4 border-t border-glass-border pt-4">
+              <div className="flex items-center gap-4">
+                <label
+                  htmlFor="tx-due"
+                  className="w-28 shrink-0 text-sm font-medium text-on-surface"
+                >
+                  {t("addOperation.dueDate")}
+                </label>
+                <Input
+                  id="tx-due"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="flex-1"
+                />
+              </div>
+              <div className="flex items-center gap-4">
+                <label
+                  htmlFor="tx-remind-days"
+                  className="w-28 shrink-0 text-sm font-medium text-on-surface"
+                >
+                  {t("addOperation.reminderDays")}
+                </label>
+                <select
+                  id="tx-remind-days"
+                  value={reminderDays}
+                  onChange={(e) => setReminderDays(e.target.value)}
+                  className="h-11 w-full min-w-0 flex-1 rounded-xl border border-glass-border bg-glass-surface px-3 text-base text-on-surface shadow-sm outline-none transition-colors backdrop-blur-md focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 md:text-sm"
+                >
+                  <option value="">{t("addOperation.daysBeforeGlobal")}</option>
+                  <option value="0">{t("addOperation.sameDay")}</option>
+                  <option value="1">{t("addOperation.dayBeforeCount", { count: 1 })}</option>
+                  {[2, 3, 4, 5, 7, 10, 14].map((n) => (
+                    <option key={n} value={n}>
+                      {t("addOperation.dayBeforeCount", { count: n })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Ya realizado */}
         <section className="glass-panel flex items-center justify-between rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-container-high">
-              <BellRing className="h-4 w-4 text-status-warning" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-status-paid/20">
+              <CheckCircle2 className="h-4 w-4 text-status-paid" />
             </div>
             <div>
-              <p className="text-sm font-medium text-on-surface">{t("addOperation.remindMe")}</p>
-              <p className="text-xs text-on-surface-variant">{t("addOperation.remindMeHint")}</p>
+              <p className="text-sm font-medium text-on-surface">{t("addOperation.markAsDone")}</p>
+              <p className="text-xs text-on-surface-variant">{t("addOperation.markAsDoneHint")}</p>
             </div>
           </div>
-          <Switch checked={remindMe} onCheckedChange={setRemindMe} />
+          <Switch checked={done} onCheckedChange={setDone} />
         </section>
       </div>
 

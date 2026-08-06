@@ -7,6 +7,7 @@ import WalletsPage from "@/features/wallets/wallets-page";
 import NewOperationPage from "@/features/transactions/new-operation-page";
 import TransactionsPage from "@/features/transactions/transactions-page";
 import SavingsPage from "@/features/savings/savings-page";
+import SubscriptionsPage from "@/features/subscriptions/subscriptions-page";
 import ProfilePage from "@/features/profile/profile-page";
 import LoginPage from "@/features/auth/login-page";
 import RegisterPage from "@/features/auth/register-page";
@@ -68,12 +69,13 @@ export const router = createBrowserRouter([
         children: [
           { path: "/", element: <DashboardPage /> },
           { path: "/wallets", element: <WalletsPage /> },
-          { path: "/operations/new", element: <NewOperationPage /> },
           { path: "/transactions", element: <TransactionsPage /> },
           { path: "/savings", element: <SavingsPage /> },
+          { path: "/subscriptions", element: <SubscriptionsPage /> },
           { path: "/profile", element: <ProfilePage /> },
         ],
       },
+      { path: "/operations/new", element: <NewOperationPage /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

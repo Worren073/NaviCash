@@ -53,11 +53,18 @@ def build_summary(user, today: date | None = None) -> dict:
     # EUR queda reportado en su moneda sin valor USD.
     wallets = list(Wallet.objects.filter(user=user).all())
     total_balance_usd = Decimal("0.00")
+    total_balance_ves: "Decimal | None" = Decimal("0.00") if rate_value else None
     for w in wallets:
         usd_value = _to_usd_known(w.saldo, w.currency, rate_value)
         if usd_value is not None:
             total_balance_usd += usd_value
         w.usd_value = usd_value  # atributo virtual para el serializer
+        # Agregado en moneda local bolívar (tasa del día) si es convertible.
+        if total_balance_ves is not None:
+            if w.currency == "VES":
+                total_balance_ves += w.saldo
+            elif w.currency == "USD":
+                total_balance_ves += round_money(w.saldo * rate_value)
 
     # --- Operaciones pendientes --------------------------------------------
     pending = Transaction.objects.filter(user=user, estado="pendiente").select_related(
@@ -80,15 +87,25 @@ def build_summary(user, today: date | None = None) -> dict:
         pending.filter(fecha_vencimiento__gt=today).order_by("fecha_vencimiento")[:5]
     )
 
+    # --- Actividad reciente --------------------------------------------------
+    # Últimos cobros/pagos realmente ejecutados, para la sección del dashboard.
+    recent = list(
+        Transaction.objects.filter(user=user, estado="pagado")
+        .select_related("wallet", "contact")
+        .order_by("-fecha_pagado", "-fecha")[:6]
+    )
+
     return {
         "base_currency": base,
         "rate": rate_value,
         "total_balance_usd": round_money(total_balance_usd),
+        "total_balance_ves": round_money(total_balance_ves) if total_balance_ves is not None else None,
         "to_receive": to_receive,
         "to_pay": to_pay,
         "overdue": round_money(to_receive + to_pay),
         "wallets": wallets,
         "upcoming": upcoming,
+        "recent": recent,
     }
 
 

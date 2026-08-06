@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import type { Overview, Wallet } from "@/lib/types";
+import type { NotificationsResponse, Overview, Subscription, Wallet } from "@/lib/types";
 
 export const queryKeys = {
   overview: ["overview"] as const,
@@ -12,6 +12,9 @@ export const queryKeys = {
   savings: ["savings"] as const,
   shortcuts: ["shortcuts"] as const,
   me: ["me"] as const,
+  rates: ["rates"] as const,
+  notifications: ["notifications"] as const,
+  subscriptions: ["subscriptions"] as const,
 };
 
 export function useOverview() {
@@ -25,5 +28,19 @@ export function useWallets() {
   return useQuery({
     queryKey: queryKeys.wallets,
     queryFn: () => api.get<{ results: Wallet[] }>("/wallets").then((d) => d.results),
+  });
+}
+
+export function useNotifications() {
+  return useQuery({
+    queryKey: queryKeys.notifications,
+    queryFn: () => api.get<NotificationsResponse>("/notifications"),
+  });
+}
+
+export function useSubscriptions() {
+  return useQuery({
+    queryKey: queryKeys.subscriptions,
+    queryFn: () => api.get<{ results: Subscription[] }>("/subscriptions").then((d) => d.results),
   });
 }

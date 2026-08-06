@@ -41,8 +41,6 @@ const FilledBellIcon = forwardRef<AnimatedIconHandle, AnimatedIconProps>(
         height={size}
         viewBox="0 0 24 24"
         fill={color}
-        onHoverStart={start}
-        onHoverEnd={stop}
       >
         <path stroke="none" d="M0 0h24v24H0z" fill="none" />
 

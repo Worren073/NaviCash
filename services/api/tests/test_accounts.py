@@ -15,33 +15,42 @@ class TestRegister:
 
     URL = "/api/auth/register"
 
+    def _payload(self, **overrides) -> dict:
+        """Payload mínimo válido de registro."""
+        payload = {
+            "email": "nuevo@example.com",
+            "password": "clave-segura-123",
+            "first_name": "Ana",
+            "last_name": "Pérez",
+            "phone": "+58 424 123 4567",
+            "accepted_terms": True,
+        }
+        payload.update(overrides)
+        return payload
+
     def test_creates_inactive_user(self, api_client) -> None:
         """El registro crea el usuario inactivo y devuelve 201."""
         from django.contrib.auth import get_user_model
 
         User = get_user_model()  # noqa: F811
-        resp = api_client.post(
-            self.URL,
-            {"email": "nuevo@example.com", "password": "clave-segura-123"},
-        )
+        resp = api_client.post(self.URL, self._payload(email="nuevo@example.com"))
         assert resp.status_code == 201
-        assert User.objects.filter(email="nuevo@example.com", is_active=False).exists()
+        user = User.objects.get(email="nuevo@example.com")
+        assert user.is_active is False
+        assert user.first_name == "Ana"
+        assert user.last_name == "Pérez"
+        assert user.phone == "+58 424 123 4567"
+        assert user.accepted_terms_version
 
     def test_returns_debug_token_when_debug(self, api_client) -> None:
         """En DEBUG el registro devuelve el token (para pruebas locales)."""
-        resp = api_client.post(
-            self.URL,
-            {"email": "debug@example.com", "password": "clave-segura-123"},
-        )
+        resp = api_client.post(self.URL, self._payload(email="debug@example.com"))
         assert resp.status_code == 201
         assert "debug_token" in resp.data
 
     def test_sends_verification_email(self, api_client) -> None:
         """Se envía un correo de verificación al registrarse."""
-        resp = api_client.post(
-            self.URL,
-            {"email": "correo@example.com", "password": "clave-segura-123"},
-        )
+        resp = api_client.post(self.URL, self._payload(email="correo@example.com"))
         assert resp.status_code == 201
         assert len(mail.outbox) == 1
         assert "correo@example.com" in mail.outbox[0].to
@@ -50,11 +59,28 @@ class TestRegister:
         """No se permite registrar dos veces el mismo email."""
         UserFactory(email="dup@example.com")
         resp = api_client.post(
-            self.URL,
-            {"email": "DUP@example.com", "password": "clave-segura-123"},
+            self.URL, self._payload(email="DUP@example.com")
         )
         assert resp.status_code == 400
         assert "email" in resp.data["errors"]
+
+    def test_terms_required(self, api_client) -> None:
+        """Sin aceptar los términos el registro se rechaza."""
+        resp = api_client.post(self.URL, self._payload(accepted_terms=False))
+        assert resp.status_code == 400
+        assert "accepted_terms" in resp.data["errors"]
+
+    def test_weak_password_rejected(self, api_client) -> None:
+        """Contraseña sin número o demasiado corta se rechaza."""
+        resp = api_client.post(self.URL, self._payload(password="sololetras"))
+        assert resp.status_code == 400
+        assert "password" in resp.data["errors"]
+
+    def test_invalid_phone_rejected(self, api_client) -> None:
+        """Teléfono con formato raro se rechaza."""
+        resp = api_client.post(self.URL, self._payload(phone="abc"))
+        assert resp.status_code == 400
+        assert "phone" in resp.data["errors"]
 
 
 @pytest.mark.django_db
@@ -125,9 +151,12 @@ class TestAuthFlow:
     def test_me_updates_profile(self, api_client) -> None:
         """PATCH /api/auth/me actualiza el perfil (RF-05)."""
         resp = api_client.patch(
-            self.ME_URL, {"name": "Ana Actualizada", "reminder_days": 5}
+            self.ME_URL,
+            {"first_name": "Ana", "last_name": "Actualizada", "reminder_days": 5},
         )
         assert resp.status_code == 200
+        assert resp.data["first_name"] == "Ana"
+        assert resp.data["last_name"] == "Actualizada"
         assert resp.data["name"] == "Ana Actualizada"
         assert resp.data["reminder_days"] == 5
 

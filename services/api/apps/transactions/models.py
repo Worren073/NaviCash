@@ -146,6 +146,12 @@ class Transaction(OwnedModel):
         verbose_name="Recordar",
         help_text="Sobrescribe la regla global de recordatorios si está desactivado.",
     )
+    reminder_days = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Avisar N días antes",
+        help_text="Anticipación del recordatorio; si queda vacío se usa la regla global del usuario (ADR-09).",
+    )
     nota = models.TextField(blank=True, verbose_name="Nota")
 
     class Meta:

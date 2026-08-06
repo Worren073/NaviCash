@@ -1,13 +1,19 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import {
   FilledBellIcon,
   HomeIcon,
+  ListIcon,
   SendHorizontalIcon,
   UserIcon,
   WalletIcon,
 } from "@/components/icons";
+import { AnimatedIconButton } from "@/components/ui/animated-icon-button";
+import { NotificationsPopover } from "@/features/notifications/notifications-popover";
+import { AppMenu } from "@/features/layout/app-menu";
+import { useNotifications } from "@/hooks/use-queries";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -15,8 +21,22 @@ const NAV_ITEMS = [
   { to: "/wallets", label: "nav.wallets", icon: WalletIcon },
 ] as const;
 
+function NotificationBadge() {
+  const { data } = useNotifications();
+  const unread = data?.unread_count ?? 0;
+  if (unread === 0) return null;
+  return (
+    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-delayed px-1 text-[10px] font-bold text-white">
+      {unread > 9 ? "9+" : unread}
+    </span>
+  );
+}
+
 function TopBar() {
   const { t } = useTranslation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+
   return (
     <header className="fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between border-b border-glass-border bg-glass-surface px-5 py-4 shadow-sm backdrop-blur-xl">
       <div className="flex items-center gap-3">
@@ -25,13 +45,26 @@ function TopBar() {
         </div>
         <h1 className="text-xl font-bold tracking-tight text-primary">{t("app.name")}</h1>
       </div>
-      <button
-        type="button"
-        aria-label={t("common.notifications") ?? "Notificaciones"}
-        className="flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high active:scale-95"
-      >
-        <FilledBellIcon size={20} className="text-on-surface-variant" />
-      </button>
+      <div className="flex items-center gap-1">
+        <div className="relative z-50">
+          <AnimatedIconButton
+            icon={ListIcon}
+            label={t("menu.title")}
+            onClick={() => setMenuOpen((v) => !v)}
+          />
+          <AppMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
+        </div>
+        <div className="relative z-50">
+          <AnimatedIconButton
+            icon={FilledBellIcon}
+            label={t("common.notifications")}
+            onClick={() => setNotifOpen((v) => !v)}
+          >
+            <NotificationBadge />
+          </AnimatedIconButton>
+          <NotificationsPopover open={notifOpen} onClose={() => setNotifOpen(false)} />
+        </div>
+      </div>
     </header>
   );
 }

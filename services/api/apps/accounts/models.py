@@ -28,7 +28,11 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     Campos:
         email: identificador único (normalizado a minúsculas).
-        name: nombre mostrado (opcional).
+        first_name / last_name: nombre y apellido del usuario (opcionales);
+            ``name`` (propiedad) devuelve la forma legible.
+        phone: teléfono opcional (formato libre sugerido E.164).
+        accepted_terms_at / accepted_terms_version: registro de la aceptación
+            de los términos de servicio al registrarse.
         base_currency: moneda base de visualización elegida en el onboarding
                        (ADR-10). La API devuelve los totales convertidos a USD
                        con la tasa oficial; la UI formatea según esta moneda.
@@ -47,7 +51,20 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name="Correo electrónico",
         help_text="Identificador único; se normaliza a minúsculas.",
     )
-    name = models.CharField(max_length=100, blank=True, verbose_name="Nombre")
+    first_name = models.CharField(max_length=60, blank=True, verbose_name="Nombre")
+    last_name = models.CharField(max_length=60, blank=True, verbose_name="Apellido")
+    phone = models.CharField(
+        max_length=24,
+        blank=True,
+        verbose_name="Teléfono",
+        help_text="Ej. +58 424 123 4567.",
+    )
+    accepted_terms_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Términos aceptados el"
+    )
+    accepted_terms_version = models.CharField(
+        max_length=20, blank=True, default="", verbose_name="Versión de términos"
+    )
     base_currency = models.CharField(
         max_length=3,
         choices=CURRENCY_CHOICES,
@@ -96,9 +113,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         """True si el usuario ya confirmó su email (equivalente a is_active)."""
         return self.is_active
 
+    @property
+    def name(self) -> str:
+        """Nombre completo legible (nombre + apellido), o el email si está vacío."""
+        return f"{self.first_name} {self.last_name}".strip() or self.email
+
     def full_name(self) -> str:
         """Alias legible del nombre del usuario."""
-        return self.name.strip() or self.email
+        return self.name
 
 
 class EmailVerification(models.Model):
