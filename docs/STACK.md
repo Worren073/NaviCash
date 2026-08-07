@@ -1,6 +1,6 @@
 # NaviCash — Decisiones de Stack (Fase 2)
 
-> Complementa a `docs/PLAN.md`. Estado: **Fase 2 completada; implementado en Fase 3 (v0.5).**
+> Complementa a `docs/PLAN.md`. Estado: **Fase 2 completada; implementado en Fase 3 (v0.6).**
 
 ---
 
@@ -32,11 +32,14 @@
 services/api/
 ├── config/              # settings, urls, wsgi/asgi
 ├── apps/
-│   ├── accounts/        # usuarios, auth (JWT + email), onboarding
-│   ├── wallets/         # billeteras y saldos (auto-actualización + ajuste)
-│   ├── transactions/    # cobros/pagos, estados, categorías, contactos
-│   ├── savings/         # metas de ahorro y aportes
+│   ├── accounts/        # usuarios, auth (JWT + email + Turnstile), onboarding
+│   ├── wallets/         # billeteras y saldos (auto-actualización + ajuste + transferencias)
+│   ├── transactions/    # cobros/pagos/transferencias, estados, categorías, contactos
+│   ├── savings/         # metas de ahorro, contribuciones y cuentas afiliadas
+│   ├── subscriptions/   # mensualidades y renovación con gasto registrado
 │   ├── shortcuts/       # atajos del home
+│   ├── notifications/   # notificaciones in-app generadas al consultar (deduplicadas)
+│   ├── overview/        # resumen de home (dashboard)
 │   ├── rates/           # integración DolarApi, caché e histórico de tasas
 │   └── core/            # utilidades compartidas, middleware, paginación
 └── manage.py, pyproject.toml, Dockerfile

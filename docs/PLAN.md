@@ -4,7 +4,7 @@ Aplicación web de finanzas personales, mobile-first, convertible a PWA y escala
 
 > Nombre comercial: **NaviCash**. Nombre interno de código/repo: `navi`.
 
-> Estado: **v0.5 — MVP funcional** (backend y frontend completos, pruebas en verde)
+> Estado: **v0.6 — funcionalidad ampliada** (backend y frontend completos, pruebas en verde; roadmap IA en preparación)
 
 ---
 
@@ -17,7 +17,7 @@ Aplicación web de finanzas personales, mobile-first, convertible a PWA y escala
 | **Función principal** | Llevar finanzas personales: cobros, pagos, pagos pendientes/retrasados, ahorro, atajos |
 | **Moneda de referencia** | USD (con conversión multi-moneda vía DolarApi) |
 | **Mercado inicial** | Venezuela, con arquitectura multi-moneda y multi-idioma para crecer a LatAm |
-| **IA** | Roadmap posterior al MVP (asesor financiero conversacional) |
+| **IA** | Roadmap **v0.7** (asesor financiero conversacional; plan en `AI-ASSISTANT.md`) |
 | **Objetivo técnico** | Stack modular, APIs REST seguras, todo contenerizado en Docker Compose, despliegue en Vercel |
 
 ---
@@ -40,15 +40,15 @@ Llevar el control de las finanzas personales desde el bolsillo: anotar **cobros*
 |---|---|---|
 | 1 | Planificación | **Completada** |
 | 2 | Selección de stack | **Completada** |
-| 3 | Desarrollo (backend, APIs, BD, frontend) | **Completada (v0.5)** |
-| 4 | Testeo (visualización, seguridad, funcionalidades) | **En curso** (backend 81 tests ✓; pendiente E2E/visual completo) |
+| 3 | Desarrollo (backend, APIs, BD, frontend) | **Completada (v0.6)** |
+| 4 | Testeo (visualización, seguridad, funcionalidades) | **En curso** (backend 124 tests ✓; auditoría de seguridad documentada en `AUDIT.md`; pendiente E2E/visual completo) |
 | 5 | Despliegue (producción, Vercel + host backend) | Pendiente |
 | 6 | Mantenimiento y actualizaciones | Pendiente |
 
-### Estado v0.5 en una línea
-- **Backend (Django 5.2 + DRF + PostgreSQL):** apps accounts, wallets, transactions, savings, shortcuts, overview, rates y core; **81 tests en verde** (auth con JWT+refresh httpOnly, verificación de email, saldos y ajuste, estados de operaciones, metas con aportes, tasas BCV con caché/fallback).
-- **Frontend (React 19 + Vite + Tailwind v4 + shadcn/ui):** mobile-first PWA con login/registro/verificación, dashboard con resumen y actividad, billeteras con ajuste de saldo, nueva operación, operaciones con estados, metas de ahorro y perfil. i18n en español, iconos animados (Its Hover), skeletons con blur y transiciones entre vistas.
-- **Pendiente para v1:** testeo visual/E2E sistemático, ajustes de seguridad (clave HMAC ≥ 32 bytes), despliegue en producción y verificación de la marca `navicash.*`.
+### Estado v0.6 en una línea
+- **Backend (Django 5.2 + DRF + PostgreSQL):** apps accounts, wallets, transactions, savings, subscriptions, shortcuts, overview, notifications, rates y core; **124 tests en verde** (auth con JWT+refresh httpOnly y Turnstile, saldos y ajuste, estados, transferencias entre cuentas, metas con cuentas afiliadas, mensualidades y renovación, notificaciones, tasas BCV con caché/fallback).
+- **Frontend (React 19 + Vite + Tailwind v4 + shadcn/ui):** mobile-first PWA con login/registro/verificación, dashboard con resumen/actividad/total ahorrado, billeteras normales y de ahorro con transferencia entre cuentas, nueva operación, operaciones con estados y vista de transferencia, mensualidades con renovación, metas de ahorro con cuentas afiliadas y perfil. i18n en español, iconos animados con animación al click, navbar translúcida, skeletons con blur y transiciones entre vistas.
+- **Pendiente para v0.6.1/v1:** aplicar fixes de la auditoría de seguridad (`AUDIT.md`), cerrar testeo visual/E2E, desplegar en producción y verificar la marca `navicash.*`.
 
 ---
 
@@ -102,6 +102,27 @@ Llevar el control de las finanzas personales desde el bolsillo: anotar **cobros*
 ### ADR-10 — Idioma y moneda por usuario
 - **Decisión:** UI en **español latino/neutro**, con estructura i18n preparada para añadir más idiomas. La moneda base de visualización la **elige el usuario al registrarse** (onboarding).
 - **Efecto:** los usuarios nuevos pasan por un paso de onboarding donde fijan su moneda base; el resto de operaciones almacena siempre su moneda original (multi-moneda).
+
+### ADR-11 — Transferencias entre cuentas (v0.6)
+- **Decisión:** transferencia entre billeteras propias como un tercer tipo de operación (`tipo="transferencia"`). El monto se registra en la moneda de la cuenta **origen** y el destino se calcula: `USD → VES` multiplica por la tasa (venta) y `VES → USD` divide (compra). Misma moneda ⇒ tasa 1, sin conversión.
+- **Tasa:** por operación, **BCV oficial** o **personalizada** (validada > 0). Las transferencias son **inmutables**: no se editan ni borran (se revierten con otra transferencia en sentido contrario).
+- **Efecto:** feed/historial muestra "Cuenta A → Cuenta B" y el monto destino cuando hay cambio de moneda.
+
+### ADR-12 — Billeteras de ahorro y cuentas afiliadas (v0.6)
+- **Decisión:** una billetera puede ser `tipo="saving"` (cuenta de ahorro) y una meta de ahorro puede **afiliarse** a una o varias cuentas de ahorro (`linked_accounts`, solo `tipo="saving"`).
+- **Efecto:** el avance de una meta suma aportes manuales + saldo de las cuentas afiliadas (convertido con la tasa oficial del día con las cuentas). En el dashboard, el **total ahorrado** agrega solo las cuentas `saving`; las metas **no** modifican el saldo total.
+
+### ADR-13 — Mensualidades/suscripciones (v0.6)
+- **Decisión:** una **mensualidad** (`Subscription`) es un compromiso periódico de fecha a fecha; el progreso se mide por tiempo transcurrido (0–100%) y su estado deriva de la fecha (próxima / activa / finalizada).
+- **Renovación:** crea una operación de egreso ("pago") marcada como pagada sobre la cuenta elegida (resta saldo) y recicla la mensualidad para el período siguiente (mismo largo). Renovable en los últimos 7 días o al vencer.
+
+### ADR-14 — Notificaciones in-app (v0.6)
+- **Decisión:** notificaciones generadas **al consultar** (`GET /api/notifications`) evaluando el estado actual del dominio (vencimientos próximos, operaciones vencidas, metas alcanzadas), deduplicadas por `kind` + referencia.
+- **Efecto:** sin jobs programados; el estado cambia al abrir la app. Las alertas se marcan como leídas sin regenerarse.
+
+### ADR-15 — Asistente IA (planificado v0.7)
+- **Decisión:** asistente conversacional que responde sobre los **datos del propio usuario** (saldos, gastos, metas) con respuestas ancladas a su contexto real — nunca respuestas genéricas.
+- **Efecto:** para seguridad/privacidad, el backend genera un **resumen agregado del dominio** del usuario y lo envía al modelo, sin exponer credenciales ni datos de otros usuarios. Plan en `docs/AI-ASSISTANT.md`.
 
 ---
 
@@ -241,8 +262,9 @@ Monorepo (Docker Compose para desarrollo)
 ---
 
 ## 11. Roadmap de producto
-- **v0.5 (actual):** MVP funcional completo: backend con 81 tests en verde y frontend mobile-first PWA (auth, dashboard, billeteras, operaciones, metas, perfil).
-- **v0.6/v1 (siguiente):** cerrar testeo visual/E2E y seguridad, despliegue en producción (Vercel + Render), verificación de marca `navicash.*`, app instalable pulida.
+- **v0.6 (actual):** transferencias entre cuentas (con tasa BCV/personalizada), billeteras de ahorro y cuentas afiliadas a metas, mensualidades con renovación, notificaciones in-app, total ahorrado en el dashboard; **124 tests en verde**.
+- **v0.6.1 / hardening:** aplicar fixes de la auditoría de seguridad (`docs/AUDIT.md`): throttling, cookies seguras/HSTS, refresh con blacklist, secretos sin default, revocación por familia.
+- **v0.7:** asistente IA conversacional (análisis del contexto del usuario, recomendaciones, "¿puedo permitirme X?").
+- **v1:** cerrar testeo visual/E2E y seguridad, despliegue en producción (Vercel + Render), verificación de marca `navicash.*`, app instalable pulida.
 - **v2:** tarjetas y cortes, importación CSV, informe mensual de ingresos/gastos.
-- **v3:** asistente IA conversacional (análisis, recomendaciones, "¿puedo permitirme X?").
-- **v4:** notificaciones push nativas al portar a móvil, integración bancaria si la región lo permite con APIs abiertas.
+- **v3:** notificaciones push nativas al portar a móvil, integración bancaria si la región lo permite con APIs abiertas.
