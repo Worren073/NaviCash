@@ -10,21 +10,26 @@ const WalletIcon = forwardRef<AnimatedIconHandle, AnimatedIconProps>(
     const [scope, animate] = useAnimate();
 
     const start = async () => {
-      animate(
+      await animate(
         ".flap",
-        { rotateY: 25, x: 2 },
-        { duration: 0.4, ease: "easeOut" },
+        { rotateY: [0, 60], x: [0, 3] },
+        { duration: 0.28, ease: "easeOut" },
+      );
+      await animate(
+        ".wallet-body",
+        { scale: [1, 1.1] },
+        { duration: 0.2, ease: "easeOut" },
       );
       animate(
-        ".wallet-body",
-        { scale: 1.05 },
-        { duration: 0.4, ease: "easeOut" },
+        ".flap, .wallet-body",
+        { rotateY: 0, x: 0, scale: 1 },
+        { duration: 0.3, ease: "easeIn" },
       );
     };
 
     const stop = async () => {
-      animate(".flap", { rotateY: 0, x: 0 }, { duration: 0.4, ease: "easeIn" });
-      animate(".wallet-body", { scale: 1 }, { duration: 0.4, ease: "easeIn" });
+      animate(".flap", { rotateY: 0, x: 0 }, { duration: 0.2, ease: "easeIn" });
+      animate(".wallet-body", { scale: 1 }, { duration: 0.2, ease: "easeIn" });
     };
 
     useImperativeHandle(ref, () => ({

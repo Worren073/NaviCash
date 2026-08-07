@@ -187,6 +187,7 @@ class TransactionReadSerializer(serializers.ModelSerializer):
     effective_state = serializers.CharField(read_only=True)
     is_overdue = serializers.BooleanField(read_only=True)
     wallet_name = serializers.CharField(source="wallet.name", read_only=True, default=None)
+    dest_wallet_name = serializers.CharField(source="dest_wallet.name", read_only=True, default=None)
 
     class Meta:
         model = Transaction
@@ -206,6 +207,12 @@ class TransactionReadSerializer(serializers.ModelSerializer):
             "category",
             "wallet",
             "wallet_name",
+            "dest_wallet",
+            "dest_wallet_name",
+            "monto_destino",
+            "moneda_destino",
+            "tasa_uso",
+            "tasa_fuente",
             "fecha",
             "fecha_vencimiento",
             "fecha_pagado",

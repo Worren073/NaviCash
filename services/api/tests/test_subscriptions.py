@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 from rest_framework.test import APIClient
 
 from apps.subscriptions.models import Subscription
-from factories import UserFactory
+from apps.transactions.models import Transaction
+from factories import UserFactory, WalletFactory
 
 
 def _payload(**overrides) -> dict:
@@ -99,3 +101,154 @@ class TestSubscriptionProgress:
         resp = api_client.post(self.URL, _payload())
         assert resp.data["progress_percent"] == "100.0"
         assert resp.data["status"] == "finalizada"
+
+
+@pytest.mark.django_db
+class TestSubscriptionRenew:
+    """Renovación: registra el gasto y extiende el período."""
+
+    URL = "/api/subscriptions"
+
+    def test_renew_finalizada_extends_period(self, api_client, monkeypatch) -> None:
+        """Una mensualidad finalizada se puede renovar: nuevo período y gasto."""
+        monkeypatch.setattr("apps.subscriptions.models.timezone.localdate", lambda: date(2026, 10, 1))
+        sub = Subscription.objects.create(
+            user=api_client.user,
+            name="Gimnasio",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 9, 30),
+        )
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("100.00"))
+
+        resp = api_client.post(
+            f"{self.URL}/{sub.id}/renew",
+            {"wallet": str(wallet.id), "amount": "25.00"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["start_date"] == "2026-10-01"
+        assert resp.data["end_date"] == "2026-12-31"  # 91 días del período anterior
+
+        sub.refresh_from_db()
+        wallet.refresh_from_db()
+        assert wallet.saldo == Decimal("75.00")  # el gasto resta saldo
+        tx = Transaction.objects.get(user=api_client.user, concepto="Renovación: Gimnasio")
+        assert tx.tipo == "pago"
+        assert tx.estado == "pagado"
+        assert tx.monto == Decimal("25.00")
+        assert tx.wallet_id == wallet.id
+
+    def test_renew_within_window(self, api_client, monkeypatch) -> None:
+        """Activa con 5 días restantes: renovable (ventana de 7 días)."""
+        monkeypatch.setattr("apps.subscriptions.models.timezone.localdate", lambda: date(2026, 9, 25))
+        sub = Subscription.objects.create(
+            user=api_client.user,
+            name="Netflix",
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 9, 30),
+        )
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("50.00"))
+
+        resp = api_client.post(
+            f"{self.URL}/{sub.id}/renew",
+            {"wallet": str(wallet.id), "amount": "10.00"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["start_date"] == "2026-09-25"
+        assert resp.data["end_date"] == "2026-10-24"  # 29 días del período anterior
+
+    def test_renew_not_allowed_far_from_end(self, api_client, monkeypatch) -> None:
+        """Activa con más de 7 días restantes: 400."""
+        monkeypatch.setattr("apps.subscriptions.models.timezone.localdate", lambda: date(2026, 9, 10))
+        sub = Subscription.objects.create(
+            user=api_client.user,
+            name="Netflix",
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 9, 30),
+        )
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("50.00"))
+
+        resp = api_client.post(
+            f"{self.URL}/{sub.id}/renew",
+            {"wallet": str(wallet.id), "amount": "10.00"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_renew_proxima_rejected(self, api_client, monkeypatch) -> None:
+        """Una mensualidad próxima no se puede renovar: 400."""
+        monkeypatch.setattr("apps.subscriptions.models.timezone.localdate", lambda: date(2026, 6, 1))
+        sub = Subscription.objects.create(
+            user=api_client.user,
+            name="Netflix",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 31),
+        )
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("50.00"))
+
+        resp = api_client.post(
+            f"{self.URL}/{sub.id}/renew",
+            {"wallet": str(wallet.id), "amount": "10.00"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_renew_invalid_amount(self, api_client, monkeypatch) -> None:
+        """Monto menor a 0.01 se rechaza: 400."""
+        monkeypatch.setattr("apps.subscriptions.models.timezone.localdate", lambda: date(2026, 10, 1))
+        sub = Subscription.objects.create(
+            user=api_client.user,
+            name="Gimnasio",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 9, 30),
+        )
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("50.00"))
+
+        resp = api_client.post(
+            f"{self.URL}/{sub.id}/renew",
+            {"wallet": str(wallet.id), "amount": "0"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_renew_foreign_wallet_rejected(self, api_client, monkeypatch) -> None:
+        """Una cuenta de otro usuario no es válida: 400."""
+        monkeypatch.setattr("apps.subscriptions.models.timezone.localdate", lambda: date(2026, 10, 1))
+        sub = Subscription.objects.create(
+            user=api_client.user,
+            name="Gimnasio",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 9, 30),
+        )
+        foreign_wallet = WalletFactory()  # de otro usuario
+
+        resp = api_client.post(
+            f"{self.URL}/{sub.id}/renew",
+            {"wallet": str(foreign_wallet.id), "amount": "10.00"},
+            format="json",
+        )
+        assert resp.status_code == 400
+        sub.refresh_from_db()
+        assert sub.end_date == date(2026, 9, 30)  # no se modificó
+
+    def test_renew_insufficient_balance(self, api_client, monkeypatch) -> None:
+        """Si la cuenta no tiene saldo suficiente, 400 y no se renueva."""
+        monkeypatch.setattr("apps.subscriptions.models.timezone.localdate", lambda: date(2026, 10, 1))
+        sub = Subscription.objects.create(
+            user=api_client.user,
+            name="Gimnasio",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 9, 30),
+        )
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("5.00"))
+
+        resp = api_client.post(
+            f"{self.URL}/{sub.id}/renew",
+            {"wallet": str(wallet.id), "amount": "25.00"},
+            format="json",
+        )
+        assert resp.status_code == 400
+        sub.refresh_from_db()
+        assert sub.end_date == date(2026, 9, 30)  # no se modificó
+        assert not Transaction.objects.filter(user=api_client.user).exists()

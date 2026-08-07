@@ -168,18 +168,19 @@ export default function NewOperationPage() {
         />
 
         {/* Amount + currency */}
-        <section className="glass-panel-elevated relative flex flex-col items-center justify-center gap-5 overflow-hidden rounded-[2rem] p-8">
-          <div className="pointer-events-none absolute top-1/2 left-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
-          <div className="relative z-10 w-full max-w-[240px]">
+        <section className="glass-panel-elevated relative flex min-h-[180px] flex-col items-center justify-center gap-7 overflow-hidden rounded-[2rem] px-6 py-10">
+          <div className="pointer-events-none absolute top-1/2 left-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
+          <div className="relative z-10 w-full max-w-[260px]">
             <Segmented
               layoutId="seg-currency"
+              size="lg"
               options={CURRENCIES.map((c) => ({ value: c.value, label: c.label }))}
               value={currency}
               onChange={changeCurrency}
             />
           </div>
-          <div className="relative z-10 flex w-full items-baseline justify-center">
-            <span className="mr-2 text-4xl font-bold tracking-tight text-primary">
+          <div className="relative z-10 flex w-full items-baseline justify-center gap-2">
+            <span className="text-4xl font-bold tracking-tight text-primary">
               {formatSymbol(currency)}
             </span>
             <input
@@ -192,7 +193,7 @@ export default function NewOperationPage() {
               value={monto}
               onChange={(e) => setMonto(e.target.value)}
               aria-label={t("addOperation.amountLabel")}
-              className="w-full max-w-[220px] bg-transparent text-center text-4xl font-bold tracking-tight text-on-surface outline-none focus:rounded-xl focus:bg-black/5"
+              className="w-full max-w-[280px] flex-1 bg-transparent text-center text-4xl font-bold tracking-tight text-on-surface outline-none focus:rounded-xl focus:bg-black/5"
             />
           </div>
         </section>

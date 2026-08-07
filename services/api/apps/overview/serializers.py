@@ -51,6 +51,19 @@ class RecentTransactionSerializer(serializers.Serializer):
     concepto = serializers.CharField()
     monto = serializers.DecimalField(max_digits=20, decimal_places=2)
     moneda = serializers.CharField()
+    wallet_name = serializers.CharField(
+        source="wallet.name", allow_null=True, required=False, default=None
+    )
+    dest_wallet_name = serializers.CharField(
+        source="dest_wallet.name", allow_null=True, required=False, default=None
+    )
+    monto_destino = serializers.DecimalField(
+        max_digits=20, decimal_places=2, allow_null=True, required=False
+    )
+    moneda_destino = serializers.CharField(allow_null=True, required=False, default=None)
+    tasa_uso = serializers.DecimalField(
+        max_digits=20, decimal_places=4, allow_null=True, required=False, default=None
+    )
     created_at = serializers.DateTimeField()
     fecha_pagado = serializers.DateTimeField(allow_null=True, required=False)
 

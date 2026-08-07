@@ -23,6 +23,9 @@ SUBSCRIPTION_STATUS = [
     ("finalizada", "Finalizada"),
 ]
 
+#: Ventana (en días) previa al cierre en la que se puede renovar.
+RENEW_WINDOW_DAYS = 7
+
 #: Colores sugeridos para la mensualidad (armonizan con el glass).
 SUBSCRIPTION_COLORS = [
     "#10b981",  # esmeralda
@@ -115,3 +118,20 @@ class Subscription(OwnedModel):
         if today > self.end_date:
             return "finalizada"
         return "activa"
+
+    @property
+    def days_remaining(self) -> int:
+        """Días restantes hasta el cierre (0 si hoy es el último día)."""
+        today = timezone.localdate()
+        return max(0, (self.end_date - today).days)
+
+    @property
+    def can_renew(self) -> bool:
+        """True si la mensualidad es renovable.
+
+        Renovable cuando ya venció (finalizada) o cuando está activa y quedan
+        como máximo ``RENEW_WINDOW_DAYS`` días para el cierre.
+        """
+        if self.status == "finalizada":
+            return True
+        return self.status == "activa" and self.days_remaining <= RENEW_WINDOW_DAYS

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.core.currency import is_valid_amount
 from apps.subscriptions.models import Subscription
+from apps.wallets.models import Wallet
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):
@@ -17,7 +19,9 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     progress_percent = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
     days_total = serializers.IntegerField(read_only=True)
     days_elapsed = serializers.IntegerField(read_only=True)
+    days_remaining = serializers.IntegerField(read_only=True)
     status = serializers.CharField(read_only=True)
+    can_renew = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Subscription
@@ -30,7 +34,9 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             "progress_percent",
             "days_total",
             "days_elapsed",
+            "days_remaining",
             "status",
+            "can_renew",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -49,3 +55,27 @@ class SubscriptionSerializer(serializers.ModelSerializer):
         """Crea la mensualidad ligada al usuario autenticado."""
         validated_data["user_id"] = self.context["request"].user.id
         return super().create(validated_data)
+
+
+class SubscriptionRenewSerializer(serializers.Serializer):
+    """Registro de una renovación: cuenta de gasto y monto.
+
+    El monto debe ser > 0 y la cuenta debe pertenecer al usuario. La fecha de
+    renovación se fija al `hoy` y el período se extiende la misma duración del
+    anterior.
+    """
+
+    wallet = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.none())
+    amount = serializers.DecimalField(max_digits=20, decimal_places=2)
+
+    def __init__(self, *args, **kwargs):
+        """Acota las cuentas al usuario de la request."""
+        super().__init__(*args, **kwargs)
+        user = self.context["request"].user
+        self.fields["wallet"].queryset = Wallet.objects.filter(user=user).all()
+
+    def validate_amount(self, value):
+        """El gasto debe ser una cantidad válida (>= 0.01)."""
+        if not is_valid_amount(value):
+            raise serializers.ValidationError("El monto del gasto debe ser mayor a 0.01.")
+        return value

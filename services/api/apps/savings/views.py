@@ -43,6 +43,16 @@ class GoalViewSet(viewsets.ModelViewSet):
         read = GoalReadSerializer(instance, context={"request": request})
         return Response(read.data, status=status.HTTP_201_CREATED)
 
+    def update(self, request, *args, **kwargs):
+        """Actualiza la meta y devuelve su detalle con progreso."""
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        read = GoalReadSerializer(instance, context={"request": request})
+        return Response(read.data)
+
     @action(detail=True, methods=["get", "post"])
     def contributions(self, request, pk=None):
         """GET: lista aportes. POST: registra un aporte a la meta."""

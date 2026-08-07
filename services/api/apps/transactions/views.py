@@ -14,6 +14,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.exceptions import BusinessRuleError
 from apps.core.permissions import IsOwner
 from apps.transactions.models import Category, Contact, Transaction
 from apps.transactions.serializers import (
@@ -68,12 +69,30 @@ class TransactionViewSet(viewsets.ModelViewSet):
             return TransactionWriteSerializer
         return TransactionReadSerializer
 
+    def _guard_transfer_readonly(self, instance: Transaction) -> None:
+        """Bloquea edición/borrado/transición de una transferencia.
+
+        Las transferencias son inmutables por diseño: para revertirlas el
+        usuario hace una transferencia en sentido contrario.
+        """
+        if instance.tipo == "transferencia":
+            raise BusinessRuleError(
+                "Una transferencia no puede editarse ni eliminarse; "
+                "para revertirla haz una transferencia en sentido contrario."
+            )
+
+    def perform_update(self, serializer):
+        """Evita editar transferencias (inmutables)."""
+        self._guard_transfer_readonly(serializer.instance)
+        super().perform_update(serializer)
+
     def perform_destroy(self, instance: Transaction) -> None:
         """Elimina la operación revirtiendo la billetera si estaba pagada.
 
         Se ejecuta en una transacción atómica para no dejar el saldo a medias
         (R9). Si revertir fallara (saldo insuficiente), la eliminación aborta.
         """
+        self._guard_transfer_readonly(instance)
         with transaction.atomic():
             if instance.estado == "pagado":
                 _apply_to_wallet(instance, reverse=True)
@@ -87,6 +106,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         operación actualizada (serializador de lectura).
         """
         tx = self.get_object()
+        self._guard_transfer_readonly(tx)
         serializer = TransactionActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         updated = serializer.apply(tx)

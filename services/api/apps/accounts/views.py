@@ -10,12 +10,14 @@ La autenticación usa SimpleJWT con la siguiente división de responsabilidades:
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.accounts.models import User
 from apps.accounts.serializers import (
     LoginSerializer,
     RegisterSerializer,
@@ -122,12 +124,13 @@ class RefreshView(APIView):
             )
         try:
             refresh = RefreshToken(refresh_value)
-        except Exception:
+            user = User.objects.get(pk=refresh["user_id"])
+        except (ObjectDoesNotExist, Exception):
             return Response(
                 {"detail": "Sesión inválida o expirada."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-        new_refresh = RefreshToken.for_user(refresh["user_id"])
+        new_refresh = RefreshToken.for_user(user)
         response = Response({"access": str(new_refresh.access_token)}, status=status.HTTP_200_OK)
         return _set_refresh_cookie(response, new_refresh)
 

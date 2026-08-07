@@ -6,7 +6,9 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.core.currency import is_valid_amount
 from apps.wallets.models import Wallet
+from apps.transactions.models import TRANSFER_RATE_SOURCES
 
 
 class WalletSerializer(serializers.ModelSerializer):
@@ -37,3 +39,66 @@ class WalletSerializer(serializers.ModelSerializer):
         validated_data["user_id"] = self.context["request"].user.id
         wallet = Wallet.objects.create(**validated_data, saldo=initial)
         return wallet
+
+
+class TransferSerializer(serializers.Serializer):
+    """Valida el cuerpo de ``POST /api/wallets/transfer``.
+
+    Campos:
+        source: id de la billetera origen.
+        target: id de la billetera destino.
+        amount: monto en la moneda de ``source``.
+        rate_source: ``"oficial"`` (BCV) o ``"manual"``.
+        custom_rate: tasa manual requerida si ``rate_source == "manual"``.
+    """
+
+    source = serializers.UUIDField()
+    target = serializers.UUIDField()
+    amount = serializers.DecimalField(max_digits=20, decimal_places=2)
+    rate_source = serializers.ChoiceField(
+        choices=[c[0] for c in TRANSFER_RATE_SOURCES], default="manual"
+    )
+    custom_rate = serializers.DecimalField(
+        max_digits=20, decimal_places=4, required=False, allow_null=True
+    )
+
+    def __init__(self, *args, **kwargs):
+        """Acota las billeteras al usuario autenticado (owner-scoped)."""
+        super().__init__(*args, **kwargs)
+        user = self.context["request"].user
+        self._wallets = {w.id: w for w in Wallet.objects.filter(user=user).all()}
+
+    def resolve_wallet(self, value) -> Wallet:
+        """Devuelve la billetera del usuario o 400 si no existe."""
+        wallet = self._wallets.get(value)
+        if wallet is None:
+            raise serializers.ValidationError("Billetera no válida.")
+        return wallet
+
+    def validate_amount(self, value):
+        """El monto debe ser una cantidad positiva válida."""
+        if not is_valid_amount(value):
+            raise serializers.ValidationError("El monto debe ser mayor a 0.01.")
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        """Valida coherencia entre origen, destino y tasa."""
+        if attrs["source"] == attrs["target"]:
+            raise serializers.ValidationError("No puedes transferir a la misma cuenta.")
+
+        attrs["source_wallet"] = self.resolve_wallet(attrs.pop("source"))
+        attrs["target_wallet"] = self.resolve_wallet(attrs.pop("target"))
+
+        # Si ambas billeteras usan la misma moneda no hay conversión ni tasa.
+        if attrs["source_wallet"].currency == attrs["target_wallet"].currency:
+            attrs.pop("custom_rate", None)
+            return attrs
+
+        if attrs["rate_source"] == "oficial":
+            attrs.pop("custom_rate", None)
+        elif not attrs.get("custom_rate") or attrs["custom_rate"] <= 0:
+            raise serializers.ValidationError(
+                {"custom_rate": "Debes indicar una tasa personalizada mayor a cero."}
+            )
+
+        return attrs

@@ -23,6 +23,13 @@ from apps.core.models import OwnedModel
 TRANSACTION_TYPES = [
     ("cobro", "Cobro (ingreso)"),
     ("pago", "Pago (egreso)"),
+    ("transferencia", "Transferencia entre cuentas"),
+]
+
+#: Fuente de la tasa usada en una transferencia entre monedas distintas.
+TRANSFER_RATE_SOURCES = [
+    ("oficial", "Tasa oficial (BCV)"),
+    ("manual", "Tasa personalizada"),
 ]
 
 #: Estados persistentes de la operación (Pendiente/Pagado/Cancelado).
@@ -99,7 +106,7 @@ class Transaction(OwnedModel):
         wallet: billetera asociada (misma moneda que la operación).
     """
 
-    tipo = models.CharField(max_length=10, choices=TRANSACTION_TYPES, verbose_name="Tipo")
+    tipo = models.CharField(max_length=13, choices=TRANSACTION_TYPES, verbose_name="Tipo")
     estado = models.CharField(
         max_length=12, choices=TRANSACTION_STATES, default="pendiente", verbose_name="Estado"
     )
@@ -137,6 +144,30 @@ class Transaction(OwnedModel):
         blank=True,
         related_name="transactions",
         verbose_name="Billetera",
+    )
+    # --- Campos de transferencia entre cuentas (tipo "transferencia") -------
+    # ``wallet`` es la cuenta origen; ``dest_wallet`` la cuenta destino.
+    # ``monto``/``moneda`` son de la cuenta origen; ``monto_destino``/``moneda_destino``
+    # son el resultado aplicado a la cuenta destino (con la tasa usada).
+    dest_wallet = models.ForeignKey(
+        "wallets.Wallet",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="incoming_transfers",
+        verbose_name="Billetera destino",
+    )
+    monto_destino = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, default=0, verbose_name="Monto en destino"
+    )
+    moneda_destino = models.CharField(
+        max_length=3, blank=True, choices=CURRENCY_CHOICES, verbose_name="Moneda destino"
+    )
+    tasa_uso = models.DecimalField(
+        max_digits=20, decimal_places=4, default=1, verbose_name="Tasa usada en el traspaso"
+    )
+    tasa_fuente = models.CharField(
+        max_length=10, choices=TRANSFER_RATE_SOURCES, default="manual", verbose_name="Fuente de la tasa"
     )
     fecha = models.DateField(default=date.today, verbose_name="Fecha")
     fecha_vencimiento = models.DateField(null=True, blank=True, verbose_name="Vence el")

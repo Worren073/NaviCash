@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ReceiptText, Store, Wrench, PersonStanding } from "lucide-react";
+import { ReceiptText, Store, Wrench, PersonStanding, ArrowLeftRight } from "lucide-react";
 import { CheckedIcon, XIcon } from "@/components/icons";
 
 import { api, ApiErrorClass } from "@/lib/api";
@@ -63,8 +63,9 @@ function TxCard({ tx }: { tx: Transaction }) {
   });
 
   const isIncome = tx.tipo === "cobro";
+  const isTransfer = tx.tipo === "transferencia";
   const estado = tx.effective_state ?? tx.estado;
-  const color = STATUS_COLOR[estado];
+  const color = isTransfer ? "#0891b2" : STATUS_COLOR[estado];
 
   return (
     <div
@@ -80,21 +81,38 @@ function TxCard({ tx }: { tx: Transaction }) {
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
           style={{ backgroundColor: withAlpha(color, 0.25), color }}
         >
-          <TxIcon concepto={tx.concepto} />
+          {isTransfer ? (
+            <ArrowLeftRight className="h-5 w-5" />
+          ) : (
+            <TxIcon concepto={tx.concepto} />
+          )}
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-on-surface">{tx.concepto}</div>
+          <div className="truncate text-sm font-medium text-on-surface">
+            {isTransfer ? t("wallet.transferRowLabel") : tx.concepto}
+          </div>
           <div className="text-xs text-on-surface-variant">
-            {tx.wallet_name ?? ""} · {formatRelativeEvent(tx.created_at)}
+            {isTransfer
+              ? `${tx.wallet_name ?? ""} → ${tx.dest_wallet_name ?? ""}`
+              : `${tx.wallet_name ?? ""} · ${formatRelativeEvent(tx.created_at)}`}
           </div>
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         <div className={`text-sm font-semibold ${isIncome ? "text-income" : "text-on-surface"}`}>
-          {isIncome ? "+" : "-"}
-          {formatMoney(tx.monto, tx.moneda, { symbol: true })}
+          {isTransfer
+            ? formatMoney(tx.monto, tx.moneda, { symbol: true })
+            : `${isIncome ? "+" : "-"}${formatMoney(tx.monto, tx.moneda, { symbol: true })}`}
         </div>
-        <Badge variant={STATE_BADGE[estado]}>{t(`common.${estado}`)}</Badge>
+        {isTransfer ? (
+          <span className="text-xs font-medium text-on-surface-variant">
+            {tx.moneda_destino && tx.moneda_destino !== tx.moneda
+              ? formatMoney(tx.monto_destino, tx.moneda_destino, { symbol: true })
+              : ""}
+          </span>
+        ) : (
+          <Badge variant={STATE_BADGE[estado]}>{t(`common.${estado}`)}</Badge>
+        )}
         {tx.estado === "pendiente" && (
           <div className="mt-1 flex gap-1">
             <Button

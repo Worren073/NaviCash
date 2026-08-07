@@ -16,8 +16,10 @@ from rest_framework.response import Response
 
 from apps.core.exceptions import BusinessRuleError
 from apps.core.permissions import IsOwner
+from apps.transactions.serializers import TransactionReadSerializer
+from apps.transactions.services import create_transfer
 from apps.wallets.models import Wallet
-from apps.wallets.serializers import WalletSerializer
+from apps.wallets.serializers import TransferSerializer, WalletSerializer
 from apps.wallets.services import adjust_balance
 
 
@@ -60,4 +62,32 @@ class WalletViewSet(viewsets.ModelViewSet):
         return Response(
             {"detail": "Saldo ajustado.", "saldo": str(new_saldo)},
             status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["post"])
+    def transfer(self, request):
+        """Transfiere dinero entre dos billeteras del usuario.
+
+        Body: ``{"source": id, "target": id, "amount": "100.00",
+        "rate_source": "oficial|manual", "custom_rate": "860.00"}``.
+        Devuelve la operación de transferencia creada.
+        """
+        serializer = TransferSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            tx = create_transfer(
+                data["source_wallet"],
+                data["target_wallet"],
+                data["amount"],
+                rate_fuente=data["rate_source"],
+                custom_rate=data.get("custom_rate"),
+            )
+        except ValueError as exc:
+            raise BusinessRuleError(str(exc)) from exc
+
+        return Response(
+            {"detail": "Transferencia registrada.", "transfer": TransactionReadSerializer(tx).data},
+            status=status.HTTP_201_CREATED,
         )

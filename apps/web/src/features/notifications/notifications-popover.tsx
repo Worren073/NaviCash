@@ -72,7 +72,7 @@ export function NotificationsPopover({
     <GlassPopover
       open={open}
       onClose={onClose}
-      className="w-[24rem] bg-white/90 backdrop-blur-[60px]"
+      className="w-[22rem] bg-white/90 backdrop-blur-[60px]"
     >
       <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
         <span className="text-sm font-semibold text-on-surface">{t("notifications.title")}</span>

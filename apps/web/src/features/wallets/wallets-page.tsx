@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { CreditCard, PiggyBank, Plus } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeftRight, CreditCard, PiggyBank, Plus, Trash2 } from "lucide-react";
 import { PenIcon } from "@/components/icons";
 
 import { useOverview, useWallets, queryKeys } from "@/hooks/use-queries";
@@ -20,8 +20,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatMoney } from "@/lib/format";
+import { Segmented } from "@/components/ui/segmented";
+import { formatMoney, formatSymbol } from "@/lib/format";
 import { WALLET_COLORS } from "@/lib/constants";
+import { CardGlow } from "@/components/ui/card-glow";
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { cn } from "@/lib/utils";
 import type { Currency, Wallet } from "@/lib/types";
 
@@ -203,6 +206,7 @@ export function EditWalletDialog({ wallet, usdValue }: { wallet: Wallet; usdValu
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [name, setName] = useState(wallet.name);
   const [tipo, setTipo] = useState<Wallet["tipo"]>(wallet.tipo);
   const [color, setColor] = useState<string>(wallet.color || "#006a61");
@@ -236,6 +240,17 @@ export function EditWalletDialog({ wallet, usdValue }: { wallet: Wallet; usdValu
     },
   });
 
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/wallets/${wallet.id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.wallets });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.overview });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.savings });
+      setOpen(false);
+      setConfirmOpen(false);
+    },
+  });
+
   return (
     <>
       <div
@@ -249,9 +264,10 @@ export function EditWalletDialog({ wallet, usdValue }: { wallet: Wallet; usdValu
             setOpen(true);
           }
         }}
-        className="glass-card cursor-pointer rounded-xl bg-surface p-4 transition-transform active:scale-[0.99]"
+        className="glass-card relative cursor-pointer overflow-hidden rounded-xl bg-surface p-4 transition-transform active:scale-[0.99]"
       >
-        <div className="mb-4 flex items-start justify-between">
+        <CardGlow color={wallet.color || "#006a61"} />
+        <div className="relative mb-4 flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div
               className="flex h-10 w-10 items-center justify-center rounded-full border"
@@ -268,10 +284,13 @@ export function EditWalletDialog({ wallet, usdValue }: { wallet: Wallet; usdValu
             </div>
           </div>
           <div onClick={(e) => e.stopPropagation()}>
-            <AdjustBalanceDialog wallet={wallet} />
+            <div className="flex items-center gap-1.5">
+              <AdjustBalanceDialog wallet={wallet} />
+              <TransferWalletDialog defaultSource={wallet} />
+            </div>
           </div>
         </div>
-        <div className="flex justify-between rounded-lg border border-outline-variant bg-surface-container-low p-3">
+        <div className="relative flex justify-between rounded-lg border border-outline-variant bg-surface-container-low p-3">
           <div>
             <p className="mb-0.5 text-xs text-on-surface-variant">{t("wallet.originalBalance")}</p>
             <p className="text-lg font-medium text-on-surface">
@@ -364,28 +383,293 @@ export function EditWalletDialog({ wallet, usdValue }: { wallet: Wallet; usdValu
             )}
 
             <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setOpen(false)}
-                disabled={update.isPending}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button type="submit" disabled={update.isPending}>
-                {update.isPending ? t("common.loading") : t("common.save")}
-              </Button>
+              <div className="flex w-full items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={update.isPending}
+                >
+                  <Trash2 className="h-4 w-4" /> {t("common.delete")}
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setOpen(false)}
+                    disabled={update.isPending}
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                  <Button type="submit" disabled={update.isPending}>
+                    {update.isPending ? t("common.loading") : t("common.save")}
+                  </Button>
+                </div>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        itemName={t("wallet.item")}
+        itemLabel={wallet.name}
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
     </>
   );
 }
 
-function AdjustBalanceDialog({ wallet }: { wallet: Wallet }) {
+export function TransferWalletDialog({
+  defaultSource,
+  open,
+  onOpenChange,
+}: {
+  defaultSource?: Wallet;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { data: wallets } = useWallets();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const [sourceId, setSourceId] = useState(defaultSource?.id ?? "");
+  const [targetId, setTargetId] = useState("");
+  const [monto, setMonto] = useState("");
+  const [rateSource, setRateSource] = useState<"oficial" | "manual">("oficial");
+  const [customRate, setCustomRate] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const isControlled = open !== undefined;
+  const dialogOpen = isControlled ? open : internalOpen;
+  const setDialogOpen = (v: boolean) => {
+    if (isControlled) onOpenChange?.(v);
+    else setInternalOpen(v);
+  };
+
+  useEffect(() => {
+    if (dialogOpen) {
+      setSourceId(defaultSource?.id ?? "");
+      setTargetId("");
+      setMonto("");
+      setRateSource("oficial");
+      setCustomRate("");
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen]);
+
+  const { data: rateData } = useQuery({
+    queryKey: queryKeys.rates,
+    queryFn: () => api.get<{ rate: string }>("/rates/current"),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    enabled: dialogOpen,
+  });
+  const officialRate = rateData?.rate ? Number(rateData.rate) : null;
+
+  const source = (wallets ?? []).find((w) => w.id === sourceId);
+  const target = (wallets ?? []).find((w) => w.id === targetId);
+  const crossCurrency = !!source && !!target && source.currency !== target.currency;
+  const isBuy = crossCurrency && source.currency === "VES"; // VES→USD: compra
+
+  const rate =
+    crossCurrency && rateSource === "manual" ? Number(customRate) : officialRate;
+
+  const preview = useMemo(() => {
+    if (!source || !target || !monto || Number(monto) <= 0) return null;
+    const amount = Number(monto);
+    if (!crossCurrency) return { amount, currency: source.currency };
+    if (!rate || rate <= 0) return null;
+    return isBuy
+      ? { amount: amount / rate, currency: target.currency }
+      : { amount: amount * rate, currency: target.currency };
+  }, [source, target, monto, crossCurrency, rate, isBuy]);
+
+  const transfer = useMutation({
+    mutationFn: () =>
+      api.post<{ detail: string }>("/wallets/transfer", {
+        source: sourceId,
+        target: targetId,
+        amount: monto,
+        rate_source: rateSource,
+        custom_rate: rateSource === "manual" ? customRate : undefined,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.wallets });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.overview });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+      setDialogOpen(false);
+      setError(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiErrorClass) setError(err.message);
+      else setError(t("errors.generic"));
+    },
+  });
+
+  const canSubmit =
+    !!source && !!target && source.id !== target.id && !!monto && Number(monto) > 0 && (!crossCurrency || (rate && rate > 0));
+
+  return (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded-lg border border-glass-border bg-glass-surface px-3 py-1.5 text-xs text-on-surface-variant backdrop-blur-md transition-all hover:bg-surface-container-high active:scale-95"
+        >
+          <ArrowLeftRight size={16} />
+          {t("wallet.transfer")}
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("wallet.transferTitle")}</DialogTitle>
+          <DialogDescription>{t("wallet.transferSubtitle")}</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError(null);
+            if (sourceId === targetId) {
+              setError(t("wallet.transferSameWallet"));
+              return;
+            }
+            transfer.mutate();
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>{t("wallet.transferFrom")}</Label>
+              <select
+                value={sourceId}
+                onChange={(e) => setSourceId(e.target.value)}
+                className={SELECT_CLS}
+              >
+                <option value="">{t("wallet.transferFrom")}</option>
+                {(wallets ?? []).map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} · {formatMoney(w.saldo, w.currency)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("wallet.transferTo")}</Label>
+              <select
+                value={targetId}
+                onChange={(e) => setTargetId(e.target.value)}
+                className={SELECT_CLS}
+              >
+                <option value="">{t("wallet.transferTo")}</option>
+                {(wallets ?? []).map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} · {formatMoney(w.saldo, w.currency)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>{t("wallet.transferAmount")}</Label>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-semibold text-on-surface">
+                {source ? formatSymbol(source.currency) : ""}
+              </span>
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+                placeholder="0.00"
+                required
+              />
+            </div>
+          </div>
+
+          {crossCurrency && (
+            <>
+              <div className="space-y-1.5">
+                <Label>{t("wallet.transferRateLabel")}</Label>
+                <div className="max-w-[280px]">
+                  <Segmented
+                    layoutId="seg-transfer-rate"
+                    options={[
+                      { value: "oficial", label: t("wallet.transferRateBcv") },
+                      { value: "manual", label: t("wallet.transferRateCustom") },
+                    ]}
+                    value={rateSource}
+                    onChange={setRateSource}
+                  />
+                </div>
+              </div>
+
+              {rateSource === "manual" && (
+                <div className="space-y-1.5">
+                  <Label>{t("wallet.transferCustomPlaceholder")}</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    value={customRate}
+                    onChange={(e) => setCustomRate(e.target.value)}
+                    placeholder={t("wallet.transferCustomPlaceholder")}
+                    required
+                  />
+                </div>
+              )}
+
+              <p className="rounded-lg border border-glass-border bg-surface-container-low px-3 py-2 text-sm text-on-surface-variant">
+                {isBuy
+                  ? t("wallet.transferCompra", { to: target.currency, from: source.currency })
+                  : t("wallet.transferVenta", { from: source.currency, to: target.currency })}
+              </p>
+
+              {preview && (
+                <p className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-sm font-medium text-primary">
+                  {t("wallet.transferPreview")}: {formatMoney(preview.amount, preview.currency, { symbol: true })}
+                </p>
+              )}
+            </>
+          )}
+
+          {error && (
+            <p className="rounded-lg bg-error-container/60 px-3 py-2 text-sm text-on-error-container">
+              {error}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDialogOpen(false)}
+              disabled={transfer.isPending}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button type="submit" disabled={transfer.isPending || !canSubmit}>
+              <ArrowLeftRight className="h-4 w-4" />
+              {transfer.isPending ? t("common.loading") : t("wallet.transferBtn")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AdjustBalanceDialog({ wallet }: { wallet: Wallet }) {  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
   const [saldo, setSaldo] = useState(wallet.saldo);
   const [error, setError] = useState<string | null>(null);
 
@@ -397,6 +681,8 @@ function AdjustBalanceDialog({ wallet }: { wallet: Wallet }) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.wallets });
       void queryClient.invalidateQueries({ queryKey: queryKeys.overview });
+      setOpen(false);
+      setError(null);
     },
     onError: (err) => {
       if (err instanceof ApiErrorClass) setError(err.message);
@@ -405,7 +691,7 @@ function AdjustBalanceDialog({ wallet }: { wallet: Wallet }) {
   });
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
@@ -464,20 +750,36 @@ export default function WalletsPage() {
     (overview?.wallets ?? []).map((w) => [w.id, w.usd_value])
   );
 
+  const savingWallets = (wallets ?? []).filter((w) => w.tipo === "saving");
+  const regularWallets = (wallets ?? []).filter((w) => w.tipo !== "saving");
+
+  const renderWallet = (wallet: Wallet) => (
+    <EditWalletDialog
+      key={wallet.id}
+      wallet={wallet}
+      usdValue={usdValues.get(wallet.id) ?? wallet.saldo}
+    />
+  );
+
   return (
     <div className="mt-4 space-y-8">
       <section>
-        <h2 className="mb-1 text-3xl font-bold text-on-surface">{t("wallet.title")}</h2>
-        <p className="text-base text-on-surface-variant">{t("wallet.subtitle")}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="mb-1 text-3xl font-bold text-on-surface">{t("wallet.title")}</h2>
+            <p className="text-base text-on-surface-variant">{t("wallet.subtitle")}</p>
+          </div>
+          <TransferWalletDialog />
+        </div>
 
         {/* Total Balance (Bento) */}
         <BlurLoading loading={isLoading}>
           <div className="glass-card relative mt-6 overflow-hidden rounded-xl bg-surface-container-low p-6">
-          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl" />
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+          <CardGlow color="#006a61" />
+          <p className="relative mb-1 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
             {t("wallet.totalUsd")}
           </p>
-          <div className="flex items-end gap-2">
+          <div className="relative flex items-end gap-2">
             {isLoading ? (
               <Skeleton className="h-10 w-40" />
             ) : (
@@ -490,30 +792,49 @@ export default function WalletsPage() {
         </BlurLoading>
       </section>
 
-      {/* Wallets list */}
-      <section className="space-y-2">
-        {isError ? (
-          <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
-            {t("errors.generic")}
-          </p>
-        ) : isLoading ? (
-          <>
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-28 w-full" />
-          </>
-        ) : (
-          (wallets ?? []).map((wallet) => (
-            <EditWalletDialog
-              key={wallet.id}
-              wallet={wallet}
-              usdValue={usdValues.get(wallet.id) ?? wallet.saldo}
-            />
-          ))
-        )}
+      {isError ? (
+        <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+          {t("errors.generic")}
+        </p>
+      ) : (
+        <>
+          {/* Cuentas normales */}
+          <section className="space-y-2">
+            <h3 className="text-lg font-semibold text-on-surface">{t("wallet.regularTitle")}</h3>
+            {isLoading ? (
+              <>
+                <Skeleton className="h-28 w-full" />
+                <Skeleton className="h-28 w-full" />
+              </>
+            ) : regularWallets.length === 0 ? (
+              <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+                {t("wallet.noRegular")}
+              </p>
+            ) : (
+              regularWallets.map(renderWallet)
+            )}
+            <NewWalletDialog />
+          </section>
 
-        {/* Add wallet */}
-        <NewWalletDialog />
-      </section>
+          {/* Billeteras de ahorro */}
+          <section className="space-y-2">
+            <h3 className="text-lg font-semibold text-on-surface">{t("wallet.savingsTitle")}</h3>
+            {isLoading ? (
+              <>
+                <Skeleton className="h-28 w-full" />
+                <Skeleton className="h-28 w-full" />
+              </>
+            ) : savingWallets.length === 0 ? (
+              <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+                {t("wallet.noSaving")}
+              </p>
+            ) : (
+              savingWallets.map(renderWallet)
+            )}
+            <NewWalletDialog defaultTipo="saving" />
+          </section>
+        </>
+      )}
     </div>
   );
 }

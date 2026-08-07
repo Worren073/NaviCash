@@ -23,10 +23,12 @@ from apps.core.currency import (  # noqa: F401
     REFERENCE_CURRENCY,
     convert_to_usd,
     is_valid_amount,
+    round_money,
 )
 from apps.core.exceptions import BusinessRuleError
-from apps.rates.service import get_usd_rate_for_conversion
+from apps.rates.service import get_current_official_rate, get_usd_rate_for_conversion
 from apps.transactions.models import TRANSACTION_STATES, Transaction
+from apps.wallets.models import Wallet
 from apps.wallets.services import adjust_balance
 
 
@@ -157,3 +159,118 @@ def set_state(tx: Transaction, new_state: str) -> Transaction:
     if new_state == "cancelado":
         return cancel(tx)
     return revert_to_pending(tx)
+
+
+def _resolve_transfer_rate(source_currency: str, dest_currency: str, rate_fuente: str, custom_rate: "Decimal | None") -> "Decimal | None":
+    """Resuelve la tasa a usar en una transferencia entre monedas distintas.
+
+    Args:
+        source_currency: moneda de la billetera origen.
+        dest_currency: moneda de la billetera destino.
+        rate_fuente: ``"oficial"`` (BCV) o ``"manual"``.
+        custom_rate: tasa personalizada (solo si ``rate_fuente == "manual"``).
+
+    Returns:
+        La tasa Decimal (> 0) a aplicar.
+
+    Raises:
+        BusinessRuleError: si la tasa no existe, no es positiva o la combinación
+            de monedas no es convertible entre sí (solo USD<->VES en el MVP).
+    """
+    if source_currency == dest_currency:
+        return None  # misma moneda: no hace falta tasa
+
+    supported = {"USD", "VES"}
+    if {source_currency, dest_currency} == supported:
+        if rate_fuente == "oficial":
+            rate = get_current_official_rate().effective_rate
+        else:
+            if custom_rate is not None and custom_rate > 0:
+                rate = custom_rate
+            else:
+                raise BusinessRuleError("Debes indicar una tasa personalizada mayor a cero.")
+        if not rate or rate <= 0:
+            raise BusinessRuleError("No hay una tasa oficial disponible.")
+        return rate
+
+    raise BusinessRuleError(
+        f"No se puede transferir entre {source_currency} y {dest_currency}: "
+        "solo se soporta la conversión USD↔VES."
+    )
+
+
+@transaction.atomic
+def create_transfer(
+    source: Wallet,
+    dest: Wallet,
+    amount: Decimal,
+    *,
+    rate_fuente: str = "manual",
+    custom_rate: "Decimal | None" = None,
+    concepto: str = "",
+) -> Transaction:
+    """Transfiere dinero entre dos billeteras del mismo usuario.
+
+    - Misma moneda: sólo mueve ``amount`` (tasa 1).
+    - Monedas distintas: aplica la tasa (BCV o personalizada).
+      - USD -> VES (venta): ``destino = amount * tasa``.
+      - VES -> USD (compra): ``destino = amount / tasa``.
+    - Registra una operación ``tipo="transferencia"`` ya pagada con ambos
+      monederos y deja el saldo ajustado de forma atómica.
+
+    Args:
+        source: billetera de origen.
+        dest: billetera de destino.
+        amount: cantidad a transferir (moneda de ``source``).
+        rate_fuente: ``"oficial"`` (BCV) o ``"manual"``.
+        custom_rate: tasa manual si ``rate_fuente == "manual"``.
+        concepto: texto opcional del concepto.
+
+    Returns:
+        La operación de transferencia creada (con estado ``pagado``).
+
+    Raises:
+        BusinessRuleError: si las reglas de negocio no se cumplen
+            (mismo monedero, user distinto, saldo insuficiente, tasa inválida).
+    """
+    if source.id == dest.id:
+        raise BusinessRuleError("No puedes transferir a la misma cuenta.")
+    if source.user_id != dest.user_id:
+        raise BusinessRuleError("Las cuentas deben pertenecerte.")
+    if not is_valid_amount(amount):
+        raise BusinessRuleError("El monto a transferir debe ser mayor a 0.01.")
+
+    rate = _resolve_transfer_rate(source.currency, dest.currency, rate_fuente, custom_rate)
+
+    if rate is None:
+        dest_amount = round_money(amount)
+    elif source.currency == "USD":  # venta: entrego dólares
+        dest_amount = round_money(amount * rate)
+    else:  # compra: entrego bolívares
+        dest_amount = round_money(amount / rate)
+
+    try:
+        adjust_balance(source, -amount, reason="transfer-out")
+        adjust_balance(dest, dest_amount, reason="transfer-in")
+    except ValueError as exc:
+        raise BusinessRuleError(str(exc)) from exc
+
+    usd_conversion = compute_usd_equivalent(amount, source.currency)
+    concepto = concepto or f"Transferencia: {source.name} → {dest.name}"
+
+    return Transaction.objects.create(
+        user_id=source.user_id,
+        tipo="transferencia",
+        estado="pagado",
+        monto=amount,
+        moneda=source.currency,
+        wallet=source,
+        dest_wallet=dest,
+        monto_destino=dest_amount,
+        moneda_destino=dest.currency,
+        tasa_uso=rate or Decimal("1"),
+        tasa_fuente=rate_fuente,
+        concepto=concepto,
+        fecha_pagado=timezone.now(),
+        **usd_conversion,
+    )

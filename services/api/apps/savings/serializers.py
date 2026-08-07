@@ -24,6 +24,7 @@ class GoalReadSerializer(serializers.ModelSerializer):
     total_contributed = serializers.DecimalField(max_digits=20, decimal_places=2, read_only=True)
     progress_percent = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
     contributions_count = serializers.IntegerField(read_only=True)
+    linked_accounts = serializers.SerializerMethodField()
 
     class Meta:
         model = SavingsGoal
@@ -36,6 +37,7 @@ class GoalReadSerializer(serializers.ModelSerializer):
             "total_contributed",
             "progress_percent",
             "contributions_count",
+            "linked_accounts",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -44,18 +46,78 @@ class GoalReadSerializer(serializers.ModelSerializer):
         """Cuenta de aportes de la meta."""
         return obj.contributions.count()
 
+    def get_linked_accounts(self, obj):
+        """Cuentas de ahorro afiliadas con su saldo."""
+        return [
+            {
+                "id": acc.id,
+                "name": acc.name,
+                "currency": acc.currency,
+                "saldo": str(acc.saldo),
+            }
+            for acc in obj.linked_accounts.all()
+        ]
+
 
 class GoalWriteSerializer(serializers.ModelSerializer):
-    """Serializador de alta/edición de metas."""
+    """Serializador de alta/edición de metas.
+
+    Además de los campos de la meta, acepta ``linked_account_ids``: lista de
+    billeteras de ahorro (``tipo="saving"``) del usuario que se afilian a la
+    meta. Al afiliar la primera cuenta, la meta hereda su moneda.
+    """
+
+    linked_account_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Wallet.objects.none(),
+        many=True,
+        required=False,
+        write_only=True,
+        allow_empty=True,
+    )
 
     class Meta:
         model = SavingsGoal
-        fields = ["name", "target_amount", "currency", "target_date"]
+        fields = ["name", "target_amount", "currency", "target_date", "linked_account_ids"]
+
+    def __init__(self, *args, **kwargs):
+        """Solo se admiten billeteras de ahorro del usuario autenticado."""
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if request:
+            # Con ``many=True`` el queryset vive en el child_relation.
+            self.fields["linked_account_ids"].child_relation.queryset = Wallet.objects.filter(
+                user=request.user, tipo="saving"
+            ).all()
 
     def create(self, validated_data: dict) -> SavingsGoal:
         """Crea la meta ligada al usuario autenticado."""
+        accounts = validated_data.pop("linked_account_ids", None)
         validated_data["user_id"] = self.context["request"].user.id
-        return super().create(validated_data)
+        goal = super().create(validated_data)
+        if accounts:
+            goal.linked_accounts.set(accounts)
+            # La meta hereda la moneda de la primera cuenta afiliada, salvo
+            # que el usuario haya indicado una moneda explícita en el payload.
+            if not validated_data.get("currency"):
+                goal.currency = accounts[0].currency
+                goal.save(update_fields=["currency"])
+        return goal
+
+    def update(self, instance, validated_data: dict) -> SavingsGoal:
+        """Actualiza la meta y la lista de cuentas afiliadas.
+
+        La moneda de la meta es la fuente de verdad: las cuentas de otras
+        monedas se convierten al calcular el progreso (ver el modelo). Con
+        varias cuentas no tiene sentido "heredar" la moneda de una de ellas.
+        """
+        accounts = validated_data.pop("linked_account_ids", None)
+        if accounts is not None:
+            instance.linked_accounts.set(accounts)
+        return super().update(instance, validated_data)
+
+    def validate_linked_account_ids(self, value):
+        """Las cuentas afiliadas deben ser solo de ahorro."""
+        return value
 
 
 class ContributionSerializer(serializers.Serializer):

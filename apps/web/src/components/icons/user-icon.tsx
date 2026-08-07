@@ -10,7 +10,16 @@ const UserIcon = forwardRef<AnimatedIconHandle, AnimatedIconProps>(
     const [scope, animate] = useAnimate();
 
     const start = useCallback(async () => {
-      animate(".user-avatar", { scale: 1.05, y: -1 }, { duration: 0.25, ease: "easeOut" });
+      await animate(
+        ".user-avatar",
+        { scale: [1, 1.15], y: [0, -2] },
+        { duration: 0.25, ease: "easeOut" },
+      );
+      animate(
+        ".user-avatar",
+        { scale: 1, y: 0 },
+        { duration: 0.25, ease: "easeIn" },
+      );
     }, [animate]);
 
     const stop = useCallback(async () => {

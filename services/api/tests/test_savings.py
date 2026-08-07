@@ -110,3 +110,116 @@ class TestGoalOwnership:
         client = auth_client_factory()
         resp = client.delete(f"/api/savings/{other_goal.id}")
         assert resp.status_code in (403, 404)
+
+
+@pytest.mark.django_db
+class TestGoalLinkedAccounts:
+    """Afiliación de cuentas de ahorro a una meta."""
+
+    URL = "/api/savings"
+
+    def test_create_with_linked_account(self, api_client) -> None:
+        """Al crear con una cuenta de ahorro, la meta la afilia."""
+        account = WalletFactory(user=api_client.user, tipo="saving", saldo=Decimal("250.00"))
+        resp = api_client.post(
+            self.URL,
+            {
+                "name": "Emergencias",
+                "target_amount": "1000.00",
+                "linked_account_ids": [str(account.id)],
+            },
+        )
+        assert resp.status_code == 201
+        assert str(resp.data["linked_accounts"][0]["id"]) == str(account.id)
+        # El progreso incluye el saldo de la cuenta afiliada.
+        assert resp.data["total_contributed"] == "250.00"
+
+    def test_inherits_currency_from_account(self, api_client) -> None:
+        """La meta hereda la moneda de su primera cuenta afiliada."""
+        account = WalletFactory(user=api_client.user, tipo="saving", currency="VES")
+        resp = api_client.post(
+            self.URL,
+            {
+                "name": "Ahorro en Bs",
+                "target_amount": "100000.00",
+                "linked_account_ids": [str(account.id)],
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.data["currency"] == "VES"
+
+    def test_explicit_currency_wins(self, api_client) -> None:
+        """Si se envía moneda explícita, se respeta sobre la de la cuenta."""
+        account = WalletFactory(user=api_client.user, tipo="saving", currency="VES")
+        resp = api_client.post(
+            self.URL,
+            {
+                "name": "Meta",
+                "target_amount": "1000.00",
+                "currency": "USD",
+                "linked_account_ids": [str(account.id)],
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.data["currency"] == "USD"
+
+    def test_progress_sums_multiple_accounts(self, api_client) -> None:
+        """Con dos cuentas, el progreso es la suma de ambos saldos."""
+        a1 = WalletFactory(user=api_client.user, tipo="saving", saldo=Decimal("100.00"))
+        a2 = WalletFactory(user=api_client.user, tipo="saving", saldo=Decimal("150.00"))
+        goal = SavingsGoalFactory(user=api_client.user, target_amount=Decimal("1000.00"))
+        resp = api_client.patch(
+            f"{self.URL}/{goal.id}",
+            {"linked_account_ids": [str(a1.id), str(a2.id)]},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["total_contributed"] == "250.00"
+
+    def test_only_saving_wallets_allowed(self, api_client) -> None:
+        """Solo billeteras de tipo ahorro pueden afiliarse."""
+        cash = WalletFactory(user=api_client.user, tipo="cash")
+        goal = SavingsGoalFactory(user=api_client.user)
+        resp = api_client.patch(
+            f"{self.URL}/{goal.id}", {"linked_account_ids": [str(cash.id)]}, format="json"
+        )
+        assert resp.status_code == 400
+
+    def test_cannot_link_other_users_wallet(self, api_client) -> None:
+        """Las cuentas de otro usuario no pueden vincularse."""
+        foreign = WalletFactory(tipo="saving")
+        goal = SavingsGoalFactory(user=api_client.user)
+        resp = api_client.patch(
+            f"{self.URL}/{goal.id}", {"linked_account_ids": [str(foreign.id)]}, format="json"
+        )
+        assert resp.status_code == 400
+
+    def test_unlink_accounts(self, api_client) -> None:
+        """Quitar cuentas deja el progreso solo con aportes manuales."""
+        account = WalletFactory(user=api_client.user, tipo="saving", saldo=Decimal("200.00"))
+        goal = SavingsGoalFactory(user=api_client.user)
+        goal.linked_accounts.set([account])
+        assert goal.total_contributed == Decimal("200.00")
+        resp = api_client.patch(f"{self.URL}/{goal.id}", {"linked_account_ids": []}, format="json")
+        assert resp.status_code == 200
+        assert resp.data["total_contributed"] == "0.00"
+
+    def test_ves_account_converted_to_usd_goal(self, api_client) -> None:
+        """Cuenta VES en meta USD se convierte con la tasa del día."""
+        from django.utils import timezone
+
+        ExchangeRate.objects.create(
+            source="oficial",
+            currency="VES",
+            promedio=Decimal("100.00"),
+            rate_date=timezone.now(),
+        )
+        account = WalletFactory(
+            user=api_client.user, tipo="saving", currency="VES", saldo=Decimal("10000.00")
+        )
+        goal = SavingsGoalFactory(user=api_client.user, currency="USD")
+        resp = api_client.patch(
+            f"{self.URL}/{goal.id}", {"linked_account_ids": [str(account.id)]}, format="json"
+        )
+        assert resp.status_code == 200
+        assert resp.data["total_contributed"] == "100.00"

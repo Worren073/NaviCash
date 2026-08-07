@@ -91,7 +91,7 @@ def build_summary(user, today: date | None = None) -> dict:
     # Últimos cobros/pagos realmente ejecutados, para la sección del dashboard.
     recent = list(
         Transaction.objects.filter(user=user, estado="pagado")
-        .select_related("wallet", "contact")
+        .select_related("wallet", "dest_wallet", "contact")
         .order_by("-fecha_pagado", "-fecha")[:6]
     )
 

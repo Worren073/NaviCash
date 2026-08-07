@@ -6,6 +6,10 @@ Reglas:
   la tasa del momento y se congela — ver ``GoalContribution.amount_goal_currency``).
 - La billetera de origen es opcional: si se indica, el aporte NO toca el saldo
   automáticamente en el MVP (el ahorro se concilia con el ajuste manual).
+- Una meta puede afiliarse a una o varias cuentas de ahorro
+  (``linked_accounts``, solo billeteras ``tipo="saving"``). Cuando hay cuentas
+  afiliadas, el avance de la meta suma el saldo de todas ellas; si no hay,
+  el avance proviene solo de los aportes manuales.
 """
 
 from __future__ import annotations
@@ -15,8 +19,15 @@ from decimal import Decimal
 from django.core.validators import MinValueValidator
 from django.db import models
 
-from apps.core.currency import CURRENCY_CHOICES, MONEY_DECIMALS, round_money
+from apps.core.currency import (
+    CURRENCY_CHOICES,
+    MONEY_DECIMALS,
+    convert_to_usd,
+    round_money,
+    usd_to_currency,
+)
 from apps.core.models import OwnedModel
+from apps.rates.service import get_current_official_rate
 
 
 class SavingsGoal(OwnedModel):
@@ -27,6 +38,7 @@ class SavingsGoal(OwnedModel):
         target_amount: monto objetivo (en ``currency``).
         currency: moneda del objetivo.
         target_date: fecha límite opcional.
+        linked_accounts: cuentas de ahorro (tipo "saving") afiliadas a la meta.
     """
 
     name = models.CharField(max_length=120, verbose_name="Nombre")
@@ -38,6 +50,12 @@ class SavingsGoal(OwnedModel):
     )
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default="USD", verbose_name="Moneda")
     target_date = models.DateField(null=True, blank=True, verbose_name="Fecha objetivo")
+    linked_accounts = models.ManyToManyField(
+        "wallets.Wallet",
+        blank=True,
+        related_name="linked_goals",
+        verbose_name="Cuentas de ahorro afiliadas",
+    )
 
     class Meta:
         verbose_name = "Meta de ahorro"
@@ -49,12 +67,36 @@ class SavingsGoal(OwnedModel):
         return f"{self.name} ({self.target_amount} {self.currency})"
 
     @property
+    def linked_accounts_balance(self) -> Decimal:
+        """Suma de los saldos de las cuentas afiliadas en la moneda de la meta.
+
+        Las cuentas en la misma moneda se suman directo; las de otra moneda
+        convertible (USD↔VES) se convierten con la tasa oficial del día. Las
+        cuentas cuya moneda no es convertible se omiten de la suma.
+        """
+        rate = get_current_official_rate()
+        rate_value: "Decimal | None" = rate.effective_rate if rate else None
+        total = Decimal("0")
+        for account in self.linked_accounts.all():
+            if account.currency == self.currency:
+                total += account.saldo
+            elif self.currency == "USD" and account.currency == "VES" and rate_value:
+                total += convert_to_usd(account.saldo, "VES", rate_value)
+            elif self.currency == "VES" and account.currency == "USD" and rate_value:
+                total += usd_to_currency(account.saldo, "VES", rate_value)
+        return total
+
+    @property
     def total_contributed(self) -> Decimal:
-        """Suma de los aportes en la moneda de la meta (Decimal)."""
-        return round_money(
-            self.contributions.aggregate(total=models.Sum("amount_goal_currency"))["total"]
-            or Decimal("0")
-        )
+        """Avance de la meta: aportes manuales + saldo de cuentas afiliadas.
+
+        Cuando la meta tiene cuentas afiliadas el avance refleja el saldo
+        real ahorrado; de lo contrario solo los aportes manuales registrados.
+        """
+        contributions = self.contributions.aggregate(total=models.Sum("amount_goal_currency"))[
+            "total"
+        ] or Decimal("0")
+        return round_money(Decimal(contributions) + self.linked_accounts_balance)
 
     @property
     def progress_percent(self) -> Decimal:

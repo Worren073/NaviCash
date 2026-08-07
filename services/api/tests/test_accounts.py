@@ -166,3 +166,21 @@ class TestAuthFlow:
 
         resp = APIClient().get(self.ME_URL)
         assert resp.status_code in (401, 403)
+
+    def test_refresh_rotates_access_token(self) -> None:
+        """POST /api/auth/refresh renueva el access usando la cookie.
+
+        Regresión del 500 por pasar el ''user_id'' como string a
+        ``RefreshToken.for_user``.
+        """
+        from rest_framework.test import APIClient
+
+        user = UserFactory(email="rotador@example.com")
+        client = APIClient()
+        login = client.post(self.LOGIN_URL, {"email": "rotador@example.com", "password": "test-password-123"})
+        assert login.status_code == 200
+
+        client.cookies["refresh_token"] = login.cookies["refresh_token"]
+        resp = client.post("/api/auth/refresh")
+        assert resp.status_code == 200
+        assert resp.data["access"]

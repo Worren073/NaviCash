@@ -7,14 +7,26 @@ export function Segmented<T extends string>({
   value,
   onChange,
   layoutId,
+  size = "md",
 }: {
   options: Array<{ value: T; label: string }>;
   value: T;
   onChange: (value: T) => void;
   layoutId: string;
+  size?: "sm" | "md" | "lg";
 }) {
+  const padBySize = {
+    sm: "px-3 py-1.5 text-xs",
+    md: "px-4 py-2 text-sm",
+    lg: "px-5 py-3 text-base",
+  } as const;
   return (
-    <div className="flex rounded-full border border-glass-border bg-surface-container-highest p-1">
+    <div
+      className={cn(
+        "flex rounded-full border border-glass-border bg-surface-container-highest p-1",
+        size === "lg" && "p-1.5"
+      )}
+    >
       {options.map((opt) => {
         const active = value === opt.value;
         return (
@@ -23,7 +35,8 @@ export function Segmented<T extends string>({
             type="button"
             onClick={() => onChange(opt.value)}
             className={cn(
-              "relative flex-1 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              "relative flex-1 rounded-full font-medium transition-colors",
+              padBySize[size],
               active ? "text-white" : "text-on-surface-variant"
             )}
           >

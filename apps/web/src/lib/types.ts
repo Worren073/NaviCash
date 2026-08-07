@@ -1,7 +1,7 @@
 // Tipos del contrato REST de NaviCash (coinciden con los serializers Django).
 
 export type Currency = "USD" | "VES";
-export type TxType = "cobro" | "pago";
+export type TxType = "cobro" | "pago" | "transferencia";
 export type TxState = "pendiente" | "pagado" | "retrasado" | "cancelado";
 
 export interface User {
@@ -56,6 +56,12 @@ export interface Transaction {
   category: string | null;
   wallet: string | null;
   wallet_name: string | null;
+  dest_wallet: string | null;
+  dest_wallet_name: string | null;
+  monto_destino: string;
+  moneda_destino: Currency;
+  tasa_uso: string;
+  tasa_fuente: "oficial" | "manual";
   fecha: string;
   fecha_vencimiento: string | null;
   fecha_pagado: string | null;
@@ -63,6 +69,13 @@ export interface Transaction {
   reminder_days: number | null;
   nota: string;
   created_at: string;
+}
+
+export interface LinkedAccount {
+  id: string;
+  name: string;
+  currency: Currency;
+  saldo: string;
 }
 
 export interface SavingsGoal {
@@ -74,6 +87,7 @@ export interface SavingsGoal {
   total_contributed: string;
   progress_percent: string;
   contributions_count: number;
+  linked_accounts: Array<LinkedAccount>;
   created_at: string;
 }
 
@@ -145,6 +159,8 @@ export interface Subscription {
   progress_percent: string;
   days_total: number;
   days_elapsed: number;
+  days_remaining: number;
   status: SubscriptionStatus;
+  can_renew: boolean;
   created_at: string;
 }

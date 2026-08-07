@@ -40,7 +40,7 @@ function TopBar() {
   const [notifOpen, setNotifOpen] = useState(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between border-b border-glass-border bg-glass-surface px-5 py-4 shadow-sm backdrop-blur-xl">
+    <header className="fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between border-b border-glass-border bg-glass-surface/60 px-5 py-4 shadow-sm backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-on-primary shadow-sm">
           N
@@ -82,7 +82,7 @@ function BottomNav() {
   return (
     <nav
       aria-label="Navegación principal"
-      className="fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2.5rem)] max-w-md -translate-x-1/2 items-center justify-around rounded-full border border-glass-border bg-glass-surface p-2 shadow-[0_8px_32px_0_rgba(0,0,0,0.1)] backdrop-blur-2xl"
+      className="fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2.5rem)] max-w-md -translate-x-1/2 items-center justify-around rounded-full border border-glass-border bg-glass-surface/60 p-2 shadow-[0_8px_32px_0_rgba(0,0,0,0.1)] backdrop-blur-2xl"
     >
       {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
         <NavLink key={to} to={to} label={label} icon={Icon} matchEnd={to === "/"} />

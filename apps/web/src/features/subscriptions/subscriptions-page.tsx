@@ -1,9 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { CalendarRange, Plus, Trash2 } from "lucide-react";
+import { CalendarRange, Plus, RefreshCw, Trash2 } from "lucide-react";
 
-import { useSubscriptions, queryKeys } from "@/hooks/use-queries";
+import { useSubscriptions, useWallets, queryKeys } from "@/hooks/use-queries";
 import { api, ApiErrorClass } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +18,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SUBSCRIPTION_COLORS } from "@/lib/constants";
+import { CardGlow } from "@/components/ui/card-glow";
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { cn } from "@/lib/utils";
+import { formatMoney } from "@/lib/format";
 import type { Subscription, SubscriptionStatus } from "@/lib/types";
 
 const STATUS_CLS: Record<SubscriptionStatus, string> = {
@@ -43,17 +46,20 @@ function SubscriptionCard({ sub }: { sub: Subscription }) {
   const queryClient = useQueryClient();
   const color = sub.color || SUBSCRIPTION_COLORS[0];
   const pct = Number(sub.progress_percent);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const remove = useMutation({
     mutationFn: () => api.delete(`/subscriptions/${sub.id}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.subscriptions });
+      setConfirmOpen(false);
     },
   });
 
   return (
-    <div className="glass-card rounded-xl bg-surface p-4">
-      <div className="mb-4 flex items-start justify-between">
+    <div className="glass-card relative overflow-hidden rounded-xl bg-surface p-4">
+      <CardGlow color={color} />
+      <div className="relative mb-4 flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div
             className="flex h-10 w-10 items-center justify-center rounded-full border"
@@ -76,8 +82,7 @@ function SubscriptionCard({ sub }: { sub: Subscription }) {
           <button
             type="button"
             aria-label={t("common.delete")}
-            onClick={() => remove.mutate()}
-            disabled={remove.isPending}
+            onClick={() => setConfirmOpen(true)}
             className="rounded-full p-1.5 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-status-delayed"
           >
             <Trash2 className="h-4 w-4" />
@@ -85,7 +90,7 @@ function SubscriptionCard({ sub }: { sub: Subscription }) {
         </div>
       </div>
 
-      <div className="mb-1.5 flex items-end justify-between">
+      <div className="relative mb-1.5 flex items-end justify-between">
         <span className="text-sm font-medium text-on-surface-variant">
           {t("subscriptions.progress", {
             percent: pct.toFixed(1),
@@ -97,7 +102,7 @@ function SubscriptionCard({ sub }: { sub: Subscription }) {
           {pct.toFixed(1)}%
         </span>
       </div>
-      <div className="h-2.5 overflow-hidden rounded-full bg-surface-container-highest">
+      <div className="relative h-2.5 overflow-hidden rounded-full bg-surface-container-highest">
         <div
           className="h-full rounded-full transition-all"
           style={{
@@ -107,7 +112,140 @@ function SubscriptionCard({ sub }: { sub: Subscription }) {
           }}
         />
       </div>
+
+      {sub.can_renew && (
+        <div className="relative mt-4">
+          <RenewSubscriptionDialog sub={sub} />
+        </div>
+      )}
+
+      <ConfirmDeleteDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        itemName={t("subscriptions.item")}
+        itemLabel={sub.name}
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
     </div>
+  );
+}
+
+function RenewSubscriptionDialog({ sub }: { sub: Subscription }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { data: wallets, isLoading: walletsLoading } = useWallets();
+  const [open, setOpen] = useState(false);
+  const [walletId, setWalletId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const renew = useMutation({
+    mutationFn: () =>
+      api.post<Subscription>(`/subscriptions/${sub.id}/renew`, {
+        wallet: walletId,
+        amount,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.subscriptions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.wallets });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.overview });
+      setOpen(false);
+      setWalletId("");
+      setAmount("");
+      setError(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiErrorClass) setError(err.message);
+      else setError(t("errors.generic"));
+    },
+  });
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="flex w-full items-center justify-center gap-2"
+        onClick={() => setOpen(true)}
+      >
+        <RefreshCw className="h-4 w-4" />
+        {t("subscriptions.renew")}
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("subscriptions.renewTitle")}</DialogTitle>
+            <DialogDescription>{t("subscriptions.renewHint")}</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setError(null);
+              renew.mutate();
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor={`renew-account-${sub.id}`}>{t("subscriptions.renewAccount")}</Label>
+              <select
+                id={`renew-account-${sub.id}`}
+                value={walletId}
+                onChange={(e) => setWalletId(e.target.value)}
+                required
+                className="h-11 w-full min-w-0 rounded-xl border border-glass-border bg-glass-surface backdrop-blur-md px-3 py-2.5 text-base text-on-surface shadow-sm outline-none transition-colors focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 md:text-sm"
+              >
+                <option value="" disabled>
+                  {t("subscriptions.renewAccountPlaceholder")}
+                </option>
+                {(wallets ?? []).map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} · {formatMoney(w.saldo, w.currency, { symbol: true })}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor={`renew-amount-${sub.id}`}>{t("subscriptions.renewAmount")}</Label>
+              <Input
+                id={`renew-amount-${sub.id}`}
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                required
+                disabled={renew.isPending}
+              />
+            </div>
+
+            {error && (
+              <p className="rounded-lg bg-error-container/60 px-3 py-2 text-sm text-on-error-container">
+                {error}
+              </p>
+            )}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setOpen(false)}
+                disabled={renew.isPending}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" disabled={renew.isPending || walletsLoading}>
+                {renew.isPending ? t("common.loading") : t("subscriptions.renew")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
