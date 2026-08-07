@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "apps.overview",
     "apps.notifications",
     "apps.subscriptions",
+    "apps.assistant",
 ]
 
 MIDDLEWARE = [
@@ -164,6 +165,11 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
     "PAGE_SIZE": 25,
+    # Rate limit dedicado para el chat del asistente (AUDIT A4: sin throttling).
+    # El scope se declara en la vista (throttle_scope="assistant").
+    "DEFAULT_THROTTLE_RATES": {
+        "assistant": env("ASSISTANT_THROTTLE_RATE", default="30/hour"),
+    },
     # Errores en el mismo formato/estilo espagnol-friendly.
     "EXCEPTION_HANDLER": "apps.core.exceptions.base_exception_handler",
 }

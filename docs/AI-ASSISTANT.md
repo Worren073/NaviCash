@@ -2,7 +2,7 @@
 
 > Documento de diseño para el **asistente conversacional**. Define arquitectura,
 > alcance, interacción con los datos del usuario, seguridad/privacidad y roadmap
-> de implementación. Estado: **plan adquirido, sin implementar**.
+> de implementación. Estado: **Fase 1 completa (backend + frontend + proveedor LLM)** (agosto 2026).
 
 ---
 
@@ -39,13 +39,15 @@ apps/web (React)
 
 services/api
   └─ apps/assistant/
-       ├─ models.py               # ChatMessage? (opcional persistir historial)
-       ├─ context.py              # build_context(user) → resumen del dominio
-       ├─ provider.py             # interfaz AssistantProvider (OpenAI/Claude/local)
-       ├─ services.py             # orquestación: contexto + prompt + llamada
-       ├─ serializers.py          # POST /api/assistant/chat { message }
-       ├─ views.py                # chat / history (scoped a request.user)
-       └─ urls.py
+       ├─ models.py               # ChatMessage (opcional persistir historial) ✅
+       ├─ migrations/0001_initial.py # esquema ChatMessage ✅
+       ├─ context.py              # build_context(user) → resumen del dominio ✅
+       ├─ providers.py            # interfaz AssistantProvider (OpenAI/mock) ✅
+       ├─ intent_rules.py         # fallback determinista (sin LLM) ✅
+       ├─ services.py             # orquestación: contexto + proveedor + persistencia ✅
+       ├─ serializers.py          # POST /api/assistant/messages { message } ✅
+       ├─ views.py                # chat + history (scoped a request.user) ✅
+       └─ urls.py                 # /api/assistant/messages, /history ✅
 ```
 
 ### 3.1 Capa de contexto (único contacto con los datos)
@@ -84,6 +86,12 @@ Reglas:
 preguntas comunes ("por cobrar", "por pagar", "vencidos", "meta X", "total ahorrado")
 desde principios sin LLM.
 
+La implementación ancla el flujo en `services.py:chat()`: valida, construye el
+contexto con `build_context(user)`, delega en `get_provider()` (OpenAI si hay
+clave, si no `MockAssistantProvider`) y, si el proveedor lanza excepción, cae a
+`intent_rules.answer_deterministic`. El turno (user + assistant) se persiste bajo
+un `session_id` (uuid) y queda disponible vía `GET /api/assistant/messages/history`.
+
 ---
 
 ## 4. Proveedores y seguridad
@@ -110,18 +118,40 @@ permite cambiar sin tocar el resto.
 
 ## 5. Alcance v0.7 (fase 1) — Minimal Viable Assistant
 
-| Feature | Detalle |
-|---|---|
-| Chat simple | Drawer flotante + reseña de conversación en memoria/persistida |
-| 6+ intents determinizados como fallback | saldo, cobrar, pagar, vencidos, ahorro, metas |
-| Respuestas con datos reales | usando `build_context` |
-| Configuración por env | `AAVID_PROVIDER`, `AAVID_API_KEY`, `AAVID_MODEL` |
-| Tests | contexto + fallback + rate limit + autenticación (sin llamadas externas) |
+| Feature | Detalle | Estado |
+|---|---|---|
+| Chat simple | Drawer flotante + reseña de conversación en memoria/persistida | **Implementado (frontend + backend)** |
+| Burbuja flotante "Navi" | Orbe translúcido con ojos, arrastrable a cualquier posición (localStorage), click abre el chat | **Implementado (frontend)** |
+| 6+ intents determinizados como fallback | saldo, cobrar, pagar, vencidos, ahorro, metas, mensualidades, "¿me permito X?" | **Implementado (backend: `intent_rules.py`)** |
+| Respuestas con datos reales | `build_context(user)` del backend (saldo, pendientes, metas, mensualidades, flujo del mes) | **Implementado (backend)** |
+| Endpoint de chat | `POST /api/assistant/messages` autenticado + rate limit (scope `assistant`, `30/hour` configurable) | **Implementado (backend)** |
+| Historial persistido | `ChatMessage` por sesión (`session_id`) + `GET /api/assistant/messages/history` scoped al usuario | **Implementado (backend)** |
+| Persistencia del frontend | `use-assistant.ts` consume `POST /api/assistant/messages` (respuesta de Gemini) con fallback local | **Implementado** |
+| Configuración por env | `AAI_PROVIDER`, `AAI_API_KEY`, `AAI_MODEL`, `AAI_BASE_URL`, `ASSISTANT_THROTTLE_RATE` | **Implementado (`.env.example`; activo con Gemini)** |
+| Tests | contexto + fallback + rate limit + autenticación (sin llamadas externas) | **Implementado (17 nuevos, suite 141 passed)** |
+
+**Hecho (agosto 2026) — frontend + conexión end-to-end:** `apps/web/src/features/assistant/navi-bubble.tsx` (burbuja con ojos, arrastre con pointer events, persistencia de posición) y `apps/web/src/features/assistant/assistant-chat.tsx` (panel glass con mensajes, animación de escritura y entrada). `apps/web/src/hooks/use-assistant.ts` consume `POST /api/assistant/messages` (envía `{ message, session_id }`, guarda la sesión devuelta y cae a la lógica determinista local si la llamada falla). Integrado en `apps/web/src/app/layout.tsx`. i18n `assistant.*`.
+
+**Verificado end-to-end (agosto 2026):** respuesta real en español del proveedor **Gemini** (`gemini-3.5-flash-lite` vía endpoint OpenAI-compatible `generativelanguage.googleapis.com/v1beta/openai`) anclada al contexto del usuario, `session_id` persistido y CORS habilitado para `http://localhost:5173`. Typecheck del frontend en verde (host y contenedor).
+
+**Hecho (agosto 2026) — backend (`services/api/apps/assistant/`):**
+- `models.py`: `ChatMessage` (OwnedModel) + migración `0001_initial`.
+- `context.py`: `build_context(user, today=None)` → dict JSONizable con saldo global (USD/VES), pendientes (to_receive/to_pay/overdue), próximos vencimientos, billeteras, flujo del mes, metas con progreso, mensualidades y recientes. Único contacto con los datos del usuario; no expone credenciales.
+- `providers.py`: `AssistantProvider` (Protocol), `MockAssistantProvider` (fallback sin red) y `OpenAIProvider` (chat.completions compatible OpenAI, lee `AAI_*`).
+- `intent_rules.py`: respuesta determinista de los intents comunes con datos reales.
+- `services.py`: `chat()` orquesta y persiste el turno; `_load_history`/`_persist_chat` best-effort.
+- `serializers.py`: validación del mensaje (≤1000 chars, no vacío) y respuesta.
+- `views.py`: `ChatView` (POST, `IsAuthenticated` + `ScopedRateThrottle` scope `assistant`) y `ChatHistoryView` (GET scoped).
+- `config/settings.py`: app registrada + `DEFAULT_THROTTLE_RATES.assistant = env("ASSISTANT_THROTTLE_RATE", "30/hour")` (cubre hallazgo A4 de `AUDIT.md`).
+- `.env.example`: `AAI_PROVIDER`, `AAI_API_KEY`, `AAI_MODEL`, `AAI_BASE_URL`, `ASSISTANT_THROTTLE_RATE`.
+
+**Nota de nomenclatura:** el doc original escribía `AAVID_*`; se usa `AAI_*` (asistente-inteligencia-artificial) conforme a §4.
 
 ### Fase 2 (tras v0.7)
-- Historial persistido, sugerencias rápidas (chips), render de montos en moneda base.
-- Invariabilidad de la respuesta (markdown lite).
-- "¿Me puedo permitir X?" con estadística simple de ingreso/gasto.
+- Sugerencias rápidas (chips), render de montos en moneda base.
+- Invariabilidad de la respuesta del backend (markdown lite).
+- "¿Me puedo permitir X?" con estadística simple (backend ya calcula `fin_month`).
+- Recuperar el historial persistido por sesión en el frontend (`GET /api/assistant/messages/history`).
 - Transféreb a WhatsApp/webhook y push (fase posterior).
 
 ---
@@ -136,11 +166,11 @@ permite cambiar sin tocar el resto.
 
 ## 7. Tareas de implementación (orden sugerido)
 
-1. `apps/assistant/` con modelo esqueleto (mensajes de chat) + migración.
-2. `context.build_context(user)` + tests.
-3. `AssistantProvider` interfaz + `MockAssistantProvider` (tests) + `OpenAIProvider`.
-4. `views.py`/`serializers.py` (auth + rate limit) + tests.
-5. Fallback determinístico (`intent_rules.py`) + tests.
-6. Frontend: `features/assistant` (drawer + chat) + i18n.
-7. Wire con `useOverview`/`useWallets` para contexto del FAB.
-8. Docs + `.env.example` (vars de la AI).
+- [x] 1. `apps/assistant/` con modelo esqueleto (mensajes de chat) + migración.
+- [x] 2. `context.build_context(user)` + tests.
+- [x] 3. `AssistantProvider` interfaz + `MockAssistantProvider` (tests) + `OpenAIProvider`.
+- [x] 4. `views.py`/`serializers.py` (auth + rate limit) + tests.
+- [x] 5. Fallback determinístico (`intent_rules.py`) + tests.
+- [x] 6. Frontend: `features/assistant` (drawer + chat) + i18n.
+- [x] 7. Wire `use-assistant.ts` al endpoint `POST /api/assistant/messages` (con fallback local si la llamada falla).
+- [x] 8. Docs + `.env.example` (vars de la AI).

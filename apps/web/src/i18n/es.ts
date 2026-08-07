@@ -162,6 +162,29 @@ export default {
     markAll: "Marcar leídas",
     empty: "Sin notificaciones por ahora.",
   },
+  assistant: {
+    name: "Navi",
+    online: "En línea",
+    openChat: "Abrir chat con Navi",
+    placeholder: "Pregúntale a Navi…",
+    send: "Enviar",
+    greeting:
+      "¡Hola! Soy Navi, tu asistente financiero. Pregúntame por tu saldo, lo que tienes por cobrar o pagar, tus vencimientos, metas de ahorro o mensualidades.",
+    noData: "Aún no tengo datos cargados. Vuelve a intentarlo en un momento.",
+    balanceReply: "Tu saldo total es {{total}}:\n",
+    toReceiveReply: "Tienes {{amount}} por cobrar ({{count}} cobros pendientes).",
+    toPayReply: "Tienes {{amount}} por pagar ({{count}} pagos pendientes).",
+    overdueReply: "Tienes {{amount}} en operaciones vencidas. Revisa las notificaciones.",
+    savingsReply: "Tienes {{total}} ahorrados en tus cuentas de ahorro:\n",
+    noGoals: "Aún no tienes metas de ahorro. ¡Puedes crear una!",
+    noSubscriptions: "No tienes mensualidades registradas.",
+    finished: "finalizada",
+    daysLeft: "días restantes",
+    affordReply:
+      "Tu balance actual es {{balance}} y, sumando tus cobros pendientes menos pagos por hacer, quedarías con {{net}} disponibles.",
+    fallback:
+      "Aún estoy aprendiendo sobre eso. Puedo ayudarte con: tu saldo, cobros, pagos, vencimientos, ahorro, metas y mensualidades.",
+  },
   savings: {
     title: "Ahorros",
     subtitle: "Tus cuentas y metas de ahorro.",

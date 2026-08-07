@@ -7,7 +7,7 @@
 Aplicación web **mobile-first · PWA** para llevar tus cobros, pagos, vencimientos, transferencias y metas de ahorro con el dólar como referencia. Escalable a React Native.
 
 ![v0.6](https://img.shields.io/badge/versi%C3%B3n-0.6.0-006a61?style=for-the-badge)
-![Backend 124 tests](https://img.shields.io/badge/backend-124%20tests%20%C2%B7%20verde-4ade80?style=for-the-badge)
+![Backend 141 tests](https://img.shields.io/badge/backend-141%20tests%20%C2%B7%20verde-4ade80?style=for-the-badge)
 ![Stack](https://img.shields.io/badge/React%2019-Django%205.2-PostgreSQL%2017-64748b?style=for-the-badge)
 ![Licencia](https://img.shields.io/badge/licencia-MIT-1e293b?style=for-the-badge)
 
@@ -27,6 +27,7 @@ Aplicación web **mobile-first · PWA** para llevar tus cobros, pagos, vencimien
 - **PWA instalable** con service worker y shell offline parcial.
 - **i18n** en español latino, listo para más idiomas.
 - **Micro-interacciones**: iconos animados (Its Hover) con animación al click, skeletons con blur y transiciones suaves entre vistas.
+- **Navi (asistente IA, Fase 1)**: burbuja flotante con ojos, arrastrable, chat con contexto real del usuario (`build_context`) — backend `apps/assistant` (`POST /api/assistant/messages` autenticado con rate limit, fallback determinista en `intent_rules.py`), frontend conectado y respondiendo con el proveedor LLM configurado (Gemini).
 
 ## Capturas
 
@@ -70,13 +71,13 @@ contenedor.
 ├── apps/web/            # Frontend: React + TS + Vite + Tailwind v4 + shadcn/ui (PWA)
 │   └── src/
 │       ├── app/         # rutas, layout, guard de sesión, proveedores
-│       ├── features/    # auth, dashboard, transactions, savings, wallets, subscriptions, profile
+│       ├── features/    # auth, dashboard, transactions, savings, wallets, subscriptions, profile, assistant
 │       ├── components/  # ui/ (shadcn + skeleton/lazos) e icons/ (Its Hover)
 │       ├── lib/         # cliente API tipado, formatos es-VE, tipos del contrato
 │       ├── i18n/        # traducciones (es)
 │       └── hooks/       # query keys + hooks de datos
 ├── services/api/        # Backend: Django 5.2 + DRF
-│   └── apps/            # accounts, wallets, transactions, savings, subscriptions, shortcuts, overview, notifications, rates, core
+│   └── apps/            # accounts, wallets, transactions, savings, subscriptions, shortcuts, overview, notifications, rates, assistant, core
 ├── infra/               # docker-compose.yml (dev: db + api + web)
 ├── docs/                # PLAN.md (producto) · STACK.md (decisiones) · AUDIT.md (seguridad) · AI-ASSISTANT.md (plan IA)
 └── stitch_liquid_finance_ledger/  # vistas de diseño de referencia
@@ -88,7 +89,7 @@ contenedor.
 ## Comandos habituales
 
 ```bash
-# Tests del backend (124 en verde)
+# Tests del backend (141 en verde)
 docker compose -f infra/docker-compose.yml exec api python -m pytest
 
 # Migraciones / superusuario
@@ -115,9 +116,9 @@ docker compose -f infra/docker-compose.yml exec web npm run build
 
 | Versión | Contenido |
 |---|---|
-| **v0.6 (actual)** | Transferencias entre cuentas, billeteras/ahorro, mensualidades, notificaciones in-app, auditoría de seguridad. |
-| v0.6.1 / hardening | Fixes de la auditoría: throttling, cookies seguras, blacklist del refresh, secretos sin default. |
-| v0.7 | Asistente IA conversacional (análisis, recomendaciones, "¿puedo permitirme X?"). |
+| **v0.6** | Transferencias entre cuentas, billeteras/ahorro, mensualidades, notificaciones in-app, auditoría de seguridad. |
+| v0.6.1 / hardening | Fixes de la auditoría: throttling global, cookies seguras, blacklist del refresh, secretos sin default. |
+| v0.7 | Asistente IA conversacional (Fase 1 completa: backend + frontend conectados, respondiendo con Gemini). |
 | v1 | Testeo visual/E2E, despliegue en producción (Vercel + Render), verificación de marca `navicash.*`. |
 | v2 | Tarjetas y cortes, importar CSV, informe mensual de ingresos/gastos. |
 | v3 | Notificaciones push nativas al portar a móvil, integración bancaria (según región). |

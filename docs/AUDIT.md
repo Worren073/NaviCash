@@ -31,6 +31,8 @@ Los hallazgos relevantes están concentrados en **hardening de producción** y *
 | A3 | **La rotación del refresh no añade el token usado al blacklist** (`RefreshView` manual; `ROTATE_REFRESH_TOKENS` queda muerto). Un refresh robado es reutilizable 30 días | `apps/accounts/views.py:108-135` | Llamar `refresh.blacklist()` al rotar + revocación de familia (`OutstandingToken` por `user_id`) |
 | A4 | **Sin rate limiting en ningún endpoint**: fuerza bruta a login, spam de registro (CAPTCHA off por defecto: `TURNSTILE_SECRET_KEY=""` + `CAPTCHA_DEV_BYPASS=True`) | `config/settings.py:46-49,156-169` | `DEFAULT_THROTTLE_CLASSES`/`RATES` (login 5/min, register 3/h, anon 100/min); fijar `TURNSTILE_SECRET_KEY` en prod y `CAPTCHA_DEV_BYPASS=False` |
 
+> **Progreso parcial (agosto 2026):** se añadió el throttle *dedicado al asistente* — `DEFAULT_THROTTLE_RATES.assistant = env("ASSISTANT_THROTTLE_RATE", "30/hour")` y `throttle_scope="assistant"` en `ChatView` (resuelve la parte de IA del A4 exigida por la fase 1). El resto del A4 (login/register/anon) sigue pendiente para el hardening v0.6.1.
+
 ### 🟠 Medio
 
 | # | Hallazgo | Ubicación | Fix sugerido |

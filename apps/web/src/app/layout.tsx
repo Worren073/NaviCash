@@ -15,6 +15,8 @@ import type { AnimatedIconHandle } from "@/components/icons";
 import { AnimatedIconButton } from "@/components/ui/animated-icon-button";
 import { NotificationsPopover } from "@/features/notifications/notifications-popover";
 import { AppMenu } from "@/features/layout/app-menu";
+import { NaviBubble } from "@/features/assistant/navi-bubble";
+import { AssistantChat } from "@/features/assistant/assistant-chat";
 import { useNotifications } from "@/hooks/use-queries";
 import { cn } from "@/lib/utils";
 
@@ -140,6 +142,7 @@ function NavLink({
 
 export default function AppLayout() {
   const location = useLocation();
+  const [assistantOpen, setAssistantOpen] = useState(false);
   return (
     <div className="min-h-dvh pb-28">
       <TopBar />
@@ -148,6 +151,8 @@ export default function AppLayout() {
           <Outlet />
         </div>
       </main>
+      <NaviBubble onOpen={() => setAssistantOpen(true)} />
+      <AssistantChat open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <BottomNav />
     </div>
   );

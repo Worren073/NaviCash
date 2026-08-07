@@ -274,3 +274,63 @@ def create_transfer(
         fecha_pagado=timezone.now(),
         **usd_conversion,
     )
+
+
+@transaction.atomic
+def register_transaction(
+    user,
+    *,
+    tipo: str,
+    monto: Decimal,
+    moneda: str,
+    concepto: str = "",
+    wallet: "Wallet | None" = None,
+    estado: str = "pagado",
+    fecha: "datetime.date | None" = None,
+) -> Transaction:
+    """Registra un cobro (ingreso) o pago (egreso) y ajusta la billetera.
+
+    Es el punto único de alta de operaciones tipo "registro" sin contacto ni
+    transferencia (usado por el asistente Navi y útil para el API en general).
+
+    Args:
+        user: usuario dueño de la operación.
+        tipo: ``"cobro"`` (suma al saldo) o ``"pago"`` (resta al saldo).
+        monto: cantidad en la moneda original.
+        moneda: código ISO de la moneda original.
+        concepto: texto corto del concepto.
+        wallet: billetera propia y de la misma moneda (opcional).
+        estado: ``"pagado"`` aplica el efecto de saldo de inmediato.
+
+    Returns:
+        La operación creada (y pagada si ``estado == "pagado"``).
+
+    Raises:
+        BusinessRuleError: si el tipo no es cobro/pago, el monto es inválido
+            o la billetera no es propia o no coincide en moneda.
+    """
+    if tipo not in {"cobro", "pago"}:
+        raise BusinessRuleError("Tipo no soportado: solo cobro o pago.")
+    if not is_valid_amount(monto):
+        raise BusinessRuleError("El monto debe ser mayor a 0.01.")
+    if wallet is not None:
+        if wallet.user_id != user.id:
+            raise BusinessRuleError("La billetera debe pertenecerte.")
+        if wallet.currency != moneda:
+            raise BusinessRuleError("La billetera debe usar la misma moneda que la operación.")
+
+    usd_conversion = compute_usd_equivalent(monto, moneda)
+    tx = Transaction.objects.create(
+        user=user,
+        tipo=tipo,
+        estado="pendiente",
+        monto=monto,
+        moneda=moneda,
+        concepto=concepto,
+        wallet=wallet,
+        fecha=fecha or timezone.localdate(),
+        **usd_conversion,
+    )
+    if estado == "pagado":
+        mark_paid(tx)
+    return tx
