@@ -33,20 +33,45 @@ from decimal import Decimal, InvalidOperation
 #: Verbos/frases que reportan un EGRESO (pago). Se buscan en texto normalizado.
 PAY_PATTERNS = [
     "gastad", "gaste", "gastar", "gasto ", "comprado", "comprar", "compre",
-    "compr", "pague", "pagado", "pagar", "consumi", "consum", "abone",
-    "debito", "debit",
+    "compr", "pague", "pagado", "pagar", "pago", "pagaste", "consumi",
+    "consum", "abone", "debito", "debit",
 ]
 
 #: Verbos/frases que reportan un INGRESO (cobro). Van ANTES de los de pago
 #: porque frases como "me pagaron" contienen "pag".
 COLLECT_PATTERNS = [
-    "recib", "cobr", "vend", "ingres", "deposit", "acreditar", "me pagaron",
-    "me pago ", "me pago", "me abono", "se me abono", "se me acredito",
+    "recib", "cobr", "vend", "ingres", "deposit", "acreditar",
+    "me pagaron", "me pago ", "me pago", "me abono", "se me abono",
+    "se me acredito", "acaban de pagar", "acaban de depositar",
+    "acaban de abonar", "me acaba de pagar", "me acaba de depositar",
+    "me acaba de abonar", "me acaban de pagar", "me acaban de depositar",
+    "me acaban de abonar",
 ]
 
 #: Verbos/frases que reportan una TRANSFERENCIA entre cuentas propias.
 TRANSFER_PATTERNS = [
     "transfi", "transfer", "traslad", "traspas", "transferencia",
+]
+
+#: Formas que reportan un movimiento YA realizado pero SIN monto ("Acabo de
+#: comprar un café") → activan la oferta de Navi de registrarlo.
+SPENT_REPORT_PATTERNS = [
+    "acabo de comprar", "acabas de comprar", "acabamos de comprar",
+    "acabo de pagar", "acabas de pagar", "acabamos de pagar",
+    "acabo de gastar", "acabas de gastar", "acabe de comprar",
+    "acabe de pagar", "acabo de abonar", "acabamos de gastar",
+    "compre ", "compramos", "compraron", "compre un", "compre una",
+    "pague ", "pagamos", "pagaron", "pague el", "pague la", "pague un",
+    "gaste ", "gaste en", "gaste el", "gaste la", "gaste un", "gaste una",
+]
+
+#: Formas pasadas de INGRESO sin monto ("cobré el alquiler", "me pagaron…").
+PAST_COLLECT_MARKERS = [
+    "recibi ", "recibi el", "recibi la", "recibi un", "recibi mi",
+    "cobre ", "cobre el", "cobre la", "cobre un", "cobre mi", "cobre por",
+    "me pagaron", "me depositaron", "me abonaron", "me acreditaron",
+    "se me acredito", "vendi ", "vendí ", "vendi mi", "vendi el",
+    "vendi la", "vendi un", "cobre en",
 ]
 
 #: Palabras que delatan preguntas de saldo/permiso y NO deben tratarse como
@@ -62,20 +87,38 @@ NEGATION_MARKERS = [
     "no hagas", "no gastes", "no me cobres", "no me cobra",
 ]
 
+#: Partículas que se ignoran al comparar nombres de billeteras
+#: ("Banco de Venezuela" ≈ "Banco Venezuela").
+WALLET_STOPWORDS = {
+    "de", "del", "la", "el", "los", "las", "mi", "mis", "cuenta", "cuentas",
+    "y", "a", "en", "mi",
+}
+
 #: Palabras/frases auxiliares que se recortan del concepto.
+#: Las frases compuestas van PRIMERO: recortar "pagar" o "depositar" antes
+#: rompería "me acaban de pagar" o "acaban de depositar".
 CONCEPT_STRIP = [
+    "me acaban de pagar", "me acaban de depositar", "me acaban de abonar",
+    "me acaba de pagar", "me acaba de depositar", "me acaba de abonar",
+    "acaban de pagar", "acaban de depositar", "acaban de abonar",
+    "me pagaron", "me pago", "me deposito", "me depositaron",
+    "se me abono", "se me acredito", "me acreditaron",
     "he gastado", "ha gastado", "gastado", "gaste", "gastar", "gasta", "gasto",
     "comprado", "comprando", "comprada", "compre",
     "pagado", "pagar", "pagarlo", "paga", "pague",
     "recibido", "recibir", "recibo", "recibi",
     "cobrado", "cobrar", "cobro", "cobra",
-    "vendido", "vender", "venta", "vendi",
+    "vendido", "vender", "vendi",
     "ingresado", "ingresar", "ingreso",
     "depositado", "depositar", "deposite", "depositaron",
     "acreditado", "acreditar", "acreditaron",
     "transferido", "transferir", "transferencia", "transfiero",
     "trasladado", "trasladar", "pase", "pasado", "abonado", "abone", "consumido",
     "me pagaron", "me pago", "se me abono", "se me acredito",
+    "quiero registrar", "quiero registrar el", "registrar", "registra",
+    "registrarme", "registra el", "anotar", "anota", "registra el pago",
+    "el pago", "el gasto", "un pago", "un gasto", "de 250",
+    "acabo de", "acaba de", "acaban de", "acabamos de", "acabe de",
     "desde mi cuenta", "de mi cuenta", "en mi cuenta", "a mi cuenta",
     "desde la cuenta", "en la cuenta", "de la cuenta", "mi cuenta", "la cuenta",
     "desde mi", "desde", "de mis cuentas",
@@ -86,7 +129,16 @@ CONCEPT_STRIP = [
 CONCEPT_LEADING = [
     "en", "de", "por", "desde", "para", "la", "el", "los", "las", "un",
     "una", "unos", "unas", "con", "a", "y", "he", "lo", "que", "mi", "al",
+    "fue", "era", "es", "eso", "esto",
 ]
+
+#: Restos de frase que NO son una razón: quedan tras recortar los verbos
+#: cuando el usuario no dijo el motivo ("Navi me acaban de pagar…" → "Navi").
+RESIDUAL_WORDS = {
+    "navi", "acabo", "acaba", "acaban", "acabamos", "acabe",
+    "listo", "ok", "okay", "dale", "sipo", "pago", "cobro", "gasto",
+    "registrado", "registro", "ingreso", "egreso",
+}
 
 # ---------------------------------------------------------------------------
 # Guarda de seguridad (patrones en texto normalizado)
@@ -165,6 +217,10 @@ class ActionProposal:
     tipo: str  # "pago" | "cobro" | "transferencia"
     monto: "Decimal | None" = None
     moneda: str | None = None
+    moneda_original: str | None = None  # moneda con la que se dijo el monto
+    convertir: bool = False  # convertir el monto a la moneda de la cuenta
+    divisa: str | None = None  # "venta" | "compra" en transferencias inter-monedas
+    tasa: "Decimal | None" = None  # tasa USD manual declarada por el usuario
     concepto: str = ""
     wallet_name: str | None = None
     dest_wallet_name: str | None = None
@@ -174,6 +230,56 @@ class ActionProposal:
     def complete(self) -> bool:
         """True si hay datos suficientes para ejecutar la propuesta."""
         return not self.missing
+
+
+def _offer_without_amount(tipo: str, text: str, wallets: list[dict]) -> "ActionProposal | None":
+    """Propuesta sin monto para un gasto/cobro reportado sin cantidad.
+
+    "Acabo de comprar un café" no trae cuánto pagó, pero sí la intención:
+    se devuelve una propuesta incompleta (solo falta monto y quizá cuenta)
+    para que Navi ofrezca registrarlo en vez de responder genérico.
+
+    Returns:
+        ``ActionProposal`` incompleto (missing=["monto"] y "wallet" si no
+        hay cuenta mencionada) o ``None`` si el tipo no admite el registro
+        (transferencias sin monto) o el mensaje no reporta un movimiento
+        concreto.
+    """
+    if tipo not in ("pago", "cobro"):
+        return None
+    # Solo cuando el texto deja claro que el movimiento YA ocurrió
+    # (verbos en pasado / "acabo de"): un deseo futuro ("quiero comprar")
+    # no debe disparar la oferta.
+    if _has_any(text, [" quiero ", "quisiera ", " me gustaria ", "voy a comprar", "voy a pagar", "compraré", "pagare", "pagare el"]):
+        return None
+    if not _has_any(text, SPENT_REPORT_PATTERNS + PAST_COLLECT_MARKERS):
+        return None
+
+    concepto = _clean_concept(text, wallets, None, None, tipo)
+    proposal = ActionProposal(
+        tipo=tipo,
+        monto=None,
+        moneda=None,
+        concepto=concepto,
+        wallet_name=wallets[0]["name"] if wallets else None,
+        missing=["monto"],
+    )
+    if not wallets:
+        proposal.missing.append("wallet")
+    return proposal
+
+
+def is_decline(text: str) -> bool:
+    """True si el usuario rechaza la oferta de registro («no», «olvídalo»).
+
+    Solo respuestas cortas de rechazo: un «no» con datos ("no fue en Banesco")
+    no cuenta como rechazo porque sigue completando la propuesta.
+    """
+    t = _norm(text.replace(",", " ").replace(".", " "))
+    if t in {"no", "nop", "no quiero", "no gracias", "no hace falta",
+             "no registres", "olvidalo", "olvida", "dejalo", "déjalo"}:
+        return True
+    return any(t.startswith(p) for p in ("no quiero", "no gracias", "no hace"))
 
 
 def extract_action(context: dict, message: str) -> "ActionProposal | None":
@@ -205,13 +311,28 @@ def extract_action(context: dict, message: str) -> "ActionProposal | None":
 
     wallets = _match_wallets(context, text)
 
+    # Monto: primero con moneda explícita; si no, cualquier número del texto
+    # (la moneda se deduce de la billetera o de la base del usuario).
     amount = _extract_amount(text)
     if amount is None:
-        # Sin monto no hay registro: puede ser una consulta ("cuánto debo pagar").
-        return None
-
-    monto, explicit_code = amount
-    currency = explicit_code or _fallback_currency(context, wallets, tipo)
+        plain = _extract_plain_amount(text)
+        if plain is None:
+            written = _extract_written_amount(text)
+            if written is None:
+                # Sin monto: si el mensaje reporta un gasto/cobro hecho
+                # ("Acabo de comprar un café"), Navi ofrece registrar; las
+                # consultas sin movimiento ("cuánto debo pagar") ya quedaron
+                # fuera arriba.
+                return _offer_without_amount(tipo, text, wallets)
+            monto, explicit_code = written, None
+        else:
+            monto, explicit_code = plain
+    else:
+        monto, explicit_code = amount
+    currency = explicit_code or extract_currency_code(text) or _fallback_currency(context, wallets, tipo)
+    # Si el usuario dijo la moneda del monto ("50 dólares"), se guarda para
+    # poder convertir al confirmarse una cuenta en otra moneda.
+    moneda_original = explicit_code
 
     # Moneda de la billetera vs. moneda del mensaje: si chocan, preguntamos.
     missing: list[str] = []
@@ -226,11 +347,19 @@ def extract_action(context: dict, message: str) -> "ActionProposal | None":
         elif currency and wallets:
             _check_currency_match(currency, wallets, missing)
 
+    concepto = _clean_concept(message, wallets, monto, explicit_code, tipo)
+
+    # Razón del cobro/pago: si el mensaje no la trae clara, se pregunta
+    # ("Navi me acaban de pagar 25000 Bs…" no dice para qué).
+    if tipo in ("pago", "cobro") and not _has_reason(concepto):
+        missing.append("razon")
+
     proposal = ActionProposal(
         tipo=tipo,
         monto=monto,
         moneda=currency,
-        concepto=_clean_concept(message, wallets, monto, explicit_code),
+        moneda_original=moneda_original,
+        concepto=concepto,
         wallet_name=wallets[0]["name"] if wallets else None,
         dest_wallet_name=wallets[1]["name"] if len(wallets) > 1 else None,
         missing=missing,
@@ -241,6 +370,28 @@ def extract_action(context: dict, message: str) -> "ActionProposal | None":
 def is_confirmation(text: str) -> bool:
     """True si el mensaje confirma una transferencia pendiente."""
     return bool(CONFIRMATION_RE.match(_norm(text)))
+
+
+def extract_currency_code(text: str) -> str | None:
+    """Código de moneda mencionado en una respuesta breve ("en usd", "250 bs").
+
+    Sirve para completar propuestas pendientes cuando el usuario responde la
+    pregunta de Navi con solo la moneda.
+    """
+    t = _norm(text)
+    for match in AMOUNT_AFTER_RE.finditer(t):
+        code = UNIT_TO_CODE.get(_norm(match.group("unit")))
+        if code:
+            return code
+    if "€" in t:
+        return "EUR"
+    if "$" in t:
+        return "USD"
+    if re.search(r"\b(?:usd|dolares|dólares|dolar)\b", t):
+        return "USD"
+    if re.search(r"\b(?:ves|bolivares|bolívares)\b", t):
+        return "VES"
+    return None
 
 
 def is_dangerous(text: str) -> bool:
@@ -274,15 +425,43 @@ def _detect_tipo(text: str) -> str | None:
 def _match_wallets(context: dict, text: str) -> list[dict]:
     """Billeteras del usuario mencionadas en el texto (en orden de aparición).
 
-    Devuelve una lista con los dicts ``{"name", "currency", "tipo"}`` de
-    ``context["wallets"]`` cuyo nombre (normalizado) aparece en el mensaje.
+    La comparación ignora partículas ("Banco de Venezuela" se reconoce aunque
+    el mensaje diga "banco venezuela" o viceversa): primero se exige que todos
+    los tokens significativos del nombre estén en el mensaje; si nada cuadra,
+    se acepta la billetera con mayor solape de tokens ("cuenta de venezuela"
+    → "Banco de Venezuela").
+
+    Returns:
+        Lista con los dicts ``{"name", "currency", "tipo"}`` de
+        ``context["wallets"]`` que coinciden, en orden de aparición.
     """
-    wallets = []
+    found = []
     for w in context.get("wallets") or []:
-        wname = _norm(w.get("name", ""))
-        if wname and wname in text:
-            wallets.append(w)
-    return wallets
+        tokens = _wallet_tokens(w.get("name", ""))
+        if tokens and all(t in text for t in tokens):
+            found.append(w)
+
+    if not found:
+        best, best_n = None, 0
+        for w in context.get("wallets") or []:
+            tokens = _wallet_tokens(w.get("name", ""))
+            n = sum(1 for t in tokens if t in text)
+            if n > best_n:
+                best, best_n = w, n
+        if best is not None:
+            found.append(best)
+
+    def first_index(w: dict) -> int:
+        positions = [text.find(t) for t in _wallet_tokens(w["name"]) if text.find(t) != -1]
+        return min(positions) if positions else len(text)
+
+    found.sort(key=first_index)
+    return found
+
+
+def _wallet_tokens(name: str) -> list[str]:
+    """Tokens significativos del nombre de una billetera (sin partículas)."""
+    return [t for t in _norm(name).split() if t not in WALLET_STOPWORDS and len(t) > 1]
 
 
 def _extract_amount(text: str) -> "tuple[Decimal, str | None] | None":
@@ -305,6 +484,115 @@ def _extract_amount(text: str) -> "tuple[Decimal, str | None] | None":
         if num is not None:
             return num, SYMBOL_TO_CODE.get(match.group("sym"), None)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Montos escritos con palabras ("Dos dólares", "mil quinientos bolívares")
+# ---------------------------------------------------------------------------
+
+#: Números en español (normalizados sin tildes). "un/uno/una" quedan fuera:
+#: son ambigüos en frases como "compré una licuadora", que no trae cantidad.
+_SPANISH_UNITS = {
+    "cero": 0, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6,
+    "siete": 7, "ocho": 8, "nueve": 9, "diez": 10, "once": 11, "doce": 12,
+    "trece": 13, "catorce": 14, "quince": 15,
+}
+_SPANISH_TENS = {
+    "dieciseis": 16, "diecisiete": 17, "dieciocho": 18, "diecinueve": 19,
+    "veinte": 20, "veinti": 20,
+    "treinta": 30, "cuarenta": 40, "cincuenta": 50, "sesenta": 60,
+    "setenta": 70, "ochenta": 80, "noventa": 90,
+}
+_SPANISH_HUNDREDS = {
+    "cien": 100, "ciento": 100, "doscientos": 200, "trescientos": 300,
+    "cuatrocientos": 400, "quinientos": 500, "seiscientos": 600,
+    "setecientos": 700, "ochocientos": 800, "novecientos": 900,
+}
+_SPANISH_GROUPS = {"mil": 1000, "millon": 1_000_000, "millones": 1_000_000}
+
+
+def _spanish_token_value(token: str) -> int | None:
+    """Valor numérico de un token en español, o None si no es numérico."""
+    if token in _SPANISH_UNITS:
+        return _SPANISH_UNITS[token]
+    if token in _SPANISH_TENS:
+        return _SPANISH_TENS[token]
+    if token in _SPANISH_HUNDREDS:
+        return _SPANISH_HUNDREDS[token]
+    if token in _SPANISH_GROUPS:
+        return _SPANISH_GROUPS[token]
+    if token.startswith("veinti"):
+        # "veintiuno...veintinueve" = 20 + unidad (el resto ya se quitó).
+        rest = token[len("veinti"):]
+        if rest in _SPANISH_UNITS:
+            return 20 + _SPANISH_UNITS[rest]
+    return None
+
+
+def _words_to_number(tokens: list[str]) -> int | None:
+    """Convierte una secuencia de palabras numéricas a un entero.
+
+    Soporta el esquema clásico: unidades, decenas, centenas y grupos de mil
+    ("dos mil quinientos treinta" → 2530). ``None`` si la combinación no se
+    interpreta.
+    """
+    total, current = 0, 0
+    for token in tokens:
+        if token == "y":
+            continue
+        value = _spanish_token_value(token)
+        if value is None:
+            return None
+        if value in (1000, 1_000_000):
+            current = current or 1
+            if value == 1000:
+                total += current * value
+            else:
+                total = (total + current) * value
+            current = 0
+        elif value >= 100:
+            current = current * 100 + value if current >= 100 else value
+        else:
+            current += value
+    return total + current if total or current else None
+
+
+def _extract_written_amount(text: str) -> Decimal | None:
+    """Primer monto escrito en palabras ("dos mil quinientas…").
+
+    Returns:
+        ``Decimal`` con la cantidad, o ``None`` si no hay número en letras.
+    """
+    tokens = _norm(text).split()
+    for i, token in enumerate(tokens):
+        if _spanish_token_value(token) is None and token != "y":
+            continue
+        seq: list[str] = []
+        while i < len(tokens) and (
+            tokens[i] == "y" or _spanish_token_value(tokens[i]) is not None
+        ):
+            seq.append(tokens[i])
+            i += 1
+        if len(seq) - seq.count("y") >= 1:
+            value = _words_to_number(seq)
+            if value is not None and value > 0:
+                return Decimal(str(value))
+    return None
+
+
+def _extract_plain_amount(text: str) -> "tuple[Decimal, None] | None":
+    """Primera cantidad sin moneda explícita ("gasté 250 en un tv").
+
+    Returns:
+        Tupla ``(monto, None)`` o ``None`` si no hay número plausible.
+    """
+    match = re.search(r"\d[\d.,]*", text)
+    if not match:
+        return None
+    num = _parse_decimal(match.group(0))
+    if num is None or num < Decimal("0.01"):
+        return None
+    return num, None
 
 
 def _parse_decimal(raw: str) -> "Decimal | None":
@@ -344,33 +632,46 @@ def _clean_concept(
     wallets: list[dict],
     monto: "Decimal | None" = None,
     explicit_code: str | None = None,
+    tipo: str = "pago",
 ) -> str:
-    """Reduce el mensaje a un concepto: recorta verbos, cuentas y montos."""
-    concept = message
-    lowered = _norm(concept)
+    """Reduce el mensaje a un concepto: recorta verbos, cuentas y montos.
+
+    Opera sobre el texto normalizado (sin acentos) para que el recorte
+    sea consistente; se conserva el verbo principal cuando es parte del
+    concepto ("comprar un televisor").
+    """
+    concept = _norm(message)
 
     for phrase in CONCEPT_STRIP:
-        concept = re.sub(rf"\b{re.escape(phrase)}\b", " ", concept, flags=re.IGNORECASE)
+        concept = re.sub(rf"\b{re.escape(phrase)}\b", " ", concept)
 
     for w in wallets:
-        concept = re.sub(
-            rf"\b{re.escape(w['name'])}\b", " ", concept, flags=re.IGNORECASE
-        )
+        concept = re.sub(rf"\b{re.escape(_norm(w['name']))}\b", " ", concept)
+        for token in _wallet_tokens(w["name"]):
+            concept = re.sub(rf"\b{re.escape(token)}\b", " ", concept)
 
     if monto is not None:
         concept = re.sub(r"\d[\d.,]*", " ", concept)
         for unit in ("usd", "dólares", "dolares", "bs", "bolívares", "bolivares", "ves"):
-            concept = re.sub(rf"\b{unit}\b", " ", concept, flags=re.IGNORECASE)
+            concept = re.sub(rf"\b{unit}\b", " ", concept)
         concept = concept.replace("$", " ").replace("€", " ")
 
     concept = _collapse(concept)
     while concept:
-        lead = re.match(rf"\b(?:{'|'.join(re.escape(w) for w in CONCEPT_LEADING)})\b", concept, re.IGNORECASE)
+        lead = re.match(rf"\b(?:{'|'.join(re.escape(w) for w in CONCEPT_LEADING)})\b", concept)
         if not lead:
             break
         concept = _collapse(concept[lead.end():])
+    while concept:
+        trail = re.search(rf"\b(?:{'|'.join(re.escape(w) for w in CONCEPT_LEADING)})\b$", concept)
+        if not trail:
+            break
+        concept = _collapse(concept[: trail.start()])
     concept = concept.strip(" .,;:·–-—")
-    return concept[:1].upper() + concept[1:] if concept else ""
+    if not concept:
+        # Sin contenido real: usa un concepto por defecto del tipo.
+        return "Gasto registrado" if tipo == "pago" else "Ingreso registrado"
+    return concept[:1].upper() + concept[1:]
 
 
 def _collapse(text: str) -> str:
@@ -382,6 +683,73 @@ def _collapse(text: str) -> str:
 
 def _has_any(text: str, patterns: list[str]) -> bool:
     return any(p in text for p in patterns)
+
+
+def _has_reason(concepto: str) -> bool:
+    """True si el concepto contiene una razón real (no solo restos de frase).
+
+    "Navi", "acabo de" o "Gasto registrado" no son motivos; "Muebles" o
+    "Comprar un televisor" sí. Se ignoran partículas y palabras residuales.
+    """
+    words = concepto.lower().replace(".", " ").split()
+    significant = [
+        w for w in words
+        if w not in RESIDUAL_WORDS and w not in CONCEPT_LEADING
+    ]
+    return bool(significant)
+
+
+#: Marcadores usados por ``_reason_phrase`` para aislar el motivo en
+#: respuestas largas («El motivo del cobro es X y la moneda fue en…»).
+#: Se prueban en orden (de más específico a más general).
+_REASON_MARKERS = [
+    "el motivo del cobro es", "el motivo del pago es",
+    "el motivo del cobro fue", "el motivo del pago fue",
+    "el motivo del cobro era", "el motivo del pago era",
+    "la razon del cobro es", "la razon del pago es",
+    "la razon del cobro fue", "la razon del pago fue",
+    "el motivo es", "el motivo fue", "el motivo era",
+    "la razon es", "la razon fue", "la razon era",
+    "la causa es", "la causa fue", "fue por", "es por", "era por",
+    "el motivo", "la razon",
+]
+
+
+def _reason_phrase(message: str) -> str | None:
+    """Aísla la frase del motivo en una respuesta multi-dato.
+
+    «El motivo del cobro es quincena y la moneda fue en bolívares por favor
+    conviértelo» → «Quincena». Corta la cabecera tras el marcador y detiene
+    la frase en la primera cláusula secundaria («y…», «por favor», etc.).
+
+    Returns:
+        Frase del motivo ya capitalizada, o ``None`` si el mensaje no trae
+        marcador claro (se delega en el limpiador normal).
+    """
+    t = _norm(message)
+    head: str | None = None
+    for marker in _REASON_MARKERS:
+        idx = t.find(marker)
+        if idx != -1:
+            head = t[idx + len(marker):].strip(" ,;:")
+            break
+    if head is None or not head:
+        return None
+    for stop in (
+        " por favor", " y la moneda", " y el monto", " y la cuenta",
+        " la moneda", " el monto", ",", ".", ";",
+    ):
+        idx = head.find(stop)
+        if idx != -1:
+            head = head[:idx]
+            break
+    idx = head.find(" y ")
+    if idx != -1 and head[:idx].strip():
+        head = head[:idx]
+    head = head.strip(" ,;:")
+    if not head:
+        return None
+    return head[:1].upper() + head[1:]
 
 
 def _norm(text: str) -> str:

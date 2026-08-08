@@ -23,12 +23,26 @@ from apps.assistant.serializers import (
 from apps.assistant.services import chat
 
 
+class UserScopedRateThrottle(ScopedRateThrottle):
+    """Rate limit por usuario autenticado (no por IP) para el scope.
+
+    El chat es personal y hay usuarios detrás de redes compartidas (NAT):
+    la cuota (30 msgs/hora) debe contarse por cuenta, no por dirección.
+    Los anónimos (sin token) siguen limitándose por IP.
+    """
+
+    def get_ident(self, request) -> str:
+        if request.user and request.user.is_authenticated:
+            return f"user:{request.user.pk}"
+        return super().get_ident(request)
+
+
 class ChatView(GenericAPIView):
     """POST /api/assistant/messages → respuesta de Navi anclada al contexto."""
 
     serializer_class = ChatRequestSerializer
     permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [UserScopedRateThrottle]
     throttle_scope = "assistant"
 
     def post(self, request) -> Response:

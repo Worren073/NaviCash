@@ -184,6 +184,14 @@ export default {
       "Tu balance actual es {{balance}} y, sumando tus cobros pendientes menos pagos por hacer, quedarías con {{net}} disponibles.",
     fallback:
       "Aún estoy aprendiendo sobre eso. Puedo ayudarte con: tu saldo, cobros, pagos, vencimientos, ahorro, metas y mensualidades.",
+    voice: {
+      title: "Habla con Navi",
+      listening: "Escuchando…",
+      thinking: "Pensando…",
+      speaking: "Diciendo…",
+      talkAgain: "Toca la bolita para hablar de nuevo",
+      unsupported: "Tu navegador no soporta el reconocimiento de voz.",
+    },
   },
   savings: {
     title: "Ahorros",

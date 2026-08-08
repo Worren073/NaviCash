@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
@@ -17,6 +17,7 @@ import { NotificationsPopover } from "@/features/notifications/notifications-pop
 import { AppMenu } from "@/features/layout/app-menu";
 import { NaviBubble } from "@/features/assistant/navi-bubble";
 import { AssistantChat } from "@/features/assistant/assistant-chat";
+import { NaviVoice } from "@/features/assistant/navi-voice";
 import { useNotifications } from "@/hooks/use-queries";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,9 @@ const NAV_ITEMS = [
   { to: "/", label: "nav.dashboard", icon: HomeIcon },
   { to: "/wallets", label: "nav.wallets", icon: WalletIcon },
 ] as const;
+
+// Mantener presionado el "+" abre la voz de Navi (hold de 400 ms).
+const HOLD_MS = 400;
 
 function NotificationBadge() {
   const { data } = useNotifications();
@@ -79,8 +83,59 @@ function TopBar() {
   );
 }
 
-function BottomNav() {
+function AddButton({ onVoiceOpen }: { onVoiceOpen: () => void }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const holdTimer = useRef<number | null>(null);
+  const held = useRef(false);
+
+  function clearHold() {
+    if (holdTimer.current !== null) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }
+
+  function onPointerDown() {
+    held.current = false;
+    clearHold();
+    // Mantener presionado → voz de Navi.
+    holdTimer.current = window.setTimeout(() => {
+      held.current = true;
+      clearHold();
+      onVoiceOpen();
+    }, HOLD_MS);
+  }
+
+  function onClick(e: React.MouseEvent) {
+    if (held.current) {
+      e.preventDefault();
+      held.current = false;
+      return;
+    }
+    navigate("/operations/new");
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={t("nav.add")}
+      title={t("nav.add")}
+      onPointerDown={onPointerDown}
+      onPointerUp={clearHold}
+      onPointerLeave={clearHold}
+      onPointerCancel={clearHold}
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={onClick}
+      className="flex h-14 w-14 -translate-y-1.5 items-center justify-center rounded-full border-2 border-surface bg-primary text-white shadow-lg shadow-primary/30 transition-all hover:opacity-90 active:scale-90 select-none"
+      style={{ touchAction: "none" }}
+    >
+      <Plus className="h-7 w-7" style={{ strokeWidth: 2.5 }} />
+    </button>
+  );
+}
+
+function BottomNav({ onVoiceOpen }: { onVoiceOpen: () => void }) {
   return (
     <nav
       aria-label="Navegación principal"
@@ -89,13 +144,7 @@ function BottomNav() {
       {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
         <NavLink key={to} to={to} label={label} icon={Icon} matchEnd={to === "/"} />
       ))}
-      <Link
-        to="/operations/new"
-        aria-label={t("nav.add")}
-        className="flex h-14 w-14 -translate-y-1.5 items-center justify-center rounded-full border-2 border-surface bg-primary text-white shadow-lg shadow-primary/30 transition-all hover:opacity-90 active:scale-90"
-      >
-        <Plus className="h-7 w-7" style={{ strokeWidth: 2.5 }} />
-      </Link>
+      <AddButton onVoiceOpen={onVoiceOpen} />
       <NavLink to="/transactions" label="nav.transactions" icon={SendHorizontalIcon} />
       <NavLink to="/profile" label="nav.profile" icon={UserIcon} />
     </nav>
@@ -143,6 +192,7 @@ function NavLink({
 export default function AppLayout() {
   const location = useLocation();
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   return (
     <div className="min-h-dvh pb-28">
       <TopBar />
@@ -153,7 +203,8 @@ export default function AppLayout() {
       </main>
       <NaviBubble onOpen={() => setAssistantOpen(true)} />
       <AssistantChat open={assistantOpen} onClose={() => setAssistantOpen(false)} />
-      <BottomNav />
+      <NaviVoice open={voiceOpen} onClose={() => setVoiceOpen(false)} />
+      <BottomNav onVoiceOpen={() => setVoiceOpen(true)} />
     </div>
   );
 }

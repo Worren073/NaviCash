@@ -13,6 +13,21 @@ from rest_framework.test import APIClient
 from factories import UserFactory
 
 
+@pytest.fixture(autouse=True)
+def _clear_cache() -> None:
+    """Vacía la cache entre tests.
+
+    El rate limit del asistente guarda contadores con TTL largo en Redis
+    (persiste entre corridas): como los PK de usuario se reutilizan entre
+    corridas, un contador viejo (ej. 30/h agotado) le caería a otro usuario
+    en la siguiente ejecución. Limpiar por test mantiene el aislamiento.
+    """
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+
+
 @pytest.fixture
 def api_client() -> APIClient:
     """Cliente APIClient autenticado con un usuario activo (Bearer token).

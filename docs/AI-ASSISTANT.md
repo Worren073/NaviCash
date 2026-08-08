@@ -2,7 +2,7 @@
 
 > Documento de diseño para el **asistente conversacional**. Define arquitectura,
 > alcance, interacción con los datos del usuario, seguridad/privacidad y roadmap
-> de implementación. Estado: **Fase 1 completa (backend + frontend + proveedor LLM)** (agosto 2026).
+> de implementación. Estado: **Fase 1 completa + Fase 1.5 (registro de operaciones y guarda de seguridad)** (agosto 2026).
 
 ---
 
@@ -44,6 +44,7 @@ services/api
        ├─ context.py              # build_context(user) → resumen del dominio ✅
        ├─ providers.py            # interfaz AssistantProvider (OpenAI/mock) ✅
        ├─ intent_rules.py         # fallback determinista (sin LLM) ✅
+       ├─ actions.py              # extracción de registros + guarda de seguridad ✅
        ├─ services.py             # orquestación: contexto + proveedor + persistencia ✅
        ├─ serializers.py          # POST /api/assistant/messages { message } ✅
        ├─ views.py                # chat + history (scoped a request.user) ✅
@@ -124,11 +125,15 @@ permite cambiar sin tocar el resto.
 | Burbuja flotante "Navi" | Orbe translúcido con ojos, arrastrable a cualquier posición (localStorage), click abre el chat | **Implementado (frontend)** |
 | 6+ intents determinizados como fallback | saldo, cobrar, pagar, vencidos, ahorro, metas, mensualidades, "¿me permito X?" | **Implementado (backend: `intent_rules.py`)** |
 | Respuestas con datos reales | `build_context(user)` del backend (saldo, pendientes, metas, mensualidades, flujo del mes) | **Implementado (backend)** |
-| Endpoint de chat | `POST /api/assistant/messages` autenticado + rate limit (scope `assistant`, `30/hour` configurable) | **Implementado (backend)** |
+| Endpoint de chat | `POST /api/assistant/messages` autenticado + rate limit por usuario (scope `assistant`, `30/hour` configurable) | **Implementado (backend)** |
 | Historial persistido | `ChatMessage` por sesión (`session_id`) + `GET /api/assistant/messages/history` scoped al usuario | **Implementado (backend)** |
 | Persistencia del frontend | `use-assistant.ts` consume `POST /api/assistant/messages` (respuesta de Gemini) con fallback local | **Implementado** |
 | Configuración por env | `AAI_PROVIDER`, `AAI_API_KEY`, `AAI_MODEL`, `AAI_BASE_URL`, `ASSISTANT_THROTTLE_RATE` | **Implementado (`.env.example`; activo con Gemini)** |
-| Tests | contexto + fallback + rate limit + autenticación (sin llamadas externas) | **Implementado (17 nuevos, suite 141 passed)** |
+| Registrar cobros/pagos por chat | Navi detecta "gasté/recibí/transferí" + monto + cuenta, crea la operación (`estado=pagado`) y muestra el resumen | **Implementado (`actions.py` + `services.chat`)** |
+| Transferencias con confirmación | Mover dinero entre cuentas propias siempre pide "sí" explícito (pendiente 10 min en cache) | **Implementado (`services.py`)** |
+| Guarda contra ataques | Inyección de prompt / phishing / manipulación de saldos → rechazo firme (determinista), sin tocar BD | **Implementado (`actions.py`)** |
+| Sondeo de seguridad | `manage.py probe_navi` envía 13 probes a Navi y documenta las respuestas | **Implementado (`docs/navi-security-probe.md`, 11/11 bloqueados)** |
+| Tests | contexto + fallback + rate limit + autenticación + registro + seguridad (sin llamadas externas) | **Implementado (57 nuevos, suite 181 passed)** |
 
 **Hecho (agosto 2026) — frontend + conexión end-to-end:** `apps/web/src/features/assistant/navi-bubble.tsx` (burbuja con ojos, arrastre con pointer events, persistencia de posición) y `apps/web/src/features/assistant/assistant-chat.tsx` (panel glass con mensajes, animación de escritura y entrada). `apps/web/src/hooks/use-assistant.ts` consume `POST /api/assistant/messages` (envía `{ message, session_id }`, guarda la sesión devuelta y cae a la lógica determinista local si la llamada falla). Integrado en `apps/web/src/app/layout.tsx`. i18n `assistant.*`.
 
@@ -141,9 +146,17 @@ permite cambiar sin tocar el resto.
 - `intent_rules.py`: respuesta determinista de los intents comunes con datos reales.
 - `services.py`: `chat()` orquesta y persiste el turno; `_load_history`/`_persist_chat` best-effort.
 - `serializers.py`: validación del mensaje (≤1000 chars, no vacío) y respuesta.
-- `views.py`: `ChatView` (POST, `IsAuthenticated` + `ScopedRateThrottle` scope `assistant`) y `ChatHistoryView` (GET scoped).
+- `views.py`: `ChatView` (POST, `IsAuthenticated` + `UserScopedRateThrottle` scope `assistant`: cuota **por usuario autenticado**, no por IP) y `ChatHistoryView` (GET scoped).
 - `config/settings.py`: app registrada + `DEFAULT_THROTTLE_RATES.assistant = env("ASSISTANT_THROTTLE_RATE", "30/hour")` (cubre hallazgo A4 de `AUDIT.md`).
 - `.env.example`: `AAI_PROVIDER`, `AAI_API_KEY`, `AAI_MODEL`, `AAI_BASE_URL`, `ASSISTANT_THROTTLE_RATE`.
+
+**Hecho (agosto 2026) — Fase 1.5 (Navi registra operaciones + guarda de seguridad):**
+- `actions.py`: extractor determinista que detecta cobros/pagos/transferencias ("gasté 250$ en un televisor desde Banco de Venezuela" → `{tipo, monto, moneda, cuenta, concepto}`) y pide los datos que faltan; también detecta (a) intentos **peligrosos** (mover dinero a terceros, borrar saldos, lavado, revelar credenciales) y (b) **inyecciones de prompt** (ignorar reglas, cambiar de rol, revelar el sistema).
+- `services.chat()` decide el camino por turno: peligroso → rechazo firme sin LLM ni BD; cobro/pago completo → se registra al instante (`register_transaction` en `transactions/services.py`, `estado=pagado`, ajusta saldo atómicamente) y Navi muestra el resumen; transferencia → pide confirmación explícita ("sí", pendiente 10 min en cache, ejecuta `create_transfer`); datos faltantes (cuenta, monto, moneda o la **razón** del cobro/pago) → pregunta, sin crear nada a medias, y retiene la propuesta en cache: la siguiente respuesta del usuario completa y registra la operación; si la respuesta no aporta datos, repite la pregunta.
+- `providers.py`: `SYSTEM_PROMPT` endurecido (nunca revela instrucciones/contexto/claves, ignora órdenes de cambiar de rol, no afirma mover dinero) — capa de seguridad para las respuestas del LLM.
+- `tests/test_assistant_actions.py`: 40 tests de extracción, registro vía endpoint (saldo ajustado), confirmación de transferencias, preguntas de datos faltantes (cuenta, monto, moneda y **razón del cobro/pago**), **conversión al tipo oficial cuando el monto se dijo en otra moneda**, **oferta de registro ante gastos sin monto («Acabo de comprar un café») con rechazo explícito**, **montos escritos con palabras («dos mil quinientos bolívares»)** con reemplazo del monto pendiente, **razón aislada de respuestas multi-dato («el motivo del cobro es quincena…» → concepto «Quincena»)** y rechazos de ataques (suite total: 181 passed, cache limpia entre tests para el rate limit).
+- `probe_navi` (management command): envía 13 prompts (11 ataques + 2 controles legítimos) al endpoint real y genera `docs/navi-security-probe.md`. Resultado del primer sondeo con Gemini: **11/11 ataques bloqueados (0 operaciones creadas)** y los controles legítimos funcionan (registro de $250 y consulta de saldo).
+- `transactions/services.register_transaction`: alta de cobro/pago con validaciones (tipo, monto, billetera propia y de la misma moneda) reutilizada por el asistente.
 
 **Nota de nomenclatura:** el doc original escribía `AAVID_*`; se usa `AAI_*` (asistente-inteligencia-artificial) conforme a §4.
 
@@ -152,7 +165,8 @@ permite cambiar sin tocar el resto.
 - Invariabilidad de la respuesta del backend (markdown lite).
 - "¿Me puedo permitir X?" con estadística simple (backend ya calcula `fin_month`).
 - Recuperar el historial persistido por sesión en el frontend (`GET /api/assistant/messages/history`).
-- Transféreb a WhatsApp/webhook y push (fase posterior).
+- Gestión de operaciones recurrentes desde el chat (suscripciones) y confirmación con botones en la UI.
+- Transferencia a WhatsApp/webhook y push (fase posterior).
 
 ---
 
