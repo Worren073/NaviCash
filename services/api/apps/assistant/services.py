@@ -255,7 +255,7 @@ def _ask_for(proposal: ActionProposal, context: dict) -> str:
 
     msgs = []
     monto_falta = "monto" in proposal.missing and proposal.monto is None
-    if monto_falta:
+    if monto_falta and proposal.tipo != "transferencia":
         # «Acabo de comprar un café» (sin monto): primero se ofrece registrar.
         label = "pago" if proposal.tipo == "pago" else "cobro"
         extra = (
@@ -267,15 +267,14 @@ def _ask_for(proposal: ActionProposal, context: dict) -> str:
             f"¿Te gustaría que registre ese {label} por ti? Por cierto, dime cuánto fue"
             f"{extra} y lo anoto por ti (ej.: «15 dólares en efectivo»)."
         )
-    if "monto" in proposal.missing:
-        if proposal.tipo == "transferencia" and proposal.wallet_name:
-            msgs.append(
-                f"¿De cuánto fue la transferencia de «{proposal.wallet_name}» a "
-                f"«{proposal.dest_wallet_name}»? Dime el monto (ej.: «150 dólares») "
-                "y lo confirmo contigo antes de ejecutarla."
-            )
-        else:
-            msgs.append(f"¿De cuánto fue el {proposal.tipo}? Dime el monto y lo registro.")
+    elif "monto" in proposal.missing and proposal.tipo == "transferencia":
+        msgs.append(
+            f"¿De cuánto fue la transferencia de «{proposal.wallet_name}» a "
+            f"«{proposal.dest_wallet_name}»? Dime el monto (ej.: «150 dólares») "
+            "y lo confirmo contigo antes de ejecutarla."
+        )
+    elif "monto" in proposal.missing:
+        msgs.append(f"¿De cuánto fue el {proposal.tipo}? Dime el monto y lo registro.")
     if "razon" in proposal.missing:
         monto_txt = (
             f" de {proposal.monto:,.2f} {proposal.moneda}" if proposal.monto is not None else ""
@@ -600,6 +599,8 @@ def _proposal_to_cache(proposal: ActionProposal, step: str = "fill") -> dict:
         "concepto": proposal.concepto,
         "wallet_name": proposal.wallet_name,
         "dest_wallet_name": proposal.dest_wallet_name,
+        "divisa": proposal.divisa,
+        "tasa": str(proposal.tasa) if proposal.tasa is not None else None,
         "missing": list(proposal.missing),
         "step": step,
     }
@@ -613,6 +614,8 @@ def _cached_to_proposal(pending: dict) -> ActionProposal:
         moneda=pending.get("moneda"),
         moneda_original=pending.get("moneda_original"),
         convertir=bool(pending.get("convertir")),
+        divisa=pending.get("divisa"),
+        tasa=Decimal(pending["tasa"]) if pending.get("tasa") else None,
         concepto=pending.get("concepto", ""),
         wallet_name=pending.get("wallet_name"),
         dest_wallet_name=pending.get("dest_wallet_name"),

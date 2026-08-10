@@ -7,7 +7,7 @@
 Aplicación web **mobile-first · PWA** para llevar tus cobros, pagos, vencimientos, transferencias y metas de ahorro con el dólar como referencia. Escalable a React Native.
 
 ![v0.6](https://img.shields.io/badge/versi%C3%B3n-0.6.0-006a61?style=for-the-badge)
-![Backend 181 tests](https://img.shields.io/badge/backend-181%20tests%20%C2%B7%20verde-4ade80?style=for-the-badge)
+![Backend 186 tests](https://img.shields.io/badge/backend-186%20tests%20%C2%B7%20verde-4ade80?style=for-the-badge)
 ![Stack](https://img.shields.io/badge/React%2019-Django%205.2-PostgreSQL%2017-64748b?style=for-the-badge)
 ![Licencia](https://img.shields.io/badge/licencia-MIT-1e293b?style=for-the-badge)
 
@@ -89,7 +89,7 @@ contenedor.
 ## Comandos habituales
 
 ```bash
-# Tests del backend (181 en verde)
+# Tests del backend (186 en verde)
 docker compose -f infra/docker-compose.yml exec api python -m pytest
 
 # Migraciones / superusuario

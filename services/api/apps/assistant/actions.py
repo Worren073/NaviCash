@@ -233,26 +233,27 @@ class ActionProposal:
 
 
 def _offer_without_amount(tipo: str, text: str, wallets: list[dict]) -> "ActionProposal | None":
-    """Propuesta sin monto para un gasto/cobro reportado sin cantidad.
+    """Propuesta sin monto para un movimiento reportado sin cantidad.
 
-    "Acabo de comprar un café" no trae cuánto pagó, pero sí la intención:
-    se devuelve una propuesta incompleta (solo falta monto y quizá cuenta)
-    para que Navi ofrezca registrarlo en vez de responder genérico.
+    "Acabo de comprar un café" no trae cuánto pagó, pero sí la intención;
+    igual "Acabo de realizar una transferencia de mi cuenta X a mi cuenta Y"
+    no dice cuánto movió: se devuelve una propuesta incompleta (solo falta
+    monto y quizá cuenta) para que Navi ofrezca registrarlo en vez de
+    responder genérico.
 
     Returns:
         ``ActionProposal`` incompleto (missing=["monto"] y "wallet" si no
         hay cuenta mencionada) o ``None`` si el tipo no admite el registro
-        (transferencias sin monto) o el mensaje no reporta un movimiento
-        concreto.
+        o el mensaje no reporta un movimiento concreto.
     """
-    if tipo not in ("pago", "cobro"):
+    if tipo not in ("pago", "cobro", "transferencia"):
         return None
     # Solo cuando el texto deja claro que el movimiento YA ocurrió
-    # (verbos en pasado / "acabo de"): un deseo futuro ("quiero comprar")
-    # no debe disparar la oferta.
-    if _has_any(text, [" quiero ", "quisiera ", " me gustaria ", "voy a comprar", "voy a pagar", "compraré", "pagare", "pagare el"]):
+    # (verbos en pasado / "acabo de"): un deseo futuro ("quiero comprar",
+    # "voy a transferir") no debe disparar la oferta.
+    if _has_any(text, [" quiero ", "quisiera ", " me gustaria ", "voy a comprar", "voy a pagar", "voy a transferir", "transferire", "transferiré", "compraré", "pagare", "pagare el"]):
         return None
-    if not _has_any(text, SPENT_REPORT_PATTERNS + PAST_COLLECT_MARKERS):
+    if tipo in ("pago", "cobro") and not _has_any(text, SPENT_REPORT_PATTERNS + PAST_COLLECT_MARKERS):
         return None
 
     concepto = _clean_concept(text, wallets, None, None, tipo)
@@ -262,9 +263,13 @@ def _offer_without_amount(tipo: str, text: str, wallets: list[dict]) -> "ActionP
         moneda=None,
         concepto=concepto,
         wallet_name=wallets[0]["name"] if wallets else None,
+        dest_wallet_name=wallets[1]["name"] if len(wallets) > 1 else None,
         missing=["monto"],
     )
-    if not wallets:
+    if tipo == "transferencia":
+        if len(wallets) < 2:
+            proposal.missing.append("dest_wallet" if wallets else "wallet")
+    elif not wallets:
         proposal.missing.append("wallet")
     return proposal
 
@@ -335,12 +340,13 @@ def extract_action(context: dict, message: str) -> "ActionProposal | None":
     moneda_original = explicit_code
 
     # Moneda de la billetera vs. moneda del mensaje: si chocan, preguntamos.
+    # (En transferencias la moneda NO se pregunta: el movimiento usa la de
+    # cada cuenta y, si entre ambas difieren, Navi pregunta compra/venta y la
+    # tasa al confirmar.)
     missing: list[str] = []
     if tipo == "transferencia":
         if len(wallets) < 2:
             missing.append("dest_wallet" if wallets else "wallet")
-        if currency and wallets:
-            _check_currency_match(currency, wallets, missing)
     else:
         if not wallets:
             missing.append("wallet")

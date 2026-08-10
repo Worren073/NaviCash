@@ -72,6 +72,26 @@ class TestExtractAction:
         assert prop.dest_wallet_name == "Mi Ahorro"
         assert prop.complete
 
+    def test_transferencia_sin_monto_es_incompleta(self) -> None:
+        """«Acabo de realizar una transferencia de A a B» sin cantidad: Navi
+        propone registrarla y pregunta el monto (no responde genérico)."""
+        ctx = _ctx([_wallet("Efectivo", "USD"), _wallet("Banco Venezuela", "VES")])
+        prop = extract_action(
+            ctx,
+            "Acabo de realizar una transferencia de mi cuenta Efectivo a mi Banco Venezuela",
+        )
+        assert prop is not None
+        assert prop.tipo == "transferencia"
+        assert prop.monto is None
+        assert prop.wallet_name == "Efectivo"
+        assert prop.dest_wallet_name == "Banco Venezuela"
+        assert prop.missing == ["monto"]
+
+    def test_voy_a_transferir_no_ofrece_registro(self) -> None:
+        """«Voy a transferir…» (sin monto) es un deseo futuro, no un movimiento."""
+        ctx = _ctx([_wallet("Efectivo", "USD"), _wallet("Banco Venezuela", "VES")])
+        assert extract_action(ctx, "Voy a transferir de Efectivo a Banco Venezuela") is None
+
     def test_monto_con_separadores_es(self) -> None:
         """«1.000,50 Bs» se interpreta como 1000.50 VES."""
         ctx = _ctx([_wallet("Efectivo Bs", "VES")])
@@ -722,3 +742,141 @@ class TestRegistroViaChat:
         assert "licuadora" in tx.concepto.lower()
         wallet.refresh_from_db()
         assert wallet.saldo == Decimal("380.00")
+
+    def test_transferencia_sin_monto_pide_y_ejecuta(self, api_client) -> None:
+        """«Acabo de realizar una transferencia de mi cuenta A a mi cuenta B»
+        (sin monto): Navi pregunta cuánto y, al confirmar, ejecuta el traslado."""
+        source = WalletFactory(
+            user=api_client.user, name="Efectivo", currency="USD",
+            saldo=Decimal("1000.00"),
+        )
+        dest = WalletFactory(
+            user=api_client.user, name="Banco Venezuela", currency="USD",
+            saldo=Decimal("500.00"),
+        )
+
+        first = api_client.post(
+            self.URL,
+            {"message": "Acabo de realizar una transferencia de mi cuenta Efectivo a mi Banco Venezuela"},
+            format="json",
+        )
+        assert first.status_code == 200
+        assert "¿De cuánto fue la transferencia" in first.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+
+        second = api_client.post(
+            self.URL,
+            {"message": "fue de 100 dólares", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert second.status_code == 200
+        assert "Voy a transferir 100.00" in second.data["text"]
+        assert "divisas" not in second.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user, tipo="transferencia").exists()
+
+        third = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert third.status_code == 200
+        assert "Transferí" in third.data["text"]
+
+        tx = Transaction.objects.get(user=api_client.user, tipo="transferencia")
+        assert tx.monto == Decimal("100.00")
+        assert tx.moneda == "USD"
+        assert tx.wallet == source
+        assert tx.dest_wallet == dest
+        source.refresh_from_db()
+        dest.refresh_from_db()
+        assert source.saldo == Decimal("900.00")
+        assert dest.saldo == Decimal("600.00")
+
+    def test_transferencia_inter_monedas_pide_divisa_tasa_y_ejecuta(self, api_client) -> None:
+        """USD → VES: Navi detecta monedas distintas y pregunta venta/compra +
+        tasa; con «sí» transfiere usando la tasa manual declarada."""
+        source = WalletFactory(
+            user=api_client.user, name="Mi Ahorro", currency="USD",
+            saldo=Decimal("1000.00"),
+        )
+        dest = WalletFactory(
+            user=api_client.user, name="Banco Venezuela", currency="VES",
+            saldo=Decimal("0.00"),
+        )
+
+        first = api_client.post(
+            self.URL,
+            {"message": "Transfiere 100$ de Mi Ahorro a Banco Venezuela"},
+            format="json",
+        )
+        assert first.status_code == 200
+        assert "diferentes monedas" in first.data["text"]
+        assert "venta o compra" in first.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user, tipo="transferencia").exists()
+
+        second = api_client.post(
+            self.URL,
+            {"message": "fue una venta a 30", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert second.status_code == 200
+        assert "venta de dólares" in second.data["text"]
+        assert "30.00" in second.data["text"]
+
+        third = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert third.status_code == 200
+        assert "Transferí" in third.data["text"]
+
+        tx = Transaction.objects.get(user=api_client.user, tipo="transferencia")
+        assert tx.tasa_fuente == "manual"
+        assert tx.tasa_uso == Decimal("30.00")
+        assert tx.monto_destino == Decimal("3000.00")
+        assert tx.moneda_destino == "VES"
+        source.refresh_from_db()
+        dest.refresh_from_db()
+        assert source.saldo == Decimal("900.00")
+        assert dest.saldo == Decimal("3000.00")
+
+    def test_compra_de_divisas_con_tasa_es_manual(self, api_client) -> None:
+        """«compra a 40» (VES → USD) también aplica la tasa declarada."""
+        source = WalletFactory(
+            user=api_client.user, name="Efectivo", currency="VES",
+            saldo=Decimal("50000.00"),
+        )
+        dest = WalletFactory(
+            user=api_client.user, name="Mi Ahorro", currency="USD",
+            saldo=Decimal("0.00"),
+        )
+        first = api_client.post(
+            self.URL,
+            {"message": "Traspasé 10000  bs de Efectivo a Mi Ahorro"},
+            format="json",
+        )
+        session = first.data["session_id"]
+        with patch(
+            "apps.assistant.services.get_usd_rate_for_conversion",
+            return_value=Decimal("61.94"),
+        ):
+            resp = api_client.post(
+                self.URL,
+                {"message": "fue una compra de dólares a 40", "session_id": session},
+                format="json",
+            )
+            assert resp.status_code == 200
+            assert "compra de dólares" in resp.data["text"]
+            assert "40.00" in resp.data["text"]
+            done = api_client.post(
+                self.URL,
+                {"message": "sí", "session_id": session},
+                format="json",
+            )
+        assert done.status_code == 200
+        tx = Transaction.objects.get(user=api_client.user, tipo="transferencia")
+        assert tx.tasa_fuente == "manual"
+        assert tx.tasa_uso == Decimal("40.00")
+        assert tx.monto_destino == Decimal("250.00")
+        assert tx.moneda_destino == "USD"
