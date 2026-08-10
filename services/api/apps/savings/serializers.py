@@ -7,11 +7,11 @@ progreso calculado).
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from rest_framework import serializers
 
-from apps.core.currency import CURRENCY_CHOICES, is_valid_amount
+from apps.core.currency import CURRENCY_CHOICES, is_valid_amount, round_money
 from apps.core.exceptions import BusinessRuleError
 from apps.savings.models import GoalContribution, SavingsGoal
 from apps.savings.services import add_contribution
@@ -19,11 +19,17 @@ from apps.wallets.models import Wallet
 
 
 class GoalReadSerializer(serializers.ModelSerializer):
-    """Serializador de lectura de una meta con su progreso calculado."""
+    """Serializador de lectura de una meta con su progreso calculado.
 
-    total_contributed = serializers.DecimalField(max_digits=20, decimal_places=2, read_only=True)
-    progress_percent = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
-    contributions_count = serializers.IntegerField(read_only=True)
+    El progreso se calcula en Python desde las listas precargadas
+    (``prefetch_related("contributions", "linked_accounts")`` del ViewSet):
+    cero queries extra por meta (AUDIT A8). Salida idéntica a la anterior
+    (cadenas con la precisión de cada campo).
+    """
+
+    total_contributed = serializers.SerializerMethodField()
+    progress_percent = serializers.SerializerMethodField()
+    contributions_count = serializers.SerializerMethodField()
     linked_accounts = serializers.SerializerMethodField()
 
     class Meta:
@@ -42,9 +48,33 @@ class GoalReadSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at"]
 
+    def _contributed_total(self, obj) -> Decimal:
+        """Aportes manuales (precargados) + saldo de cuentas afiliadas.
+
+        Equivale exactamente a ``SavingsGoal.total_contributed`` del modelo,
+        pero sin las queries de ``aggregate``/``linked_accounts.all()``.
+        """
+        contributions = sum(
+            (c.amount_goal_currency for c in obj.contributions.all()), Decimal("0")
+        )
+        return round_money(Decimal(contributions) + obj.linked_accounts_balance)
+
+    def get_total_contributed(self, obj) -> str:
+        """Avance de la meta con 2 decimales (formato del campo DecimalField)."""
+        return format(self._contributed_total(obj), "f")
+
+    def get_progress_percent(self, obj) -> str:
+        """Porcentaje de avance 0-100 con 1 decimal (formato previo)."""
+        if obj.target_amount <= 0:
+            return "0.0"
+        percent = round_money(
+            (self._contributed_total(obj) / obj.target_amount) * Decimal("100")
+        )
+        return format(percent.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP), "f")
+
     def get_contributions_count(self, obj):
-        """Cuenta de aportes de la meta."""
-        return obj.contributions.count()
+        """Cuenta de aportes de la meta (desde la lista precargada)."""
+        return len(obj.contributions.all())
 
     def get_linked_accounts(self, obj):
         """Cuentas de ahorro afiliadas con su saldo."""

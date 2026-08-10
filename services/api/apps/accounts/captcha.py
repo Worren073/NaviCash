@@ -1,8 +1,10 @@
 """captcha — Verificación del CAPTCHA de Cloudflare Turnstile.
 
-En desarrollo (sin ``TURNSTILE_SECRET_KEY`` y con ``CAPTCHA_DEV_BYPASS=True``)
-la verificación se omite para no bloquear el flujo local; en producción se
-valida el token obtenido por el widget en el frontend contra la API de Turnstile.
+En desarrollo (``DEBUG=True`` o ``settings.TEST``) la verificación se omite
+(bypass) para no bloquear el flujo local. En producción la verificación es
+FAIL-CLOSED (AUDIT A1): si falta ``TURNSTILE_SECRET_KEY`` o el token del
+widget no es válido contra la API de Turnstile, se rechaza la petición —
+nunca se abre silenciosamente.
 """
 
 from __future__ import annotations
@@ -12,8 +14,15 @@ from django.conf import settings
 
 
 def captcha_enabled() -> bool:
-    """True si hay que verificar el CAPTCHA (clave configurada o bypass off)."""
-    return bool(settings.TURNSTILE_SECRET_KEY) or not settings.CAPTCHA_DEV_BYPASS
+    """True si hay que verificar el CAPTCHA en este entorno.
+
+    El bypass solo aplica en desarrollo/tests (``DEBUG`` o ``settings.TEST``):
+    en producción el interruptor global ``CAPTCHA_ENABLED`` (True por defecto)
+    controla la verificación, que siempre es fail-closed.
+    """
+    if settings.DEBUG or getattr(settings, "TEST", False):
+        return False
+    return bool(getattr(settings, "CAPTCHA_ENABLED", True))
 
 
 def verify_turnstile(token: str) -> bool:
@@ -23,7 +32,9 @@ def verify_turnstile(token: str) -> bool:
         token: respuesta del widget Turnstile (o string vacío).
 
     Returns:
-        True si el token es válido o si el CAPTCHA no está activo en dev.
+        True solo si el CAPTCHA no está activo (dev/test) o si el token fue
+        validado contra Cloudflare. En producción, sin clave o con token
+        inválido/ausente devuelve False (fail-closed).
     """
     if not captcha_enabled():
         return True

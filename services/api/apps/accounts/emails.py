@@ -7,6 +7,8 @@ en los logs del contenedor). En producción se configura un SMTP
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from django.conf import settings
 from django.core.mail import send_mail
 
@@ -44,15 +46,15 @@ def send_password_reset_email(email: str, token: str) -> bool:
 
     Args:
         email: dirección del destinatario.
-        token: token de reseteo de contraseña.
+        token: token plano de recuperación (one-time, caduca en ~30 min).
 
     Returns:
         True si el envío fue aceptado.
     """
-    url = f"{settings.APP_BASE_URL}/recuperar?token={token}"
+    url = f"{settings.APP_BASE_URL}/reset-password?token={token}&email={quote(email)}"
     body = (
         "Recibimos una solicitud para restablecer tu contraseña de NaviCash.\n\n"
-        f"Usa este enlace:\n{url}\n\n"
+        f"Usa este enlace (caduca en 30 minutos):\n{url}\n\n"
         "Si no la solicitaste, ignora este correo."
     )
     return send_mail(SUBJECT_RESET, body, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)

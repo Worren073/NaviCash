@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from apps.core.currency import convert_to_usd, round_money
@@ -40,24 +41,22 @@ def build_context(user, today: date | None = None) -> dict:
     rate_value: "Decimal | None" = rate.effective_rate if rate else None
 
     # Ingresos y gastos del mes actual (USD, desde montos congelados).
+    # Agregación en SQL (AUDIT M6): antes se iteraba cada 'pagada' del mes.
     month_start = today.replace(day=1)
-    month_range = (
+    month_totals = (
         Transaction.objects.filter(
             user=user,
             estado="pagado",
-            fecha__gte=month_start,
-            fecha__lte=today,
-        ).exclude(tipo="transferencia")
+            fecha__range=(month_start, today),
+        )
+        .exclude(tipo="transferencia")
+        .aggregate(
+            income=Sum("monto_usd", filter=Q(tipo="cobro")),
+            expenses=Sum("monto_usd", filter=Q(tipo="pago")),
+        )
     )
-    income, expenses = Decimal("0"), Decimal("0")
-    for t in month_range:
-        usd = t.monto_usd
-        if usd is None:
-            continue
-        if t.tipo == "cobro":
-            income += usd
-        elif t.tipo == "pago":
-            expenses += usd
+    income = month_totals["income"] or Decimal("0")
+    expenses = month_totals["expenses"] or Decimal("0")
     fin_month = {
         "income": str(round_money(income)),
         "expenses": str(round_money(expenses)),

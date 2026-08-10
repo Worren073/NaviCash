@@ -12,6 +12,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from django.db import IntegrityError, connection
+from django.utils import timezone
 
 from apps.transactions.models import Transaction
 from apps.transactions.services import mark_paid, set_state
@@ -132,6 +134,7 @@ class TestOverdue:
         tx = TransactionFactory(
             user=api_client.user,
             estado="pendiente",
+            fecha=date.today() - timedelta(days=5),
             fecha_vencimiento=date.today() - timedelta(days=1),
         )
         resp = api_client.get("/api/transactions")
@@ -146,6 +149,7 @@ class TestOverdue:
         TransactionFactory(
             user=api_client.user,
             estado="pendiente",
+            fecha=date.today() - timedelta(days=5),
             fecha_vencimiento=date.today() - timedelta(days=1),
         )
         TransactionFactory(
@@ -191,3 +195,131 @@ class TestContactsAndCategories:
         )
         assert resp.status_code == 201
         assert resp.data["contact"] == contact.id
+
+
+def _check_constraints_supported() -> None:
+    """CheckConstraint solo se prueba si el motor las ejecuta (A10).
+
+    SQLite (test_settings) y PostgreSQL las soportan; se omite con razón
+    explícita en motores sin soporte de tablas (ej. SQLite muy viejo).
+    """
+    if not connection.features.supports_table_check_constraints:
+        pytest.skip(
+            "El motor no soporta CheckConstraints a nivel de tabla; "
+            "la constraint se aplica solo en motores que las ejecutan."
+        )
+
+
+@pytest.mark.django_db
+class TestSoftDelete:
+    """C4: borrar una operación la oculta de la API pero no borra historial."""
+
+    URL = "/api/transactions"
+
+    def test_deleted_hidden_from_list_but_stays_in_db(self, api_client) -> None:
+        """DELETE oculta la operación del listado; sigue en BD (all_objects)."""
+        tx = TransactionFactory(
+            user=api_client.user, tipo="pago", monto=Decimal("30.00")
+        )
+        resp = api_client.delete(f"{self.URL}/{tx.id}")
+        assert resp.status_code == 204
+        # Oculto de la API pública...
+        listing = api_client.get(self.URL)
+        assert listing.data["count"] == 0
+        assert Transaction.objects.filter(pk=tx.id).count() == 0
+        # ...pero el historial persiste marcado como borrado.
+        archived = Transaction.all_objects.get(pk=tx.id)
+        assert archived.is_deleted is True
+
+    def test_delete_paid_reverses_wallet_then_hides(self, api_client) -> None:
+        """Borrar una operación pagada sigue revirtiendo la billetera (R9)."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("100.00"))
+        tx = TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="pago", monto=Decimal("30.00")
+        )
+        mark_paid(tx)
+        api_client.delete(f"{self.URL}/{tx.id}")
+        wallet.refresh_from_db()
+        assert wallet.saldo == Decimal("100.00")
+        assert Transaction.objects.filter(pk=tx.id).count() == 0
+        assert Transaction.all_objects.get(pk=tx.id).is_deleted is True
+
+    def test_deleted_tx_not_reachable_by_endpoint(self, api_client) -> None:
+        """Tras el borrado, el detalle/estado responden 404 (scoping de borrado)."""
+        tx = TransactionFactory(user=api_client.user)
+        api_client.delete(f"{self.URL}/{tx.id}")
+        resp = api_client.get(f"{self.URL}/{tx.id}")
+        assert resp.status_code == 404
+        resp = api_client.post(f"{self.URL}/{tx.id}/state", {"estado": "pagado"})
+        assert resp.status_code == 404
+
+    def test_soft_delete_does_not_touch_other_users(self, auth_client_factory) -> None:
+        """Un borrado de otro usuario responde 404 y no marca nada."""
+        tx = TransactionFactory()
+        client = auth_client_factory()
+        assert client.delete(f"{self.URL}/{tx.id}").status_code == 404
+        assert Transaction.all_objects.get(pk=tx.id).is_deleted is False
+
+
+@pytest.mark.django_db
+class TestCheckConstraints:
+    """A10: el motor rechaza datos inválidos aunque la API no los vea.
+
+    Se inserta con ``Transaction.objects.create`` (saltándose serializers) para
+    probar la constraint a nivel de BD.
+    """
+
+    def test_monto_zero_rejected_by_db(self, api_client) -> None:
+        """monto <= 0 lanza IntegrityError en el motor."""
+        _check_constraints_supported()
+        with pytest.raises(IntegrityError):
+            Transaction.objects.create(
+                user=api_client.user,
+                tipo="pago",
+                monto=Decimal("0.00"),
+                moneda="USD",
+            )
+
+    def test_monto_negative_rejected_by_db(self, api_client) -> None:
+        """monto negativo lanza IntegrityError en el motor."""
+        _check_constraints_supported()
+        with pytest.raises(IntegrityError):
+            Transaction.objects.create(
+                user=api_client.user,
+                tipo="cobro",
+                monto=Decimal("-5.00"),
+                moneda="USD",
+            )
+
+    def test_vencimiento_before_fecha_rejected_by_db(self, api_client) -> None:
+        """fecha_vencimiento < fecha lanza IntegrityError en el motor."""
+        _check_constraints_supported()
+        with pytest.raises(IntegrityError):
+            Transaction.objects.create(
+                user=api_client.user,
+                tipo="pago",
+                monto=Decimal("10.00"),
+                moneda="USD",
+                fecha=date.today(),
+                fecha_vencimiento=date.today() - timedelta(days=1),
+            )
+
+    def test_vencimiento_null_allowed(self, api_client) -> None:
+        """Sin vencimiento la fila es válida (condición IS NULL OR ...)."""
+        _check_constraints_supported()
+        tx = Transaction.objects.create(
+            user=api_client.user, tipo="pago", monto=Decimal("10.00"), moneda="USD"
+        )
+        assert tx.pk is not None
+
+    def test_valid_monto_still_creates(self, api_client) -> None:
+        """Un monto válido sigue creándose (la constraint no bloquea lo lícito)."""
+        tx = Transaction.objects.create(
+            user=api_client.user,
+            tipo="pago",
+            monto=Decimal("10.00"),
+            moneda="USD",
+            estado="pagado",
+            fecha_pagado=timezone.now(),
+        )
+        assert tx.pk is not None

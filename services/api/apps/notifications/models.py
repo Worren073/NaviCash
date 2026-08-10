@@ -42,6 +42,20 @@ class Notification(OwnedModel):
         verbose_name = "Notificación"
         verbose_name_plural = "Notificaciones"
         ordering = ["-created_at"]
+        indexes = [
+            # Patrón real: últimas notificaciones por usuario (AUDIT A9).
+            models.Index(fields=["user", "-created_at"], name="notif_user_created_idx"),
+            # Patrón real: conteo de no leídas del usuario (AUDIT A9).
+            models.Index(fields=["user", "read"], name="notif_user_read_idx"),
+        ]
+        constraints = [
+            # Dedupe atómico de la regeneración write-on-GET (AUDIT A8):
+            # una sola alerta por (usuario, tipo, referencia).
+            models.UniqueConstraint(
+                fields=["user", "kind", "extra"],
+                name="uniq_notification_user_kind_extra",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Representación: título (leída o no)."""

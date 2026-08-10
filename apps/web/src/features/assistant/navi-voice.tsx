@@ -60,7 +60,7 @@ interface NaviVoiceProps {
  */
 export function NaviVoice({ open, onClose }: NaviVoiceProps) {
   const { t } = useTranslation();
-  const { messages, thinking, send } = useAssistant();
+  const { messages, thinking, send, abort } = useAssistant();
   const [phase, setPhase] = useState<VoicePhase>("idle");
   const listRef = useRef<HTMLDivElement>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
@@ -92,6 +92,8 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
       recRef.current?.abort();
       recRef.current = null;
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      // A12 — abortar la petición del backend si hay una en curso.
+      abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -199,7 +201,6 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
       setPhase("idle");
     };
     window.speechSynthesis.speak(utterance);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, phase]);
 
   const listening = phase === "listening";
@@ -297,7 +298,7 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
           </motion.div>
 
           {/* Estado */}
-          <div className="flex shrink-0 flex-col items-center gap-2 pb-12 pt-5">
+          <div className="flex shrink-0 flex-col items-center gap-2 pb-4 pt-5">
             {phase === "unsupported" ? (
               <p className="text-sm text-on-surface-variant">
                 {t("assistant.voice.unsupported")}
@@ -323,6 +324,11 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
                 <Mic className="h-5 w-5" />
               </button>
             )}
+          </div>
+
+          {/* Aviso legal: Navi no es asesor financiero */}
+          <div className="shrink-0 px-6 pb-6 text-center">
+            <p className="text-xs leading-snug text-on-surface-variant">{t("assistant.disclaimer")}</p>
           </div>
         </motion.div>
       )}

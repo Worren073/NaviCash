@@ -2,13 +2,18 @@
 
 El módulo lee los valores desde variables de entorno (vía ``django-environ``)
 para funcionar igual en el contenedor (host = ``db``) que en producción
-(Render). Por defecto funciona en modo DEBUG=1 (desarrollo).
+(Render). En desarrollo (DEBUG=True) funcionan los valores del entorno local
+(ver ``infra/docker-compose.yml``); en producción (DEBUG=False) aplica
+fail-fast: si faltan secretos o se usan los valores de desarrollo conocidos,
+el arranque falla con ``ImproperlyConfigured`` (AUDIT A2).
 """
 
+import sys
 from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # ---------------------------------------------------------------------------
 # Rutas base
@@ -19,16 +24,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Instancia de environ para leer variables del entorno.
 env = environ.Env(
     # Valores por defecto para entornos que no definan la variable.
-    DEBUG=(bool, True),
-    DJANGO_SECRET_KEY=(str, "dev-secret-key-cambiar-en-produccion"),
+    # DEBUG sin default engañoso: ausente/vacío significa producción (False),
+    # nunca asumir True. Los secretos no tienen default de desarrollo: si
+    # faltan en producción, el fail-fast de abajo detiene el arranque.
+    DEBUG=(bool, False),
+    DJANGO_SECRET_KEY=(str, ""),
     DJANGO_ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1", "api"]),
     CORS_ALLOWED_ORIGINS=(list, ["http://localhost:5173"]),
     DJANGO_DB_ENGINE=(str, "django.db.backends.postgresql"),
     POSTGRES_DB=(str, "navicash"),
     POSTGRES_USER=(str, "navicash"),
-    POSTGRES_PASSWORD=(str, "navicash-dev-password"),
+    POSTGRES_PASSWORD=(str, ""),
     POSTGRES_HOST=(str, "localhost"),
     POSTGRES_PORT=(str, "5432"),
+    # sslmode de la conexión PG: "prefer" en dev sin SSL; producción define
+    # DJANGO_DB_SSLMODE (p. ej. "require") desde su entorno (AUDIT M7).
+    DJANGO_DB_SSLMODE=(str, "prefer"),
+    # URL de la caché compartida (Redis). El default es SOLO dev: en
+    # producción el fail-fast de abajo exige un valor real (AUDIT C2).
+    REDIS_URL=(str, "redis://redis:6379/0"),
     DJANGO_EMAIL_BACKEND=(str, "django.core.mail.backends.console.EmailBackend"),
     DJANGO_EMAIL_HOST=(str, ""),
     DJANGO_EMAIL_PORT=(int, 587),
@@ -45,6 +59,8 @@ env = environ.Env(
     # Cloudflare Turnstile (CAPTCHA del registro).
     TURNSTILE_SECRET_KEY=(str, ""),
     TURNSTILE_VERIFY_URL=(str, "https://challenges.cloudflare.com/turnstile/v0/siteverify"),
+    # Habilitación global del CAPTCHA (True por defecto; ver sección CAPTCHA).
+    CAPTCHA_ENABLED=(bool, True),
     # En desarrollo, sin clave configurada, la verificación se omite.
     CAPTCHA_DEV_BYPASS=(bool, True),
     # Versión vigente de los términos que se graba al aceptar.
@@ -57,6 +73,42 @@ env = environ.Env(
 DEBUG = env("DEBUG")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
+
+# ---------------------------------------------------------------------------
+# Fail-fast de secretos (AUDIT A2): nada de valores de desarrollo en prod
+# ---------------------------------------------------------------------------
+# Valores conocidos del entorno de desarrollo (docker-compose local). Si la
+# app arranca con DEBUG=False y alguno de los secretos falta o coincide con
+# estos placeholders, NEGAMOS el arranque: es preferible fallar a correr en
+# producción con contraseñas/claves públicas en los manuales del repo.
+_DEV_SECRET_KEY = "dev-secret-key-cambiar-en-produccion"
+_DEV_DB_PASSWORD = "navicash-dev-password"
+_DEV_REDIS_URL = "redis://redis:6379/0"
+
+if not DEBUG:
+    if not SECRET_KEY or SECRET_KEY == _DEV_SECRET_KEY:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY es obligatoria en producción (DEBUG=False) y no "
+            "puede ser la clave de desarrollo. Genera una nueva, p. ej. con "
+            "'python -c \"import secrets; print(secrets.token_urlsafe(64))\"'."
+        )
+    _db_password = env("POSTGRES_PASSWORD")
+    if not _db_password or _db_password == _DEV_DB_PASSWORD:
+        raise ImproperlyConfigured(
+            "POSTGRES_PASSWORD es obligatoria en producción (DEBUG=False) y no "
+            "puede ser la contraseña de desarrollo 'navicash-dev-password'."
+        )
+    # AUDIT C2/M7: sin Redis no hay caché compartida (throttle del asistente
+    # por-worker y confirmaciones volatiles), y el default de dev apunta a un
+    # host del compose local: en prod debe venir una REDIS_URL real (p. ej.
+    # Redis managed en el proveedor, con TLS) o el arranque se niega.
+    _redis_url = env("REDIS_URL")
+    if not _redis_url or _redis_url == _DEV_REDIS_URL:
+        raise ImproperlyConfigured(
+            "REDIS_URL es obligatoria en producción (DEBUG=False): el default "
+            "de desarrollo ('redis://redis:6379/0') no es válido fuera del "
+            "compose local. Configura la URL de tu Redis gestionado."
+        )
 
 # ---------------------------------------------------------------------------
 # Aplicaciones instaladas
@@ -129,6 +181,36 @@ DATABASES = {
         "PASSWORD": env("POSTGRES_PASSWORD"),
         "HOST": env("POSTGRES_HOST"),
         "PORT": env("POSTGRES_PORT"),
+        # AUDIT M7: conexiones persistentes con health-check (no se entrega
+        # una conexión muerta tras un restart del PG) y timeout de conexión
+        # corto + sslmode explícito (default "prefer": el compose local no
+        # tiene SSL; producción fuerza "require" por env).
+        "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
+        "OPTIONS": {
+            "connect_timeout": 5,
+            "sslmode": env("DJANGO_DB_SSLMODE"),
+        },
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Caché compartida (Redis) — AUDIT C2
+# ---------------------------------------------------------------------------
+# Con gunicorn multi-worker la caché NO puede ser por-proceso: el throttle
+# del asistente (30/h) y las transferencias pendientes de confirmación se
+# guardan en un worker arbitrario y se perderían (o se ejecutarían dos veces)
+# con LocMemCache. Redis es la caché default de producción; los tests usan
+# LOCMEM (ver config/test_settings.py: CACHES se sobre-escribe ahí y NUNCA
+# tocan redis).
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": env("REDIS_URL"),
+        "TIMEOUT": 300,
+        "OPTIONS": {
+            "CONNECTION_POOL_KWARGS": {"socket_timeout": 3},
+        },
     }
 }
 
@@ -165,9 +247,21 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
     "PAGE_SIZE": 25,
+    # Throttling global (AUDIT A1): anónimos por IP, autenticados por cuenta,
+    # y scopes dedicados para auth frágil (login/register/verify) y el chat.
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ),
     # Rate limit dedicado para el chat del asistente (AUDIT A4: sin throttling).
     # El scope se declara en la vista (throttle_scope="assistant").
     "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "120/min",
+        "login": "5/min",
+        "register": "3/hour",
+        "email_verify": "10/hour",
         "assistant": env("ASSISTANT_THROTTLE_RATE", default="30/hour"),
     },
     # Errores en el mismo formato/estilo espagnol-friendly.
@@ -191,10 +285,32 @@ SIMPLE_JWT = {
 # ---------------------------------------------------------------------------
 # CAPTCHA (Cloudflare Turnstile) y términos de servicio
 # ---------------------------------------------------------------------------
+# ``CAPTCHA_ENABLED`` es el interruptor global de verificación del CAPTCHA.
+# En desarrollo puede quedar vacío (el bypass ``CAPTCHA_DEV_BYPASS`` omite la
+# verificación), pero OJO: en producción (DEBUG=False) el secreto
+# ``TURNSTILE_SECRET_KEY`` es OBLIGATORIO. La verificación es fail-closed
+# (AUDIT A1): la lógica en ``apps/accounts/captcha.py`` debe rechazar el
+# registro si no hay secreto configurado, nunca abrirse silenciosamente.
+CAPTCHA_ENABLED = env("CAPTCHA_ENABLED")
 TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY")
 TURNSTILE_VERIFY_URL = env("TURNSTILE_VERIFY_URL")
 CAPTCHA_DEV_BYPASS = env("CAPTCHA_DEV_BYPASS")
 TERMS_VERSION = env("TERMS_VERSION")
+
+# ---------------------------------------------------------------------------
+# Hardening HTTPS/cookies (AUDIT A3): solo cuando DEBUG=False
+# ---------------------------------------------------------------------------
+# En producción la app va detrás de un proxy TLS (Render/PaaS): confiamos en
+# el header X-Forwarded-Proto, redirigimos todo a HTTPS con HSTS de 1 año y
+# marcamos las cookies de sesión/CSRF como Secure. En desarrollo (DEBUG=True)
+# estos flags quedan apagados para permitir HTTP local.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -249,3 +365,56 @@ STATIC_URL = "static/"
 # Varios
 # ---------------------------------------------------------------------------
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ---------------------------------------------------------------------------
+# Logging estructurado (AUDIT M2): todo a stdout (lo recoge el orquestador
+# del contenedor), con timestamp/nivel/logger para filtrar por servicio.
+# ---------------------------------------------------------------------------
+# IMPORTANTE: el formatter solo incluye METADATA (tiempo, nivel, módulo,
+# mensaje). Nunca se loguean payloads ni cuerpos de request/respuesta: los
+# datos financieros del usuario NO deben aparecer en logs. Los llamados
+# existentes a logger.warning / logger.exception siguen funcionando igual.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": sys.stdout,
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "DEBUG" if DEBUG else "INFO",
+    },
+    "loggers": {
+        # Django general: INFO en ambos modos (no interesa el ruido DEBUG de
+        # los frameworks en prod).
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Requests HTTP: en DEBUG los 4xx/5xx se ven (WARNING); en prod solo
+        # los errores 5xx (ERROR). No se registra el body de la petición.
+        "django.request": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "ERROR",
+            "propagate": False,
+        },
+        # Apps propias (asistant, rates, accounts, ...): a DEGUG en dev para
+        # rastrear flujos; a INFO en prod para no saturar.
+        "apps": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+    },
+}

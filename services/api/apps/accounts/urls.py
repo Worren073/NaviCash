@@ -7,17 +7,26 @@ Flujo de registro:
 3. ``POST /api/auth/verify-email`` activa la cuenta (``is_active=True``).
 4. ``POST /api/auth/login`` devuelve el access token y guarda el refresh en
    una cookie ``httpOnly``.
-5. ``POST /api/auth/refresh`` renueva el access leyendo la cookie.
-6. ``POST /api/auth/logout`` invalida el refresh (blacklist) y limpia la cookie.
+5. ``POST /api/auth/refresh`` renueva el access leyendo la cookie (rotación
+   con blacklist del token usado).
+6. ``POST /api/auth/logout`` invalida la familia de refresh y limpia la cookie.
 7. ``GET /api/auth/me`` devuelve el perfil del usuario autenticado.
+
+Recuperación de contraseña (M13):
+8. ``POST /api/auth/forgot-password`` solicita el enlace (respuesta genérica).
+9. ``POST /api/auth/reset-password`` cambia la contraseña con el token one-time.
+10. ``POST /api/auth/change-password`` cambia la contraseña autenticado.
 """
 
 from apps.accounts.views import (  # noqa: F401
+    ChangePasswordView,
+    ForgotPasswordView,
     LoginView,
     LogoutView,
     MeView,
     RefreshView,
     RegisterView,
+    ResetPasswordView,
     VerifyEmailView,
 )
 from django.urls import path
@@ -28,5 +37,8 @@ urlpatterns = [
     path("auth/refresh", RefreshView.as_view(), name="auth-refresh"),
     path("auth/logout", LogoutView.as_view(), name="auth-logout"),
     path("auth/verify-email", VerifyEmailView.as_view(), name="auth-verify-email"),
+    path("auth/forgot-password", ForgotPasswordView.as_view(), name="auth-forgot-password"),
+    path("auth/reset-password", ResetPasswordView.as_view(), name="auth-reset-password"),
+    path("auth/change-password", ChangePasswordView.as_view(), name="auth-change-password"),
     path("auth/me", MeView.as_view(), name="auth-me"),
 ]

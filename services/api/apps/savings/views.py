@@ -11,6 +11,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.pagination import DefaultPagination
 from apps.core.permissions import IsOwner
 from apps.savings.models import GoalContribution, SavingsGoal
 from apps.savings.serializers import (
@@ -26,8 +27,14 @@ class GoalViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwner]
 
     def get_queryset(self):
-        """Metas del usuario autenticado, con aportes precargados."""
-        return SavingsGoal.objects.filter(user=self.request.user).prefetch_related("contributions")
+        """Metas del usuario autenticado, con aportes y cuentas precargadas.
+
+        ``prefetch_related`` elimina el N+1 del serializador de lectura
+        (count/suma de aportes y cuentas afiliadas) (AUDIT A8).
+        """
+        return SavingsGoal.objects.filter(user=self.request.user).prefetch_related(
+            "contributions", "linked_accounts"
+        )
 
     def get_serializer_class(self):
         """Escritura vs lectura según la acción."""
@@ -55,10 +62,12 @@ class GoalViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "post"])
     def contributions(self, request, pk=None):
-        """GET: lista aportes. POST: registra un aporte a la meta."""
+        """GET: lista aportes (paginado). POST: registra un aporte a la meta."""
         goal = self.get_object()
         if request.method == "GET":
             rows = goal.contributions.select_related("wallet").order_by("-created_at")
+            paginator = DefaultPagination()
+            page = paginator.paginate_queryset(rows, request, view=self)
             data = [
                 {
                     "id": c.pk,
@@ -70,9 +79,9 @@ class GoalViewSet(viewsets.ModelViewSet):
                     "note": c.note,
                     "created_at": c.created_at,
                 }
-                for c in rows
+                for c in page
             ]
-            return Response(data)
+            return paginator.get_paginated_response(data)
 
         serializer = ContributionSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)

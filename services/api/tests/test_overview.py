@@ -47,6 +47,7 @@ class TestOverview:
             monto=Decimal("30.00"),
             moneda="USD",
             monto_usd=Decimal("30.00"),
+            fecha=date.today() - timedelta(days=5),
             fecha_vencimiento=date.today() - timedelta(days=1),
         )
         TransactionFactory(
@@ -55,6 +56,7 @@ class TestOverview:
             monto=Decimal("20.00"),
             moneda="USD",
             monto_usd=Decimal("20.00"),
+            fecha=date.today() - timedelta(days=5),
             fecha_vencimiento=date.today() - timedelta(days=1),
         )
         resp = api_client.get(self.URL)
@@ -66,6 +68,7 @@ class TestOverview:
         """Upcoming solo contiene operaciones futuras no vencidas."""
         TransactionFactory(
             user=api_client.user,
+            fecha=date.today() - timedelta(days=5),
             fecha_vencimiento=date.today() - timedelta(days=1),  # vencida, no entra
         )
         TransactionFactory(
@@ -122,3 +125,38 @@ class TestCategoryBreakdown:
         """kind distinto de cobro/pago responde 400."""
         resp = api_client.get(f"{self.URL}?kind=otro")
         assert resp.status_code == 400
+
+    def test_aggregation_in_single_query(self, api_client, django_assert_num_queries, monkeypatch) -> None:
+        """El agregado por categoría es UNA query SQL (M6), no Python."""
+        from apps.transactions.models import Category
+
+        monkeypatch.setattr("apps.overview.services.get_current_official_rate", lambda: None)
+        cat = Category.objects.create(
+            user=api_client.user, name="Supermercado", tipo="egreso", icon="cart"
+        )
+        for i in range(4):
+            TransactionFactory(
+                user=api_client.user,
+                tipo="pago",
+                monto=Decimal("10.00"),
+                moneda="USD",
+                monto_usd=Decimal("10.00"),
+                category=cat,
+            )
+        TransactionFactory(
+            user=api_client.user,
+            tipo="pago",
+            monto=Decimal("5.00"),
+            moneda="USD",
+            monto_usd=Decimal("5.00"),
+        )  # sin categoría
+
+        from apps.overview.services import aggregate_by_category
+
+        with django_assert_num_queries(1):
+            rows = aggregate_by_category(api_client.user, "pago")
+        ordered = {row["category"]: row["total"] for row in rows}
+        assert ordered["Supermercado"] == Decimal("40.00")
+        assert ordered["Sin categoría"] == Decimal("5.00")
+        # Ordenado de mayor a menor.
+        assert [r["category"] for r in rows] == ["Supermercado", "Sin categoría"]

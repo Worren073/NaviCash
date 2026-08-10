@@ -2,13 +2,33 @@
 
 from __future__ import annotations
 
+import threading
 from decimal import Decimal
 
 import pytest
+from django.db import IntegrityError, connection
 
 from apps.transactions.models import Transaction
+from apps.transactions.services import mark_paid
+from apps.wallets.models import BalanceAuditLog, Wallet
 from apps.wallets.services import adjust_balance
-from factories import ExchangeRateFactory, UserFactory, WalletFactory
+from factories import ExchangeRateFactory, TransactionFactory, UserFactory, WalletFactory
+
+
+def _require_row_lock() -> None:
+    """SQLite (test_settings por defecto) no ejecuta ``SELECT ... FOR UPDATE``.
+
+    El bloqueo real de filas solo existe en PostgreSQL: con SQLite el
+    ``select_for_update`` de Django es un no-op y el test de concurrencia
+    sería un falso positivo/flaky, así que se omite con una razón explícita
+    y se ejecuta cuando la suite corre contra el Postgres del contenedor
+    (ej: ``DJANGO_SETTINGS_MODULE=config.settings``).
+    """
+    if connection.vendor != "postgresql":
+        pytest.skip(
+            "select_for_update es un no-op en SQLite; ejecuta la suite con "
+            "DJANGO_SETTINGS_MODULE=config.settings contra PostgreSQL."
+        )
 
 
 @pytest.mark.django_db
@@ -84,6 +104,167 @@ class TestAdjustBalanceService:
         assert result == Decimal("100.00")
         wallet.refresh_from_db()
         assert wallet.saldo == Decimal("100.00")
+
+
+@pytest.mark.django_db(transaction=True)
+class TestAdjustBalanceConcurrency:
+    """Concurrencia REAL (hallazgo C1): dos hilos ajustan la misma billetera.
+
+    ``threading.Barrier`` dispara ambos hilos a la vez y ``transaction=True``
+    desactiva el runner de transacciones anidadas: cada hilo abre su propia
+    transacción real contra la BD. El ``select_for_update`` de ``adjust_balance``
+    serializa ambas operaciones a nivel de fila; el test es determinista.
+    """
+
+    def _run_concurrent(self, wallet, deltas):
+        """Lanza un hilo por delta y espera a todos con timeout."""
+        barrier = threading.Barrier(len(deltas))
+        errors = []
+
+        def worker(delta):
+            barrier.wait()
+            try:
+                adjust_balance(wallet, delta)
+            except ValueError as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(d,)) for d in deltas]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        assert not any(t.is_alive() for t in threads), "Hilos colgados en adjust_balance"
+        return errors
+
+    def test_two_positive_deltas_no_lost_update(self) -> None:
+        """Dos sumas simultáneas de 25.00 sobre 100.00: saldo final 150.00.
+
+        Sin bloqueo de fila ambos hilos leerían 100.00 y el último write
+        ganaría (125.00 -> pérdida de actualización); con el lock el saldo
+        es la suma exacta.
+        """
+        _require_row_lock()
+        wallet = WalletFactory(user=UserFactory(), saldo=Decimal("100.00"))
+        errors = self._run_concurrent(wallet, [Decimal("25.00"), Decimal("25.00")])
+        assert errors == []
+        wallet.refresh_from_db()
+        assert wallet.saldo == Decimal("150.00")
+
+    def test_overspend_raises_exactly_once(self) -> None:
+        """Dos giros simultáneos de 60.00 sobre 100.00: solo uno prospera.
+
+        Ambos hilos parten de 100.00; el primero deja 40.00 y el segundo,
+        que re-lee la fila bloqueada tras el commit del primero, ve 40.00 y
+        lanza ``ValueError``. El saldo final es 40.00: sin sobregiro ni
+        doble gasto (validación < 0 tras el lock).
+        """
+        _require_row_lock()
+        wallet = WalletFactory(user=UserFactory(), saldo=Decimal("100.00"))
+        errors = self._run_concurrent(wallet, [Decimal("-60.00"), Decimal("-60.00")])
+        assert len(errors) == 1
+        wallet.refresh_from_db()
+        assert wallet.saldo == Decimal("40.00")
+
+
+@pytest.mark.django_db
+class TestBalanceAuditLog:
+    """C4: cada ajuste de saldo deja una pista de auditoría (misma transacción)."""
+
+    def test_audit_log_created_on_payment(self, api_client) -> None:
+        """Marcar un pago pagado crea el log con delta, saldo y motivo."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("100.00"))
+        tx = TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="pago", monto=Decimal("30.00")
+        )
+        mark_paid(tx)
+        log = BalanceAuditLog.objects.get(wallet=wallet)
+        assert log.delta == Decimal("-30.00")
+        assert log.balance_after == Decimal("70.00")
+        assert log.reason == f"transaction-{tx.pk}"
+        assert log.user_id == api_client.user.id
+        assert log.created_at is not None
+
+    def test_audit_log_created_on_wallet_adjust(self, api_client) -> None:
+        """El ajuste manual (POST /adjust) también audita con su motivo."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("5.00"))
+        resp = api_client.post(f"/api/wallets/{wallet.id}/adjust", {"delta": "20.00"})
+        assert resp.status_code == 200
+        log = BalanceAuditLog.objects.get(wallet=wallet)
+        assert log.delta == Decimal("20.00")
+        assert log.balance_after == Decimal("25.00")
+        assert log.reason == "ajuste_manual"
+
+    def test_audit_log_created_on_transfer(self, api_client) -> None:
+        """Una transferencia audita ambos lados (transfer-out / transfer-in)."""
+        a = WalletFactory(user=api_client.user, currency="USD", saldo=Decimal("100.00"))
+        b = WalletFactory(user=api_client.user, currency="USD", saldo=Decimal("10.00"))
+        resp = api_client.post(
+            "/api/wallets/transfer",
+            {"source": str(a.id), "target": str(b.id), "amount": "30.00"},
+        )
+        assert resp.status_code == 201
+        reasons = sorted(BalanceAuditLog.objects.values_list("reason", flat=True))
+        assert reasons == ["transfer-in", "transfer-out"]
+        assert BalanceAuditLog.objects.get(wallet=a).balance_after == Decimal("70.00")
+        assert BalanceAuditLog.objects.get(wallet=b).balance_after == Decimal("40.00")
+
+    def test_failed_adjust_leaves_no_audit_log(self, api_client) -> None:
+        """Un ajuste rechazado (saldo insuficiente) no escribe log: atómico."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("5.00"))
+        resp = api_client.post(f"/api/wallets/{wallet.id}/adjust", {"delta": "-10.00"})
+        assert resp.status_code == 400
+        assert BalanceAuditLog.objects.filter(wallet=wallet).count() == 0
+
+
+@pytest.mark.django_db
+class TestWalletSoftDelete:
+    """C4: la destrucción de billeteras es soft, y se bloquea con saldo."""
+
+    URL = "/api/wallets"
+
+    def test_empty_wallet_deleted_is_hidden_from_list(self, api_client) -> None:
+        """Borrar una billetera vacía responde 204 y la oculta del listado."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("0.00"))
+        resp = api_client.delete(f"{self.URL}/{wallet.id}")
+        assert resp.status_code == 204
+        listing = api_client.get(self.URL)
+        assert listing.data["count"] == 0
+        assert Wallet.objects.filter(pk=wallet.id).count() == 0
+        assert Wallet.all_objects.get(pk=wallet.id).is_deleted is True
+
+    def test_wallet_with_balance_cannot_be_deleted(self, api_client) -> None:
+        """Una billetera con saldo no puede ocultarse: 400 y sigue visible."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("50.00"))
+        resp = api_client.delete(f"{self.URL}/{wallet.id}")
+        assert resp.status_code == 400
+        assert Wallet.all_objects.get(pk=wallet.id).is_deleted is False
+        listing = api_client.get(self.URL)
+        assert listing.data["count"] == 1
+
+    def test_hidden_wallet_not_reachable(self, api_client) -> None:
+        """Tras ocultar la billetera, su detalle responde 404."""
+        wallet = WalletFactory(user=api_client.user)
+        api_client.delete(f"{self.URL}/{wallet.id}")
+        resp = api_client.get(f"{self.URL}/{wallet.id}")
+        assert resp.status_code == 404
+
+    def test_zero_balance_after_adjust_allows_delete(self, api_client) -> None:
+        """Al dejar el saldo en 0, la billetera sí puede ocultarse."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("10.00"))
+        api_client.post(f"{self.URL}/{wallet.id}/adjust", {"delta": "-10.00"})
+        resp = api_client.delete(f"{self.URL}/{wallet.id}")
+        assert resp.status_code == 204
+
+
+@pytest.mark.django_db
+class TestWalletCheckConstraints:
+    """A10: el motor rechaza saldos negativos aunque la API los saltara."""
+
+    def test_negative_saldo_rejected_by_db(self, api_client) -> None:
+        """saldo < 0 lanza IntegrityError en el motor."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("5.00"))
+        with pytest.raises(IntegrityError):
+            Wallet.objects.filter(pk=wallet.pk).update(saldo=Decimal("-1.00"))
 
 
 @pytest.mark.django_db

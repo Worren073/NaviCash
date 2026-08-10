@@ -5,10 +5,12 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from django.db import IntegrityError, connection
+from django.db.models.deletion import ProtectedError
 
 from apps.rates.models import ExchangeRate
 from apps.savings.models import GoalContribution, SavingsGoal
-from factories import SavingsGoalFactory, WalletFactory
+from factories import GoalContributionFactory, SavingsGoalFactory, WalletFactory
 
 
 @pytest.mark.django_db
@@ -89,6 +91,52 @@ class TestContributions:
         )
         assert resp.status_code == 201
 
+    def test_contributions_list_paginated(self, api_client) -> None:
+        """GET /savings/<id>/contributions pagina con el paginador global (M4)."""
+        goal = SavingsGoalFactory(user=api_client.user, target_amount=Decimal("100000.00"))
+        for _ in range(30):
+            GoalContributionFactory(
+                user=api_client.user,
+                goal=goal,
+                amount=Decimal("1.00"),
+                amount_goal_currency=Decimal("1.00"),
+            )
+        resp = api_client.get(f"/api/savings/{goal.id}/contributions")
+        assert resp.status_code == 200
+        assert resp.data["count"] == 30
+        assert len(resp.data["results"]) == 25
+        assert resp.data["next"] is not None
+        assert resp.data["previous"] is None
+
+        resp2 = api_client.get(f"/api/savings/{goal.id}/contributions?page=2")
+        assert len(resp2.data["results"]) == 5
+        assert resp2.data["previous"] is not None
+
+    def test_list_goals_bounded_queries(self, api_client, django_assert_num_queries, monkeypatch) -> None:
+        """El listado de metas NO hace N+1 (A8): 5 queries fijas.
+
+        Sin el ``prefetch_related`` y la suma en Python, cada meta añadiría una
+        query por aportes más otra por cuentas afiliadas.
+        """
+        monkeypatch.setattr("apps.savings.models.get_current_official_rate", lambda: None)
+        goal = SavingsGoalFactory(user=api_client.user, target_amount=Decimal("1000.00"))
+        for _ in range(3):
+            GoalContributionFactory(
+                user=api_client.user,
+                goal=goal,
+                amount=Decimal("10.00"),
+                amount_goal_currency=Decimal("10.00"),
+            )
+        account = WalletFactory(user=api_client.user, tipo="saving", saldo=Decimal("50.00"))
+        goal.linked_accounts.add(account)
+
+        with django_assert_num_queries(5):
+            resp = api_client.get("/api/savings")
+        assert resp.status_code == 200
+        assert resp.data["count"] == 1
+        assert resp.data["results"][0]["contributions_count"] == 3
+        assert resp.data["results"][0]["total_contributed"] == "80.00"
+
 
 @pytest.mark.django_db
 class TestGoalOwnership:
@@ -110,6 +158,75 @@ class TestGoalOwnership:
         client = auth_client_factory()
         resp = client.delete(f"/api/savings/{other_goal.id}")
         assert resp.status_code in (403, 404)
+
+
+@pytest.mark.django_db
+class TestGoalDelete:
+    """C4: las metas con aportes no pueden borrarse (PROTECT amable)."""
+
+    URL = "/api/savings"
+
+    def test_goal_with_contributions_cannot_be_deleted(self, api_client) -> None:
+        """Borrar una meta con aportes responde 400 con mensaje claro."""
+        goal = SavingsGoalFactory(user=api_client.user, target_amount=Decimal("1000.00"))
+        GoalContributionFactory(user=api_client.user, goal=goal)
+        resp = api_client.delete(f"{self.URL}/{goal.id}")
+        assert resp.status_code == 400
+        assert "aportes" in resp.data["detail"]
+        # La meta sigue visible y su historial intacto.
+        listing = api_client.get(self.URL)
+        assert listing.data["count"] == 1
+
+    def test_goal_without_contributions_can_be_deleted(self, api_client) -> None:
+        """Una meta sin aportes sí puede borrarse (204 y desaparece)."""
+        goal = SavingsGoalFactory(user=api_client.user)
+        resp = api_client.delete(f"{self.URL}/{goal.id}")
+        assert resp.status_code == 204
+        listing = api_client.get(self.URL)
+        assert listing.data["count"] == 0
+
+    def test_db_protects_goal_with_contributions(self, api_client) -> None:
+        """A nivel de motor, PROTECT bloquea el borrado en cascada."""
+        goal = SavingsGoalFactory(user=api_client.user)
+        GoalContributionFactory(user=api_client.user, goal=goal)
+        with pytest.raises(ProtectedError):
+            SavingsGoal.objects.filter(pk=goal.pk).delete()
+
+
+@pytest.mark.django_db
+class TestCheckConstraints:
+    """A10: el motor rechaza aportes no positivos (salta validación de API)."""
+
+    def _supported(self) -> None:
+        if not connection.features.supports_table_check_constraints:
+            pytest.skip(
+                "El motor no soporta CheckConstraints; la constraint solo se "
+                "aplica en motores que las ejecutan."
+            )
+
+    def test_zero_amount_rejected_by_db(self, api_client) -> None:
+        """Un aporte de 0 lanza IntegrityError en el motor."""
+        self._supported()
+        goal = SavingsGoalFactory(user=api_client.user)
+        with pytest.raises(IntegrityError):
+            GoalContribution.objects.create(
+                user=api_client.user,
+                goal=goal,
+                amount=Decimal("0.00"),
+                currency="USD",
+            )
+
+    def test_negative_amount_rejected_by_db(self, api_client) -> None:
+        """Un aporte negativo lanza IntegrityError en el motor."""
+        self._supported()
+        goal = SavingsGoalFactory(user=api_client.user)
+        with pytest.raises(IntegrityError):
+            GoalContribution.objects.create(
+                user=api_client.user,
+                goal=goal,
+                amount=Decimal("-1.00"),
+                currency="USD",
+            )
 
 
 @pytest.mark.django_db

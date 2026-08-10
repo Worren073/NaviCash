@@ -10,6 +10,15 @@ django-environ>=0.12,<1
 # Cliente HTTP para la integración con DolarApi (tasas del dólar)
 httpx>=0.28,<1
 
+# Caché compartida Redis (AUDIT C2): throttle del asistente y confirmaciones
+# pendientes viven en Redis, no por proceso.
+django-redis>=5.4,<6
+redis>=5,<6
+
+# Servidor WSGI para producción (AUDIT M7): el Dockerfile arranca gunicorn
+# cuando DEBUG=0 (runserver solo en dev).
+gunicorn>=23,<24
+
 # Hashing de contraseñas robusto (Argon2, preferido sobre PBKDF2)
 argon2-cffi>=23.1,<24
 

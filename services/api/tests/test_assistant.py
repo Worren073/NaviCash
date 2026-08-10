@@ -117,6 +117,7 @@ class TestDeterministicFallback:
             monto=Decimal("20.00"),
             moneda="USD",
             monto_usd=Decimal("20.00"),
+            fecha=date.today() - timedelta(days=5),
             fecha_vencimiento=date.today() - timedelta(days=1),
         )
         context = build_context(api_client.user)

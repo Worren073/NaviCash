@@ -11,11 +11,10 @@ operación conserva su equivalencia USD *congelada* al momento de registrarse.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from apps.core.currency import convert_to_usd, round_money, usd_to_currency
@@ -71,13 +70,14 @@ def build_summary(user, today: date | None = None) -> dict:
         "wallet", "category", "contact"
     )
 
-    def sum_usd(qs_sub) -> Decimal:
-        """Suma del equivalente USD congelado de un queryset."""
-        total = qs_sub.aggregate(total=Sum("monto_usd"))["total"]
-        return total or Decimal("0.00")
-
-    to_receive_usd = sum_usd(pending.filter(tipo="cobro", fecha_vencimiento__lte=today))
-    to_pay_usd = sum_usd(pending.filter(tipo="pago", fecha_vencimiento__lte=today))
+    # Totales vencidos por cobrar/pagar en UNA sola agregación SQL (AUDIT M6):
+    # antes eran dos ``aggregate`` secuenciales sobre el mismo filtro.
+    overdue_totals = pending.filter(fecha_vencimiento__lte=today).aggregate(
+        to_receive=Sum("monto_usd", filter=Q(tipo="cobro")),
+        to_pay=Sum("monto_usd", filter=Q(tipo="pago")),
+    )
+    to_receive_usd = overdue_totals["to_receive"] or Decimal("0.00")
+    to_pay_usd = overdue_totals["to_pay"] or Decimal("0.00")
 
     to_receive = usd_to_currency(to_receive_usd, base, rate_value or Decimal("1"))
     to_pay = usd_to_currency(to_pay_usd, base, rate_value or Decimal("1"))
@@ -130,6 +130,10 @@ def _to_usd_known(amount: Decimal, currency: str, rate_value: "Decimal | None") 
 def aggregate_by_category(user, kind: str) -> list[dict]:
     """Operaciones de un tipo agrupadas por categoría (para gráficos).
 
+    La suma se hace íntegra en SQL (``values().annotate()``) y solo la
+    conversión a la moneda base queda en Python (AUDIT M6): antes se cargaban
+    TODAS las operaciones y se agregaba fila a fila.
+
     Args:
         user: usuario autenticado.
         kind: tipo de operación ("cobro" o "pago").
@@ -141,12 +145,18 @@ def aggregate_by_category(user, kind: str) -> list[dict]:
     rate = get_current_official_rate()
     rate_value: "Decimal | None" = rate.effective_rate if rate else None
 
-    rows = Transaction.objects.filter(user=user, tipo=kind).select_related("category")
-    buckets: dict[str, Decimal] = defaultdict(Decimal)
-    for t in rows:
-        key = t.category.name if t.category else "Sin categoría"
-        buckets[key] += usd_to_currency(t.monto_usd, user.base_currency, rate_value or Decimal("1"))
+    rows = (
+        Transaction.objects.filter(user=user, tipo=kind)
+        .values("category__name")
+        .annotate(total=Sum("monto_usd"))
+        .order_by("-total")
+    )
     return [
-        {"category": name, "total": round_money(value)}
-        for name, value in sorted(buckets.items(), key=lambda kv: kv[1], reverse=True)
+        {
+            "category": name or "Sin categoría",
+            "total": round_money(
+                usd_to_currency(total, user.base_currency, rate_value or Decimal("1"))
+            ),
+        }
+        for name, total in rows.values_list("category__name", "total")
     ]

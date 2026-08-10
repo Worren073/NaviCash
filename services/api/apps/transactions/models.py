@@ -19,6 +19,19 @@ from django.utils import timezone
 from apps.core.currency import CURRENCY_CHOICES, MONEY_DECIMALS
 from apps.core.models import OwnedModel
 
+
+class TransactionManager(models.Manager):
+    """Manager por defecto de operaciones: excluye los borrados (soft-delete, C4).
+
+    ``Transaction.objects`` es la única puerta de operaciones VIVAS; los
+    borrados solo son visibles vía ``Transaction.all_objects`` (administración
+    y auditoría).
+    """
+
+    def get_queryset(self):
+        """Solo operaciones no borradas."""
+        return super().get_queryset().filter(is_deleted=False)
+
 #: Dirección del flujo de dinero de la operación.
 TRANSACTION_TYPES = [
     ("cobro", "Cobro (ingreso)"),
@@ -112,6 +125,15 @@ class Transaction(OwnedModel):
     )
     monto = models.DecimalField(max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Monto")
     moneda = models.CharField(max_length=3, choices=CURRENCY_CHOICES, verbose_name="Moneda")
+    is_deleted = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Borrada",
+        help_text="Soft-delete (C4): la operación se oculta de la API pero conserva su historial.",
+    )
+
+    objects = TransactionManager()
+    all_objects = models.Manager()
 
     # Conversión congelada a USD (nunca se recalcula; R2/R4).
     monto_usd = models.DecimalField(max_digits=20, decimal_places=MONEY_DECIMALS, default=0, verbose_name="Monto en USD")
@@ -189,15 +211,61 @@ class Transaction(OwnedModel):
         verbose_name = "Operación"
         verbose_name_plural = "Operaciones"
         ordering = ["-fecha"]
+        default_manager_name = "objects"
         indexes = [
             models.Index(fields=["user", "estado"]),
             models.Index(fields=["user", "fecha_vencimiento"]),
             models.Index(fields=["user", "fecha"]),
+            # A9: "pagos recientes" del dashboard (user + estado, orden por
+            # fecha de pago descendente) y agregaciones por tipo+rango de fecha.
+            models.Index(fields=["user", "estado", "-fecha_pagado"]),
+            models.Index(fields=["user", "tipo", "fecha"]),
+        ]
+        constraints = [
+            # A10: integridad a nivel de motor (la API ya valida; esto es el
+            # respaldo en BD para cualquier escritura que la salte).
+            models.CheckConstraint(
+                condition=models.Q(monto__gt=0),
+                name="transaction_monto_gt_0",
+                violation_error_message="El monto debe ser mayor a cero.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(tasa_usd__gt=0),
+                name="transaction_tasa_usd_gt_0",
+                violation_error_message="La tasa usada debe ser mayor a cero.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(estado__in=["pendiente", "pagado", "cancelado"]),
+                name="transaction_estado_valid",
+                violation_error_message="Estado de operación inválido.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(tipo__in=["cobro", "pago", "transferencia"]),
+                name="transaction_tipo_valid",
+                violation_error_message="Tipo de operación inválido.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(fecha_vencimiento__isnull=True)
+                | models.Q(fecha_vencimiento__gte=models.F("fecha")),
+                name="transaction_vencimiento_gte_fecha",
+                violation_error_message="El vencimiento no puede ser anterior a la fecha.",
+            ),
         ]
 
     def __str__(self) -> str:
         """Representación: tipo+monto+concepto."""
         return f"{self.get_tipo_display()} {self.monto} {self.moneda} · {self.concepto or '—'}"
+
+    def soft_delete(self) -> "Transaction":
+        """Soft-delete (C4): oculta la operación de la API sin perder historial.
+
+        El registro permanece en BD (visible solo con ``all_objects``) para
+        auditoría; si el flujo lo requiere, la billetera ya fue revertida por
+        el caller antes de invocar esto.
+        """
+        self.is_deleted = True
+        self.save(update_fields=["is_deleted", "updated_at"])
+        return self
 
     # ------------------------------------------------------------------
     # Propiedades de negocio

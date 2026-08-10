@@ -33,6 +33,13 @@ class ChatMessage(OwnedModel):
         verbose_name = "Mensaje del chat"
         verbose_name_plural = "Mensajes del chat"
         ordering = ["created_at"]
+        indexes = [
+            # Patrón real: historial de una sesión por usuario (AUDIT A9).
+            models.Index(
+                fields=["user", "session_id", "created_at"],
+                name="chat_user_session_created_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Representación: rol + recorte del contenido."""

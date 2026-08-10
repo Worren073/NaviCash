@@ -74,8 +74,19 @@ def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
     elif is_confirmation(message) and pending:
         if pending.get("step") == "confirm":
             # Transferencia esperando el «sí» explícito → se ejecuta.
-            text = _execute_transfer(user, pending, session_id)
-            cache.delete(pending_key)
+            # Idempotencia (AUDIT C2): con gunicorn multi-worker dos «sí»
+            # concurrentes podrían ejecutar la transferencia dos veces.
+            # cache.add es atómico (SET NX): solo el primer worker obtiene el
+            # lock de 60 s y ejecuta; los demás responden sin tocar la BD.
+            lock_key = f"{pending_key}:executing"
+            if not cache.add(lock_key, 1, 60):
+                text = "Estoy procesando tu confirmación, un momento"
+            else:
+                try:
+                    text = _execute_transfer(user, pending, session_id)
+                finally:
+                    cache.delete(pending_key)
+                    cache.delete(lock_key)
         else:
             # Respuesta a una pregunta de datos faltantes: intenta completar
             # («sí, fue en Banesco»); si no aporta datos, se repite la pregunta.

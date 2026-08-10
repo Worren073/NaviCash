@@ -59,6 +59,10 @@
   --color-status-delayed: #f43f5e;
   --color-status-warning: #fbbf24;
 
+  /* Texto de estados (contraste AA sobre superficies claras, M11) */
+  --color-income-text: #15803d;
+  --color-delayed-text: #be123c;
+
   /* Errores */
   --color-error: #ffb4ab;
   --color-on-error: #ffffff;

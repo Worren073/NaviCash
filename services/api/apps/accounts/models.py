@@ -1,4 +1,4 @@
-"""models — Modelos de ``accounts``: User y EmailVerification.
+"""models — Modelos de ``accounts``: User, EmailVerification y PasswordResetToken.
 
 ``User`` es el modelo de autenticación del proyecto (``AUTH_USER_MODEL``).
 Los usuarios se registran con email+contraseña y permanecen inactivos hasta
@@ -10,6 +10,7 @@ viven en este modelo (ver PLAN: RF-04/05/25, ADR-10).
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import timedelta
 
@@ -126,7 +127,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 class EmailVerification(models.Model):
     """Token único de verificación de email.
 
-    - ``token``: string aleatorio seguro, de un solo uso.
+    - ``token``: hash sha256 del token aleatorio (nunca se guarda el plano,
+      solo se devuelve al crearlo para enviarlo por correo) — AUDIT M13.
     - ``expires_at``: caducidad (por defecto 24 h, configurable).
     - Al verificar, se activa ``user.is_active`` y se marca el token como usado.
     """
@@ -147,6 +149,20 @@ class EmailVerification(models.Model):
         """Representación: email del usuario y si está usado."""
         return f"Verificación de {self.user.email} (usado={self.used})"
 
+    @staticmethod
+    def hash_token(value: str) -> str:
+        """Devuelve el hash sha256 del token plano (lo que se guarda en BD)."""
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    @property
+    def plain_token(self) -> str:
+        """Token plano en memoria (solo disponible justo tras crearlo).
+
+        En BD solo existe el hash; este valor en memoria permite enviar el
+        correo/URL con el token legible sin persistirlo nunca.
+        """
+        return getattr(self, "_plain_token", "")
+
     @classmethod
     def create_for_user(cls, user: User) -> "EmailVerification":
         """Crea (o renueva) el token de verificación del usuario.
@@ -155,20 +171,93 @@ class EmailVerification(models.Model):
             user: usuario recién registrado (is_active=False).
 
         Returns:
-            Instancia de ``EmailVerification`` persistida con token fresco.
+            Instancia de ``EmailVerification`` persistida con el hash del token
+            fresco; el token plano queda disponible en ``instance.plain_token``.
         """
         hours = getattr(settings, "VERIFICATION_TOKEN_HOURS", 24)
         cls.objects.filter(user=user).delete()
-        return cls.objects.create(
+        plain = secrets.token_urlsafe(32)
+        verification = cls.objects.create(
             user=user,
-            token=secrets.token_urlsafe(32),
+            token=cls.hash_token(plain),
             expires_at=timezone.now() + timedelta(hours=hours),
         )
+        verification._plain_token = plain
+        return verification
 
     def is_valid(self) -> bool:
         """Comprueba que el token no esté usado ni caducado.
 
         Returns:
             True si puede utilizarse para activar la cuenta.
+        """
+        return not self.used and self.expires_at > timezone.now()
+
+
+class PasswordResetToken(models.Model):
+    """Token one-time de recuperación de contraseña (M13).
+
+    - ``token``: hash sha256 del token aleatorio (el plano solo viaja por
+      correo en la URL de reset).
+    - ``expires_at``: caducidad de 30 minutos por defecto.
+    - Al usarlo en ``reset-password`` se marca ``used=True`` (one-time).
+    """
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="reset_token",
+        verbose_name="Usuario",
+    )
+    token = models.CharField(max_length=64, unique=True, verbose_name="Token")
+    expires_at = models.DateTimeField(verbose_name="Expira el")
+    used = models.BooleanField(default=False, verbose_name="Usado")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Creado el")
+
+    class Meta:
+        verbose_name = "Token de recuperación"
+        verbose_name_plural = "Tokens de recuperación"
+
+    def __str__(self) -> str:
+        """Representación: email del usuario y si está usado."""
+        return f"Reset de {self.user.email} (usado={self.used})"
+
+    @staticmethod
+    def hash_token(value: str) -> str:
+        """Devuelve el hash sha256 del token plano (lo que se guarda en BD)."""
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    @property
+    def plain_token(self) -> str:
+        """Token plano en memoria (solo disponible justo tras crearlo)."""
+        return getattr(self, "_plain_token", "")
+
+    @classmethod
+    def create_for_user(cls, user: User) -> "PasswordResetToken":
+        """Crea (o renueva) el token de recuperación del usuario.
+
+        Args:
+            user: usuario que solicita recuperar su contraseña.
+
+        Returns:
+            Instancia persistida con el hash del token fresco; el plano queda
+            en ``instance.plain_token`` (para el correo con el enlace).
+        """
+        minutes = getattr(settings, "PASSWORD_RESET_TOKEN_MINUTES", 30)
+        cls.objects.filter(user=user).delete()
+        plain = secrets.token_urlsafe(32)
+        reset = cls.objects.create(
+            user=user,
+            token=cls.hash_token(plain),
+            expires_at=timezone.now() + timedelta(minutes=minutes),
+        )
+        reset._plain_token = plain
+        return reset
+
+    def is_valid(self) -> bool:
+        """Comprueba que el token no esté usado ni caducado.
+
+        Returns:
+            True si todavía puede utilizarse para restablecer la contraseña.
         """
         return not self.used and self.expires_at > timezone.now()

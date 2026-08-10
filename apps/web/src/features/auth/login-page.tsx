@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { LogIn } from "lucide-react";
 
-import { api, ApiErrorClass, setAccessToken } from "@/lib/api";
+import { api, ApiErrorClass, consumeSessionExpired, setAccessToken } from "@/lib/api";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,12 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // A11 — aviso global de sesión expirada (flag consumido desde api.ts).
+  useEffect(() => {
+    if (consumeSessionExpired()) setNotice(t("auth.sessionExpired"));
+  }, [t]);
 
   const login = useMutation({
     mutationFn: () =>
@@ -43,6 +49,7 @@ export default function LoginPage() {
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
+          setNotice(null);
           login.mutate();
         }}
       >
@@ -71,6 +78,18 @@ export default function LoginPage() {
             required
           />
         </div>
+
+        <div className="flex justify-end">
+          <Link to="/forgot-password" className="text-sm font-medium text-primary underline">
+            {t("auth.forgotPassword")}
+          </Link>
+        </div>
+
+        {notice && (
+          <p className="rounded-lg bg-income/10 px-3 py-2 text-sm text-income-text" role="status">
+            {notice}
+          </p>
+        )}
 
         {error && (
           <p className="rounded-lg bg-error-container/60 px-3 py-2 text-sm text-on-error-container">

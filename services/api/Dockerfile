@@ -26,8 +26,13 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # Copiamos el código del proyecto.
 COPY . .
 
-# Puerto expuesto por el runserver de desarrollo.
+# Puerto de la API.
 EXPOSE 8000
 
-# Comando por defecto (se puede sobrescribir desde docker-compose o Render).
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Comando por defecto controlado por DEBUG (AUDIT M7):
+#   - DEBUG=1  -> runserver con autoreload (desarrollo local).
+#   - DEBUG=0  -> gunicorn multi-worker listo para producción (3 workers,
+#                 timeout 60 s para el LLM del asistente sin matar workers).
+# docker-compose de desarrollo sobre-escribe el comando (ver infra/), esta
+# lógica aplica a la imagen base / despliegues prod tipo Render.
+CMD ["sh", "-c", "if [ \"$DEBUG\" = \"1\" ]; then python manage.py runserver 0.0.0.0:8000; else gunicorn config.wsgi --bind 0.0.0.0:8000 --workers 3 --timeout 60; fi"]

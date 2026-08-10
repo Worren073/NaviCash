@@ -20,27 +20,29 @@ export const queryKeys = {
 export function useOverview() {
   return useQuery({
     queryKey: queryKeys.overview,
-    queryFn: () => api.get<Overview>("/overview"),
+    queryFn: ({ signal }) => api.get<Overview>("/overview", { signal }),
   });
 }
 
 export function useWallets() {
   return useQuery({
     queryKey: queryKeys.wallets,
-    queryFn: () => api.get<{ results: Wallet[] }>("/wallets").then((d) => d.results),
+    queryFn: ({ signal }) =>
+      api.get<{ results: Wallet[] }>("/wallets", { signal }).then((d) => d.results),
   });
 }
 
 export function useNotifications() {
   return useQuery({
     queryKey: queryKeys.notifications,
-    queryFn: () => api.get<NotificationsResponse>("/notifications"),
+    queryFn: ({ signal }) => api.get<NotificationsResponse>("/notifications", { signal }),
   });
 }
 
 export function useSubscriptions() {
   return useQuery({
     queryKey: queryKeys.subscriptions,
-    queryFn: () => api.get<{ results: Subscription[] }>("/subscriptions").then((d) => d.results),
+    queryFn: ({ signal }) =>
+      api.get<{ results: Subscription[] }>("/subscriptions", { signal }).then((d) => d.results),
   });
 }

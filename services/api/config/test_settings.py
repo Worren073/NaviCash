@@ -7,7 +7,14 @@
 - AUTH_PASSWORD_VALIDATORS vacío para facilitar la creación de usuarios.
 """
 
-from .settings import *  # noqa: F401,F403
+import os
+
+# Forzamos DEBUG=1 ANTES de importar ``settings``: el fail-fast de producción
+# (AUDIT A2) rechaza secretos vacíos/de desarrollo cuando DEBUG=False, y esta
+# suite corre en ese modo por diseño (DEBUG=True más abajo para debug_token).
+os.environ["DEBUG"] = "1"
+
+from .settings import *  # noqa: F401,F403,E402
 
 # ---------------------------------------------------------------------------
 # Sobre-escribimos solo lo necesario para un entorno de prueba hermético.

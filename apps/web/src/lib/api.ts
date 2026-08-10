@@ -2,7 +2,10 @@
 //
 // - Access token JWT en memoria (nunca en localStorage).
 // - Refresh en cookie httpOnly: se reintenta una vez si el access expira.
+// - Timeout por defecto de 10s (AbortSignal.timeout) en requests sin signal.
 // - Errores normalizados a { message, fieldErrors?, code? }.
+// - Si el refresh falla para una petición autenticada se notifica a un
+//   listener global (A11): la app hace logout limpio y navega al login.
 
 export interface ApiError {
   message: string;
@@ -28,6 +31,8 @@ const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
 let accessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
+let sessionExpiredListener: (() => void) | null = null;
+let sessionExpiredFlag = false;
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
@@ -35,6 +40,29 @@ export function setAccessToken(token: string | null) {
 
 export function getAccessToken() {
   return accessToken;
+}
+
+/**
+ * Registra el listener global de sesión expirada. Devuelve un unsubscribe.
+ * Se invoca cuando el refresh falla para una petición autenticada.
+ */
+export function onSessionExpired(handler: () => void) {
+  sessionExpiredListener = handler;
+  return () => {
+    if (sessionExpiredListener === handler) sessionExpiredListener = null;
+  };
+}
+
+/** Lee y consume el flag de "sesión expirada" (para avisar en el login). */
+export function consumeSessionExpired(): boolean {
+  const expired = sessionExpiredFlag;
+  sessionExpiredFlag = false;
+  return expired;
+}
+
+function notifySessionExpired() {
+  sessionExpiredFlag = true;
+  sessionExpiredListener?.();
 }
 
 interface RequestOptions extends Omit<RequestInit, "body"> {
@@ -84,8 +112,11 @@ function normalizeError(status: number, payload: unknown): ApiError {
   return { message: `Error inesperado (${status}).` };
 }
 
+const DEFAULT_TIMEOUT_MS = 10_000;
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, skipAuth = false, headers, ...rest } = options;
+  const { body, skipAuth = false, signal, headers, ...rest } = options;
+  const fetchSignal = signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
 
   const doFetch = async (): Promise<Response> => {
     const finalHeaders: Record<string, string> = {
@@ -101,16 +132,23 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       ...rest,
       credentials: "include",
       headers: finalHeaders,
+      signal: fetchSignal,
       body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
     });
   };
 
   let resp = await doFetch();
 
-  // Access expirado: reintentar una vez tras refrescar.
+  // Access expirado: reintentar una vez tras refrescar. Si el refresh falla
+  // en una petición autenticada, la sesión murió: notificar al listener (A11).
   if (resp.status === 401 && !skipAuth) {
+    const hadAuth = Boolean(accessToken);
     const ok = await tryRefresh();
-    if (ok) resp = await doFetch();
+    if (ok) {
+      resp = await doFetch();
+    } else if (hadAuth) {
+      notifySessionExpired();
+    }
   }
 
   if (resp.status === 204) return undefined as T;
@@ -134,5 +172,17 @@ export const api = {
   delete: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "DELETE" }),
 };
+
+export function forgotPassword(email: string) {
+  return api.post<{ detail: string }>("/auth/forgot-password", { email });
+}
+
+export function resetPassword(token: string, email: string, newPassword: string) {
+  return api.post<{ detail: string }>("/auth/reset-password", {
+    token,
+    email,
+    new_password: newPassword,
+  });
+}
 
 export { BASE_URL };

@@ -30,7 +30,9 @@ class TestNotifications:
     def test_generates_overdue(self, api_client) -> None:
         """Una operación vencida y sin pagar genera 'overdue'."""
         TransactionFactory(
-            user=api_client.user, fecha_vencimiento=date.today() - timedelta(days=1)
+            user=api_client.user,
+            fecha=date.today() - timedelta(days=5),
+            fecha_vencimiento=date.today() - timedelta(days=1),
         )
         resp = api_client.get(self.URL)
         kinds = {n["kind"] for n in resp.data["results"]}
@@ -99,3 +101,60 @@ class TestNotifications:
         resp = api_client.get(self.URL)
         assert resp.status_code == 200
         assert resp.data["unread_count"] == 0
+
+    def test_bulk_creates_missing_in_single_pass(self, api_client, django_assert_num_queries) -> None:
+        """La regeneración crea las faltantes en UNA pasada (A8), sin
+        exists()/create() por fila."""
+        from apps.notifications.services import refresh_notifications
+
+        for _ in range(3):
+            TransactionFactory(
+                user=api_client.user,
+                fecha=date.today() - timedelta(days=5),
+                fecha_vencimiento=date.today() - timedelta(days=1),
+            )
+        with django_assert_num_queries(5):
+            refresh_notifications(api_client.user)
+        assert (
+            Notification.objects.filter(user=api_client.user, kind="overdue").count()
+            == 3
+        )
+
+    def test_purge_notifications_command(self, api_client) -> None:
+        """purge_notifications borra solo leídas antiguas (M5)."""
+        from datetime import timedelta
+
+        from django.core.management import call_command
+        from django.utils import timezone
+
+        def _old_read(kind: str, ref: str) -> Notification:
+            n = Notification.objects.create(
+                user=api_client.user, kind=kind, read=True, title=ref, message="a",
+                extra={"ref": ref},
+            )
+            Notification.objects.filter(pk=n.pk).update(
+                created_at=timezone.now() - timedelta(days=120)
+            )
+            return n
+
+        _old_read(kind="system", ref="vieja-1")
+        _old_read(kind="system", ref="vieja-2")
+        # Reciente leída: NO se borra.
+        Notification.objects.create(
+            user=api_client.user, kind="system", read=True, title="reciente",
+            message="c", extra={"ref": "reciente"},
+        )
+        # Antigua NO leída: NO se borra.
+        old_unread = Notification.objects.create(
+            user=api_client.user, kind="system", read=False, title="sin leer",
+            message="d", extra={"ref": "sin-leer"},
+        )
+        Notification.objects.filter(pk=old_unread.pk).update(
+            created_at=timezone.now() - timedelta(days=120)
+        )
+
+        call_command("purge_notifications", "--days", "90")
+        remaining = list(
+            Notification.objects.filter(user=api_client.user).values_list("extra__ref", flat=True)
+        )
+        assert sorted(remaining) == ["reciente", "sin-leer"]

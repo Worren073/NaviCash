@@ -33,6 +33,7 @@ export function Segmented<T extends string>({
           <button
             key={opt.value}
             type="button"
+            aria-pressed={active}
             onClick={() => onChange(opt.value)}
             className={cn(
               "relative flex-1 rounded-full font-medium transition-colors",

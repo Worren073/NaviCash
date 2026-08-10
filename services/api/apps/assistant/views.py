@@ -22,6 +22,9 @@ from apps.assistant.serializers import (
 )
 from apps.assistant.services import chat
 
+#: Límite duro del historial (M4): se devuelven como máximo estos mensajes.
+HISTORY_LIMIT = 50
+
 
 class UserScopedRateThrottle(ScopedRateThrottle):
     """Rate limit por usuario autenticado (no por IP) para el scope.
@@ -66,13 +69,22 @@ class ChatHistoryView(GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request) -> Response:
-        """Devuelve los mensajes persistidos de la sesión indicada (del usuario)."""
+        """Devuelve los últimos ``HISTORY_LIMIT`` mensajes en orden cronológico.
+
+        M4: el historial se lee con límite duro (50); se ordena DESC para
+        tomar los más recientes y se invierte para que el cliente los reciba
+        cronológicos. La paginación formal se hará en una iteración posterior.
+        """
         session_id = request.query_params.get("session_id")
         if not session_id:
             return Response(
                 {"detail": "session_id es obligatorio para ver el historial."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        rows = ChatMessage.objects.filter(user=request.user, session_id=session_id)
+        rows = list(
+            ChatMessage.objects.filter(user=request.user, session_id=session_id)
+            .order_by("-created_at")[:HISTORY_LIMIT]
+        )
+        rows.reverse()
         serializer = self.get_serializer(rows, many=True)
         return Response(serializer.data)

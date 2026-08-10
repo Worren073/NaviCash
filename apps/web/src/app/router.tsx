@@ -1,19 +1,24 @@
-import { Navigate, Outlet, createBrowserRouter } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { Navigate, Outlet, createBrowserRouter, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 
 import AppLayout from "@/app/layout";
-import DashboardPage from "@/features/dashboard/dashboard-page";
-import WalletsPage from "@/features/wallets/wallets-page";
-import NewOperationPage from "@/features/transactions/new-operation-page";
-import TransactionsPage from "@/features/transactions/transactions-page";
-import SavingsPage from "@/features/savings/savings-page";
-import SubscriptionsPage from "@/features/subscriptions/subscriptions-page";
-import ProfilePage from "@/features/profile/profile-page";
-import LoginPage from "@/features/auth/login-page";
-import RegisterPage from "@/features/auth/register-page";
-import VerifyPage from "@/features/auth/verify-page";
-import { api, getAccessToken } from "@/lib/api";
+import { api, getAccessToken, onSessionExpired, setAccessToken } from "@/lib/api";
 import { Splash } from "@/components/ui/blur-loading";
+
+// M10 — code splitting: cada página se carga bajo demanda.
+const DashboardPage = lazy(() => import("@/features/dashboard/dashboard-page"));
+const WalletsPage = lazy(() => import("@/features/wallets/wallets-page"));
+const NewOperationPage = lazy(() => import("@/features/transactions/new-operation-page"));
+const TransactionsPage = lazy(() => import("@/features/transactions/transactions-page"));
+const SavingsPage = lazy(() => import("@/features/savings/savings-page"));
+const SubscriptionsPage = lazy(() => import("@/features/subscriptions/subscriptions-page"));
+const ProfilePage = lazy(() => import("@/features/profile/profile-page"));
+const LoginPage = lazy(() => import("@/features/auth/login-page"));
+const RegisterPage = lazy(() => import("@/features/auth/register-page"));
+const VerifyPage = lazy(() => import("@/features/auth/verify-page"));
+const ForgotPasswordPage = lazy(() => import("@/features/auth/forgot-password-page"));
+const ResetPasswordPage = lazy(() => import("@/features/auth/reset-password-page"));
 
 /**
  * Guard de sesión: comprueba si hay una sesión válida (access en memoria o
@@ -48,35 +53,71 @@ function RequireAuth() {
   return <Outlet />;
 }
 
+/**
+ * Escucha global de sesión expirada (A11): cuando el refresh falla hace un
+ * logout limpio (access en memoria + caché de react-query) y navega al login.
+ */
+function SessionExpiryHandler() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const handleSessionExpired = useCallback(() => {
+    setAccessToken(null);
+    queryClient.clear();
+    navigate("/login", { replace: true });
+  }, [navigate, queryClient]);
+
+  useEffect(() => onSessionExpired(handleSessionExpired), [handleSessionExpired]);
+
+  return (
+    <Suspense fallback={<Splash />}>
+      <Outlet />
+    </Suspense>
+  );
+}
+
 export const router = createBrowserRouter([
   {
-    path: "/login",
-    element: <LoginPage />,
-  },
-  {
-    path: "/register",
-    element: <RegisterPage />,
-  },
-  {
-    path: "/verify",
-    element: <VerifyPage />,
-  },
-  {
-    element: <RequireAuth />,
+    element: <SessionExpiryHandler />,
     children: [
       {
-        element: <AppLayout />,
+        path: "/login",
+        element: <LoginPage />,
+      },
+      {
+        path: "/register",
+        element: <RegisterPage />,
+      },
+      {
+        path: "/verify",
+        element: <VerifyPage />,
+      },
+      {
+        path: "/forgot-password",
+        element: <ForgotPasswordPage />,
+      },
+      {
+        path: "/reset-password",
+        element: <ResetPasswordPage />,
+      },
+      {
+        element: <RequireAuth />,
         children: [
-          { path: "/", element: <DashboardPage /> },
-          { path: "/wallets", element: <WalletsPage /> },
-          { path: "/transactions", element: <TransactionsPage /> },
-          { path: "/savings", element: <SavingsPage /> },
-          { path: "/subscriptions", element: <SubscriptionsPage /> },
-          { path: "/profile", element: <ProfilePage /> },
+          {
+            element: <AppLayout />,
+            children: [
+              { path: "/", element: <DashboardPage /> },
+              { path: "/wallets", element: <WalletsPage /> },
+              { path: "/transactions", element: <TransactionsPage /> },
+              { path: "/savings", element: <SavingsPage /> },
+              { path: "/subscriptions", element: <SubscriptionsPage /> },
+              { path: "/profile", element: <ProfilePage /> },
+            ],
+          },
+          { path: "/operations/new", element: <NewOperationPage /> },
         ],
       },
-      { path: "/operations/new", element: <NewOperationPage /> },
+      { path: "*", element: <Navigate to="/" replace /> },
     ],
   },
-  { path: "*", element: <Navigate to="/" replace /> },
 ]);

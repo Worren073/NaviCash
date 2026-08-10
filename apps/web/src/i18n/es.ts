@@ -151,6 +151,19 @@ export default {
     termsModalTitle: "Términos y Condiciones",
     termsModalHint: "Desplázate hasta el final para aceptar",
     captchaHint: "Completa el CAPTCHA para continuar",
+    forgotPassword: "¿Olvidaste tu contraseña?",
+    forgotTitle: "Recuperar contraseña",
+    forgotHint: "Escribe tu correo y te enviaremos un enlace para restablecerla.",
+    forgotSubmit: "Enviar enlace",
+    forgotSuccess:
+      "Si el correo existe, te enviamos un enlace para restablecer tu contraseña.",
+    forgotEmailInvalid: "Ingresa un correo válido.",
+    forgotBackToLogin: "Volver a iniciar sesión",
+    resetTitle: "Nueva contraseña",
+    resetHint: "Elige una nueva contraseña para tu cuenta.",
+    resetSubmit: "Restablecer contraseña",
+    resetInvalidLink: "Este enlace es inválido o expiró. Solicita uno nuevo.",
+    sessionExpired: "Tu sesión expiró, inicia sesión de nuevo",
   },
   menu: {
     title: "Menú",
@@ -166,10 +179,13 @@ export default {
     name: "Navi",
     online: "En línea",
     openChat: "Abrir chat con Navi",
+    typing: "Escribiendo",
     placeholder: "Pregúntale a Navi…",
     send: "Enviar",
+    disclaimer:
+      "Navi es un asistente con IA, no un asesor financiero: puede cometer errores. Verifica la información importante con tus cuentas y fuentes oficiales.",
     greeting:
-      "¡Hola! Soy Navi, tu asistente financiero. Pregúntame por tu saldo, lo que tienes por cobrar o pagar, tus vencimientos, metas de ahorro o mensualidades.",
+      "¡Hola! Soy Navi, tu ayudante de finanzas. Pregúntame por tu saldo, lo que tienes por cobrar o pagar, tus vencimientos, metas de ahorro o mensualidades. Recuerda que no soy asesor financiero y puedo fallar.",
     noData: "Aún no tengo datos cargados. Vuelve a intentarlo en un momento.",
     balanceReply: "Tu saldo total es {{total}}:\n",
     toReceiveReply: "Tienes {{amount}} por cobrar ({{count}} cobros pendientes).",
@@ -274,5 +290,6 @@ export default {
     emailExists: "Ya existe una cuenta con este correo.",
     invalidCredentials: "Correo o contraseña incorrectos.",
     invalidToken: "Código de verificación inválido o expirado.",
+    crash: "Algo salió mal en la aplicación. Recarga la página para continuar.",
   },
 } as const;

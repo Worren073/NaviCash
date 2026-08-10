@@ -16,12 +16,26 @@ from rest_framework.exceptions import AuthenticationFailed
 
 from apps.accounts.captcha import verify_turnstile
 from apps.accounts.emails import send_verification_email
-from apps.accounts.models import EmailVerification, User
+from apps.accounts.models import EmailVerification, PasswordResetToken, User
 from apps.core.currency import CURRENCY_CHOICES
 from django.core.validators import validate_email
 
 #: Teléfono aceptable: opcional '+', dígitos y separadores comunes.
 PHONE_RE = re.compile(r"^\+?[\d\s()-]{7,20}$")
+
+
+def validate_password_strength(value: str) -> str:
+    """Fuerza contraseña: ≥ 8 caracteres, al menos una letra y un número.
+
+    Regla compartida por registro y recuperación/cambio de contraseña.
+    """
+    if len(value) < 8:
+        raise serializers.ValidationError("La contraseña debe tener al menos 8 caracteres.")
+    if not re.search(r"[A-Za-záéíóúÁÉÍÓÚñü]", value):
+        raise serializers.ValidationError("La contraseña debe incluir al menos una letra.")
+    if not re.search(r"\d", value):
+        raise serializers.ValidationError("La contraseña debe incluir al menos un número.")
+    return value
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -114,11 +128,20 @@ class RegisterSerializer(serializers.Serializer):
     )
 
     def validate_email(self, value: str) -> str:
-        """Comprueba que el email no esté ya registrado."""
+        """Comprueba que el email no esté ya registrado.
+
+        Anti-enumeración (AUDIT B5): en vez de fallar con "ya existe", se
+        marca la duplicidad para que la vista responda igual que el éxito
+        (mensaje genérico). El flag queda en ``email_already_registered``.
+        """
         validate_email(value)
-        if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("Ya existe una cuenta con este correo.")
+        self._email_exists = User.objects.filter(email__iexact=value).exists()
         return value.lower()
+
+    @property
+    def email_already_registered(self) -> bool:
+        """True si el email del payload ya pertenece a otra cuenta (B5)."""
+        return bool(getattr(self, "_email_exists", False))
 
     def validate_first_name(self, value: str) -> str:
         """El nombre (si viene) solo admite letras y espacios."""
@@ -141,14 +164,8 @@ class RegisterSerializer(serializers.Serializer):
         return value
 
     def validate_password(self, value: str) -> str:
-        """Fuerza contraseña: ≥ 8 caracteres, al menos una letra y un número."""
-        if len(value) < 8:
-            raise serializers.ValidationError("La contraseña debe tener al menos 8 caracteres.")
-        if not re.search(r"[A-Za-záéíóúÁÉÍÓÚñü]", value):
-            raise serializers.ValidationError("La contraseña debe incluir al menos una letra.")
-        if not re.search(r"\d", value):
-            raise serializers.ValidationError("La contraseña debe incluir al menos un número.")
-        return value
+        """Aplica la regla común de fortaleza de contraseña."""
+        return validate_password_strength(value)
 
     def validate_accepted_terms(self, value: bool) -> bool:
         """La aceptación de los términos es obligatoria."""
@@ -188,9 +205,11 @@ class VerifyEmailSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=64, write_only=True)
 
     def validate_token(self, value: str) -> str:
-        """Busca el token y comprueba validez (no usado y no caducado)."""
+        """Busca el token por su hash y comprueba validez (no usado ni caduco)."""
         try:
-            verification = EmailVerification.objects.select_related("user").get(token=value)
+            verification = EmailVerification.objects.select_related("user").get(
+                token=EmailVerification.hash_token(value)
+            )
         except EmailVerification.DoesNotExist:
             raise serializers.ValidationError("Token inválido.")
         if not verification.is_valid():
@@ -204,7 +223,7 @@ class VerifyEmailSerializer(serializers.Serializer):
             El usuario recién verificado (is_active=True).
         """
         verification = EmailVerification.objects.select_related("user").get(
-            token=self.validated_data["token"]
+            token=EmailVerification.hash_token(self.validated_data["token"])
         )
         verification.used = True
         verification.save(update_fields=["used"])
@@ -240,3 +259,95 @@ class LoginSerializer(serializers.Serializer):
             )
         attrs["user"] = user
         return attrs
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    """Solicita el enlace de recuperación de contraseña.
+
+    Solo valida el formato del email: la existencia de la cuenta NO se expone
+    (la vista responde siempre lo mismo — AUDIT B5).
+    """
+
+    email = serializers.EmailField(max_length=255)
+
+    def validate_email(self, value: str) -> str:
+        """Normaliza el email a minúsculas."""
+        return value.lower()
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    """Restablece la contraseña con el token del correo (one-time, M13)."""
+
+    token = serializers.CharField(max_length=64, write_only=True)
+    password = serializers.CharField(max_length=128, write_only=True)
+
+    def validate_token(self, value: str) -> str:
+        """Busca el token por su hash y comprueba validez (no usado ni caduco)."""
+        try:
+            reset = PasswordResetToken.objects.select_related("user").get(
+                token=PasswordResetToken.hash_token(value)
+            )
+        except PasswordResetToken.DoesNotExist:
+            raise serializers.ValidationError("Enlace inválido o ya utilizado.")
+        if not reset.is_valid():
+            raise serializers.ValidationError("El enlace caducó o ya fue utilizado.")
+        return value
+
+    def validate_password(self, value: str) -> str:
+        """Aplica la regla común de fortaleza de contraseña."""
+        return validate_password_strength(value)
+
+    def save(self) -> User:
+        """Cambia la contraseña e invalida el token (one-time).
+
+        No autentica al usuario: tras el reset debe iniciar sesión con la
+        nueva contraseña (la vista revoca su familia de refresh).
+
+        Returns:
+            El usuario con la contraseña actualizada.
+        """
+        reset = PasswordResetToken.objects.select_related("user").get(
+            token=PasswordResetToken.hash_token(self.validated_data["token"])
+        )
+        user = reset.user
+        user.set_password(self.validated_data["password"])
+        user.save(update_fields=["password"])
+        reset.used = True
+        reset.save(update_fields=["used"])
+        return user
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Cambia la contraseña del usuario autenticado (verifica la actual)."""
+
+    current_password = serializers.CharField(max_length=128, write_only=True)
+    new_password = serializers.CharField(max_length=128, write_only=True)
+
+    def __init__(self, *args, **kwargs):
+        """Acepta el usuario autenticado vía ``user=`` para verificar la actual."""
+        self.user = kwargs.pop("user", None)
+        super().__init__(*args, **kwargs)
+
+    def validate_current_password(self, value: str) -> str:
+        """Comprueba que la contraseña actual sea correcta."""
+        if self.user is None or not self.user.check_password(value):
+            raise serializers.ValidationError("La contraseña actual es incorrecta.")
+        return value
+
+    def validate_new_password(self, value: str) -> str:
+        """Aplica la regla común de fortaleza de contraseña."""
+        return validate_password_strength(value)
+
+    def validate(self, attrs: dict) -> dict:
+        """La nueva contraseña debe diferir de la actual."""
+        if attrs["current_password"] == attrs["new_password"]:
+            raise serializers.ValidationError(
+                "La nueva contraseña debe ser distinta de la actual."
+            )
+        return attrs
+
+    def save(self) -> User:
+        """Cambia la contraseña del usuario (la vista revoca la familia JWT)."""
+        self.user.set_password(self.validated_data["new_password"])
+        self.user.save(update_fields=["password"])
+        return self.user

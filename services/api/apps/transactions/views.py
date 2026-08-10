@@ -40,7 +40,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         """
         qs = (
             Transaction.objects.filter(user=self.request.user)
-            .select_related("wallet", "category", "contact")
+            .select_related("wallet", "category", "contact", "dest_wallet")
             .order_by("-fecha", "-created_at")
         )
 
@@ -87,8 +87,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
         super().perform_update(serializer)
 
     def perform_destroy(self, instance: Transaction) -> None:
-        """Elimina la operación revirtiendo la billetera si estaba pagada.
+        """Soft-delete de la operación revirtiendo la billetera si estaba pagada.
 
+        C4: el historial financiero nunca se borra físicamente: la operación
+        se marca ``is_deleted`` y desaparece de la API (manager ``objects``).
         Se ejecuta en una transacción atómica para no dejar el saldo a medias
         (R9). Si revertir fallara (saldo insuficiente), la eliminación aborta.
         """
@@ -96,7 +98,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             if instance.estado == "pagado":
                 _apply_to_wallet(instance, reverse=True)
-            instance.delete()
+            instance.soft_delete()
 
     @action(detail=True, methods=["post"])
     def state(self, request, pk=None):

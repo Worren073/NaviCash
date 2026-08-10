@@ -70,7 +70,7 @@ function TxRow({ tx }: { tx: Transaction }) {
         </div>
       </div>
       <div className="text-right">
-        <div className={`text-sm font-semibold ${isIncome ? "text-income" : "text-on-surface"}`}>
+        <div className={`text-sm font-semibold ${isIncome ? "text-income-text" : "text-on-surface"}`}>
           {sign}
           {formatMoney(tx.monto, tx.moneda, { symbol: true })}
         </div>
@@ -185,9 +185,9 @@ export default function DashboardPage() {
         >
           <div className="flex items-start justify-between">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-income/20">
-              <ArrowDown className="h-4 w-4 text-income" />
+              <ArrowDown className="h-4 w-4 text-income-text" />
             </div>
-            <span className="rounded-full bg-income/10 px-2 py-0.5 text-xs font-semibold text-income">
+            <span className="rounded-full bg-income/10 px-2 py-0.5 text-xs font-semibold text-income-text">
               {t("common.toCollect")}
             </span>
           </div>
@@ -243,9 +243,9 @@ export default function DashboardPage() {
       >
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-status-delayed/20">
-            <TriangleAlert className="h-3.5 w-3.5 text-status-delayed" />
+            <TriangleAlert className="h-3.5 w-3.5 text-delayed-text" />
           </div>
-          <span className="text-sm text-status-delayed">{t("common.delayed")}</span>
+          <span className="text-sm text-delayed-text">{t("common.delayed")}</span>
         </div>
         {isLoading ? (
           <Skeleton className="h-5 w-14" />

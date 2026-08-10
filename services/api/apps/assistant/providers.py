@@ -26,7 +26,11 @@ logger = logging.getLogger(__name__)
 
 #: Sistema: rol que NAVI toma frente al usuario. Se inyecta en cada llamada.
 SYSTEM_PROMPT = (
-    "Eres Navi, asistente financiero personal de una app llamada NaviCash. "
+    "Eres Navi, ayudante personal de gestión de finanzas de una app llamada "
+    "NaviCash. NO eres un asesor financiero ni un experto en inversiones: "
+    "declara tu naturaleza de IA (puedes equivocarte) cuando el usuario pida "
+    "consejos, proyecciones o decisiones de inversión, y recomienda verificar "
+    "la información con fuentes oficiales. "
     "Respondes SOLO en español, directo y amable, usando exclusivamente los "
     "datos del contexto que se te entregan. Nunca inventes cifras ni datos que "
     "no estén en el contexto; si el usuario pide algo que no sabes, indícalo y "
@@ -118,7 +122,10 @@ class OpenAIProvider:
             "temperature": 0.3,
         }
 
-        response = httpx.post(url, headers=headers, json=payload, timeout=60)
+        # Timeout acotado (A5): la llamada al LLM nunca cuelga el worker más de
+        # 25 s; el fallback determinista de services.py cubre cualquier error.
+        with httpx.Client(timeout=httpx.Timeout(25.0)) as client:
+            response = client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"].strip()

@@ -26,6 +26,7 @@ from apps.core.currency import (
     round_money,
     usd_to_currency,
 )
+from apps.core.exceptions import BusinessRuleError
 from apps.core.models import OwnedModel
 from apps.rates.service import get_current_official_rate
 
@@ -61,10 +62,27 @@ class SavingsGoal(OwnedModel):
         verbose_name = "Meta de ahorro"
         verbose_name_plural = "Metas de ahorro"
         ordering = ["created_at"]
+        indexes = [
+            # A9: listado/mis-metas (filter por user, orden por created_at).
+            models.Index(fields=["user", "created_at"]),
+        ]
 
     def __str__(self) -> str:
         """Representación: nombre (objetivo)."""
         return f"{self.name} ({self.target_amount} {self.currency})"
+
+    def delete(self, using=None, keep_parents=False):
+        """Bloquea el borrado de metas con aportes (C4: PROTECT amable).
+
+        El FK ``GoalContribution.goal`` es PROTECT a nivel de motor; este
+        check en la instancia traduce el ``ProtectedError`` en un error de
+        negocio legible para la API (400) antes de llegar a la BD.
+        """
+        if self.contributions.exists():
+            raise BusinessRuleError(
+                "La meta tiene aportes registrados y no puede borrarse."
+            )
+        return super().delete(using=using, keep_parents=keep_parents)
 
     @property
     def linked_accounts_balance(self) -> Decimal:
@@ -124,9 +142,10 @@ class GoalContribution(OwnedModel):
 
     goal = models.ForeignKey(
         SavingsGoal,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="contributions",
         verbose_name="Meta",
+        help_text="PROTECT (C4): una meta con aportes nunca se borra en cascada; el historial de aportes es permanente.",
     )
     amount = models.DecimalField(max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Aporte")
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, verbose_name="Moneda")
@@ -150,6 +169,19 @@ class GoalContribution(OwnedModel):
         verbose_name = "Aporte"
         verbose_name_plural = "Aportes"
         ordering = ["-created_at"]
+        indexes = [
+            # A9: lista de aportes de una meta (siempre ordenada por -created_at).
+            models.Index(fields=["goal", "-created_at"]),
+        ]
+        constraints = [
+            # A10: los aportes son montos positivos (la API ya valida; esto
+            # es el respaldo a nivel de motor).
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="goalcontribution_amount_gt_0",
+                violation_error_message="El aporte debe ser mayor a cero.",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Representación: cantidad a la meta."""

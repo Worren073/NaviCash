@@ -99,7 +99,7 @@ function TxCard({ tx }: { tx: Transaction }) {
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <div className={`text-sm font-semibold ${isIncome ? "text-income" : "text-on-surface"}`}>
+        <div className={`text-sm font-semibold ${isIncome ? "text-income-text" : "text-on-surface"}`}>
           {isTransfer
             ? formatMoney(tx.monto, tx.moneda, { symbol: true })
             : `${isIncome ? "+" : "-"}${formatMoney(tx.monto, tx.moneda, { symbol: true })}`}
@@ -135,7 +135,7 @@ function TxCard({ tx }: { tx: Transaction }) {
             </Button>
           </div>
         )}
-        {error && <span className="text-xs text-status-delayed">{error}</span>}
+        {error && <span className="text-xs text-delayed-text">{error}</span>}
       </div>
     </div>
   );

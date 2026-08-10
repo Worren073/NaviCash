@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useQuery } from "@tanstack/react-query";
@@ -39,10 +39,12 @@ export function useAssistant() {
   const subscriptions = useSubscriptions();
   const { data: goals } = useQuery({
     queryKey: queryKeys.savings,
-    queryFn: () => api.get<{ results: SavingsGoal[] }>("/savings").then((d) => d.results),
+    queryFn: ({ signal }) =>
+      api.get<{ results: SavingsGoal[] }>("/savings", { signal }).then((d) => d.results),
   });
 
   const sessionIdRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([
     { id: uid(), role: "assistant", text: t("assistant.greeting") },
   ]);
@@ -132,31 +134,50 @@ export function useAssistant() {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || thinking) return;
+      abortRef.current = new AbortController();
       setMessages((prev) => [...prev, { id: uid(), role: "user", text: trimmed }]);
       setThinking(true);
 
       try {
-        const reply = await api.post<AssistantReply>("/assistant/messages", {
-          message: trimmed,
-          ...(sessionIdRef.current ? { session_id: sessionIdRef.current } : {}),
-        });
+        const reply = await api.post<AssistantReply>(
+          "/assistant/messages",
+          {
+            message: trimmed,
+            ...(sessionIdRef.current ? { session_id: sessionIdRef.current } : {}),
+          },
+          { signal: abortRef.current.signal }
+        );
         sessionIdRef.current = reply.session_id;
         setMessages((prev) => [...prev, { id: uid(), role: "assistant", text: reply.text }]);
-      } catch {
+      } catch (err) {
+        // Abortado (cierre del chat/voz) o timeout: no responder.
+        if (abortRef.current?.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         // Fallback local: sin red, rate limit o error del servidor.
         await sleep(600);
+        if (abortRef.current?.signal.aborted) return;
         setMessages((prev) => [...prev, { id: uid(), role: "assistant", text: answer(trimmed) }]);
       } finally {
+        abortRef.current = null;
         setThinking(false);
       }
     },
     [answer, thinking],
   );
 
+  // A12 — abortar cualquier petición en curso al desmontar el hook.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  /** Aborta la petición en curso (p. ej. al cerrar el overlay de voz). */
+  const abort = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   const reset = useCallback(() => {
     sessionIdRef.current = null;
+    abort();
     setMessages([{ id: uid(), role: "assistant", text: t("assistant.greeting") }]);
-  }, [t]);
+  }, [abort, t]);
 
-  return { messages, thinking, send, reset };
+  return { messages, thinking, send, reset, abort };
 }
