@@ -1,33 +1,30 @@
 # render.yaml — Blueprint de Render para NaviCash (despliegue "todo en Render").
 # -----------------------------------------------------------------------------
 # Crea de una vez: Web Service (API Django) + Static Site (frontend PWA) +
-# PostgreSQL + Redis + Cron Jobs (tasas y estados "retrasados").
+# Render Postgres + Render Key Value (Redis) + Cron Jobs (tasas y "retrasados").
 #
-# Los valores marcados con `sync: false` son secretos/URLs que debes rellenar
-# en el dashboard de Render tras el despliegue (ver docs/STACK.md §5). El
-# orden recomendado: crea el Static Site primero para conocer su URL y usarla
-# en CORS_ALLOWED_ORIGINS / APP_BASE_URL / VITE_API_URL.
+# - Con `rootDir`, todos los paths y comandos son RELATIVOS a esa raíz
+#   (dockerfilePath, dockerContext, staticPublishPath, buildCommand, startCommand).
+# - Los valores con `sync: false` se piden en el dashboard al crear el Blueprint.
 # -----------------------------------------------------------------------------
 
 databases:
+  # Render Postgres: los campos `type`/`version` NO existen aquí.
+  # El tipo se infiere; la versión se fija con `postgresMajorVersion`.
   - name: navicash-db
-    type: postgres
     databaseName: navicash
     user: navicash
     plan: free
-    version: "17"
-
-  - name: navicash-redis
-    type: redis
-    plan: starter
+    postgresMajorVersion: "17"
 
 services:
-  # ============================ API (Django) ===============================
+  # ============================ API (Django, Docker) ========================
   - name: navicash-api
     type: web
     runtime: docker
     rootDir: services/api
     dockerfilePath: Dockerfile
+    dockerContext: .
     plan: free
     envVars:
       - key: DEBUG
@@ -59,8 +56,9 @@ services:
       - key: DJANGO_DB_SSLMODE
         value: require
       - key: REDIS_URL
-        fromDatabase:
+        fromService:
           name: navicash-redis
+          type: keyvalue
           property: connectionString
       - key: CORS_ALLOWED_ORIGINS
         sync: false
@@ -99,9 +97,10 @@ services:
       - key: TERMS_VERSION
         value: v1-2026-08
 
-  # ====================== Frontend / PWA (estático) =========================
+  # ====================== Frontend / PWA (estático) ==========================
   - name: navicash-web
     type: web
+    runtime: static
     rootDir: apps/web
     buildCommand: npm run build
     staticPublishPath: dist
@@ -111,14 +110,25 @@ services:
       - key: VITE_CAPTCHA_SITE_KEY
         sync: false
 
-  # ============================ Cron Jobs ===================================
+  # ===================== Render Key Value (Redis / caché) ====================
+  # Key Value se define en `services` (no en `databases`, que es solo Postgres).
+  # `ipAllowList` es obligatorio; vacío = solo conexiones internas (la API lo
+  # usa por la red privada). `plan: free` es válido para Key Value.
+  - name: navicash-redis
+    type: keyvalue
+    ipAllowList: []
+    plan: free
+
+  # ============================ Cron Jobs ====================================
+  # Cron: campo `startCommand` (no existe `command`). `plan` no puede ser free
+  # en cron (usa starter por defecto si se omite).
   - name: navicash-cron-rates
     type: cron
-    schedule: "0 6 * * *"
-    runtime: docker
+    runtime: python
     rootDir: services/api
-    dockerfilePath: Dockerfile
-    command: python manage.py refresh_rates
+    schedule: "0 6 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py refresh_rates
     envVars: &api_env
       - key: DEBUG
         value: "0"
@@ -149,8 +159,9 @@ services:
       - key: DJANGO_DB_SSLMODE
         value: require
       - key: REDIS_URL
-        fromDatabase:
+        fromService:
           name: navicash-redis
+          type: keyvalue
           property: connectionString
       - key: DJANGO_SECRET_KEY
         sync: false
@@ -161,9 +172,9 @@ services:
 
   - name: navicash-cron-overdue
     type: cron
-    schedule: "30 * * * *"
-    runtime: docker
+    runtime: python
     rootDir: services/api
-    dockerfilePath: Dockerfile
-    command: python manage.py recalc_overdue
+    schedule: "30 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py recalc_overdue
     envVars: *api_env
