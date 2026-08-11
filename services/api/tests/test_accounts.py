@@ -462,3 +462,65 @@ class TestPasswordRecovery:
             {"current_password": "x", "new_password": "clave-nueva-123"},
         )
         assert resp.status_code == 401
+
+
+@pytest.mark.django_db
+class TestAcceptTerms:
+    """Endpoint POST /api/auth/accept-terms (re-aceptación de términos)."""
+
+    URL = "/api/auth/accept-terms"
+
+    def test_requires_authentication(self) -> None:
+        """Sin access token, accept-terms responde 401."""
+        from rest_framework.test import APIClient
+
+        resp = APIClient().post(self.URL, {"accepted": True})
+        assert resp.status_code == 401
+
+    def test_accepts_and_persists_current_version(self, api_client) -> None:
+        """Aceptar guarda la fecha y la versión vigente del servidor."""
+        from django.conf import settings
+
+        user = api_client.user
+        user.accepted_terms_version = "v0-obsoleta"
+        user.accepted_terms_at = None
+        user.save(update_fields=["accepted_terms_version", "accepted_terms_at"])
+
+        resp = api_client.post(self.URL, {"accepted": True})
+        assert resp.status_code == 200
+        assert resp.data["accepted_terms_version"] == settings.TERMS_VERSION
+        assert resp.data["accepted_terms_at"] is not None
+
+        user.refresh_from_db()
+        assert user.accepted_terms_version == settings.TERMS_VERSION
+        assert user.accepted_terms_at is not None
+
+    def test_rejects_false(self, api_client) -> None:
+        """``accepted=False`` se rechaza; no se registra aceptación."""
+        user = api_client.user
+        user.accepted_terms_version = "v0-obsoleta"
+        user.accepted_terms_at = None
+        user.save(update_fields=["accepted_terms_version", "accepted_terms_at"])
+
+        resp = api_client.post(self.URL, {"accepted": False})
+        assert resp.status_code == 400
+        assert "accepted" in resp.data["errors"]
+
+        user.refresh_from_db()
+        assert user.accepted_terms_version == "v0-obsoleta"
+        assert user.accepted_terms_at is None
+
+    def test_rejects_inactive_account(self, api_client) -> None:
+        """Una cuenta sin email verificado no puede aceptar términos.
+
+        SimpleJWT rechaza la autenticación de usuarios inactivos en la capa de
+        ``IsAuthenticated``, así que la petición se deniega con 401 antes de
+        llegar al serializer: es la salvaguarda correcta y mantiene el estado
+        original intacto.
+        """
+        user = api_client.user
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+
+        resp = api_client.post(self.URL, {"accepted": True})
+        assert resp.status_code == 401

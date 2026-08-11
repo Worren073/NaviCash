@@ -16,7 +16,7 @@ from rest_framework.exceptions import AuthenticationFailed
 
 from apps.accounts.captcha import verify_turnstile
 from apps.accounts.emails import send_verification_email
-from apps.accounts.models import EmailVerification, PasswordResetToken, User
+from apps.accounts.models import EmailVerification, LegalDocument, PasswordResetToken, User
 from apps.core.currency import CURRENCY_CHOICES
 from django.core.validators import validate_email
 
@@ -351,3 +351,56 @@ class ChangePasswordSerializer(serializers.Serializer):
         self.user.set_password(self.validated_data["new_password"])
         self.user.save(update_fields=["password"])
         return self.user
+
+
+class LegalDocumentSerializer(serializers.ModelSerializer):
+    """Serializador de documentos legales (términos, privacidad)."""
+
+    class Meta:
+        model = LegalDocument
+        fields = [
+            "id",
+            "doc_type",
+            "version",
+            "title",
+            "content",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "effective_at",
+        ]
+        read_only_fields = fields
+
+
+class AcceptTermsSerializer(serializers.Serializer):
+    """Registra la (re)aceptación de los Términos y Condiciones vigentes.
+
+    Status 400 si el usuario todavía no ha verificado su correo (``is_active``
+    False). No se recibe ningún dato del cliente: la aceptación se repliega
+    siempre sobre la versión activa del servidor (``settings.TERMS_VERSION``).
+    """
+
+    accepted = serializers.BooleanField(required=True)
+
+    def validate_accepted(self, value: bool) -> bool:
+        """La (re)aceptación debe llegar explícitamente en ``True``."""
+        if value is not True:
+            raise serializers.ValidationError("Debes aceptar los términos y condiciones.")
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        """Requiere una cuenta activa; las cuentas sin email verificado no pueden aceptar."""
+        user = self.context.get("request").user if self.context else None
+        if user is not None and not user.is_active:
+            raise serializers.ValidationError(
+                {"detail": "Debes verificar tu correo electrónico para continuar."}
+            )
+        return attrs
+
+    def save(self, **kwargs):
+        """Fija la fecha y versión de aceptación con la versión vigente del servidor."""
+        user = self.context["request"].user
+        user.accepted_terms_at = timezone.now()
+        user.accepted_terms_version = settings.TERMS_VERSION
+        user.save(update_fields=["accepted_terms_at", "accepted_terms_version"])
+        return user

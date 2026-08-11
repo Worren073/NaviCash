@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { UserPlus } from "lucide-react";
@@ -9,14 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldHint } from "@/components/ui/field-hint";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import LegalAcceptanceDialog from "@/features/legal/legal-acceptance-dialog";
 
 const CAPTCHA_SITE_KEY = import.meta.env.VITE_CAPTCHA_SITE_KEY as string | undefined;
 
@@ -36,45 +29,10 @@ declare global {
 function passwordRules(pw: string) {
   return {
     length: pw.length >= 8,
-    letter: /[A-Za-záéíóúÁÉÍÓÚñü]/.test(pw),
+    letter: /[A-Za-zÃ¡Ã©Ã­Ã³ÃºÃÃ‰ÃÃ“ÃšÃ±Ã¼]/.test(pw),
     number: /\d/.test(pw),
   };
 }
-
-const TERMS_SECTIONS = [
-  {
-    title: "1. Servicio",
-    body: "NaviCash es una herramienta de registro y seguimiento de tus finanzas personales. No almacenamos tus fondos ni realizamos movimientos de dinero: solo registras tus cobros y pagos para organizarte mejor.",
-  },
-  {
-    title: "2. Cuenta",
-    body: "Eres responsable de mantener confidenciales tu correo y contraseña. Aceptas recibir correos de verificación y notificaciones de vencimientos. Si detectas un uso no autorizado de tu cuenta, debes notificarnos de inmediato.",
-  },
-  {
-    title: "3. Uso permitido",
-    body: "Te comprometes a usar NaviCash únicamente con fines legales y legítimos. Queda prohibido su uso para actividades fraudulentas, lavado de dinero o cualquier actividad ilegal. Nos reservamos el derecho de suspender cuentas que incumplan estos términos.",
-  },
-  {
-    title: "4. Datos y privacidad",
-    body: "Tus datos (transacciones, saldos, contactos) son privados y solo se usan para ofrecerte el servicio. No vendemos ni compartimos tu información con terceros, salvo obligación legal. Puedes solicitar la eliminación de tu cuenta y de tus datos en cualquier momento.",
-  },
-  {
-    title: "5. Disponibilidad",
-    body: "El servicio se ofrece tal cual, sin garantías de disponibilidad ininterrumpida. Podemos introducir cambios, interrupciones por mantenimiento o suspender el servicio con aviso previo razonable.",
-  },
-  {
-    title: "6. Limitación de responsabilidad",
-    body: "NaviCash no es responsable de errores de cálculo, decisiones financieras tomadas con base en la información registrada, ni de daños indirectos derivados del uso del servicio. Los valores de la tasa BCV mostrados son referenciales.",
-  },
-  {
-    title: "7. Modificaciones",
-    body: "Podremos actualizar estos términos. Los cambios relevantes se te notificarán por correo, y la continuación del uso del servicio implicará la aceptación de la nueva versión, que quedará registrada en tu perfil.",
-  },
-  {
-    title: "8. Contacto",
-    body: "Para cualquier duda sobre estos términos o el tratamiento de tus datos, puedes escribirnos a soporte@navicash.app.",
-  },
-];
 
 export default function RegisterPage() {
   const { t } = useTranslation();
@@ -88,7 +46,6 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
-  const [termsScrolled, setTermsScrolled] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -329,44 +286,14 @@ export default function RegisterPage() {
         </p>
       </form>
 
-      <Dialog open={termsOpen} onOpenChange={setTermsOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{t("auth.termsModalTitle")}</DialogTitle>
-            <DialogDescription>{t("auth.termsModalHint")}</DialogDescription>
-          </DialogHeader>
-
-          <div
-            className="max-h-[55dvh] space-y-4 overflow-y-auto pr-1"
-            onScroll={(e) => {
-              const el = e.currentTarget;
-              if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) {
-                setTermsScrolled(true);
-              }
-            }}
-          >
-            {TERMS_SECTIONS.map((section) => (
-              <section key={section.title}>
-                <h3 className="mb-1 font-semibold text-on-surface">{section.title}</h3>
-                <p className="text-sm leading-relaxed text-on-surface-variant">{section.body}</p>
-              </section>
-            ))}
-          </div>
-
-          <DialogFooter>
-            <Button
-              className="w-full"
-              disabled={!termsScrolled}
-              onClick={() => {
-                setTermsAccepted(true);
-                setTermsOpen(false);
-              }}
-            >
-              {t("auth.termsAccept")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LegalAcceptanceDialog
+        open={termsOpen}
+        onOpenChange={setTermsOpen}
+        onAccept={() => {
+          setTermsAccepted(true);
+          setTermsOpen(false);
+        }}
+      />
     </div>
   );
 }

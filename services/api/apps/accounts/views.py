@@ -22,10 +22,12 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.emails import send_password_reset_email
-from apps.accounts.models import PasswordResetToken, User
+from apps.accounts.models import LegalDocument, PasswordResetToken, User
 from apps.accounts.serializers import (
+    AcceptTermsSerializer,
     ChangePasswordSerializer,
     ForgotPasswordSerializer,
+    LegalDocumentSerializer,
     LoginSerializer,
     RegisterSerializer,
     ResetPasswordSerializer,
@@ -305,3 +307,87 @@ class MeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(UserSerializer(request.user).data)
+
+
+class LegalDocumentListView(APIView):
+    """Lista los documentos legales activos (términos, privacidad).
+
+    Público: no requiere autenticación. Devuelve la versión activa de cada tipo.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "assistant"
+
+    def get(self, request):
+        docs = LegalDocument.objects.filter(is_active=True).order_by("doc_type")
+        serializer = LegalDocumentSerializer(docs, many=True)
+        return Response(serializer.data)
+
+
+class LegalDocumentDetailView(APIView):
+    """Detalle de un documento legal específico (versión activa por tipo).
+
+    Público: no requiere autenticación. El ``doc_type`` viene en la URL.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "assistant"
+
+    def get(self, request, doc_type: str):
+        doc = LegalDocument.objects.filter(doc_type=doc_type, is_active=True).first()
+        if not doc:
+            return Response(
+                {"detail": "Documento no encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = LegalDocumentSerializer(doc)
+        return Response(serializer.data)
+
+
+class UserLegalAcceptanceView(APIView):
+    """Historial de aceptación de términos del usuario autenticado.
+
+    Devuelve cuándo y qué versión aceptó el usuario al registrarse.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response(
+            {
+                "accepted_terms_at": user.accepted_terms_at,
+                "accepted_terms_version": user.accepted_terms_version,
+                "current_terms_version": settings.TERMS_VERSION,
+                "needs_reacceptance": user.accepted_terms_version != settings.TERMS_VERSION,
+            }
+        )
+
+
+class AcceptTermsView(APIView):
+    """Registra la (re)aceptación de los Términos vigentes por parte del usuario.
+
+    Autenticado. La versión aceptada siempre es la activa del servidor
+    (``settings.TERMS_VERSION``); el cliente no puede enviar una versión a medida,
+    evitando forjar aceptaciones de versiones anteriores (A6).
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "register"
+
+    def post(self, request):
+        serializer = AcceptTermsSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        user = request.user
+        return Response(
+            {
+                "detail": "Términos y condiciones aceptados.",
+                "accepted_terms_at": user.accepted_terms_at,
+                "accepted_terms_version": user.accepted_terms_version,
+            },
+            status=status.HTTP_200_OK,
+        )

@@ -19,14 +19,18 @@ Recuperación de contraseña (M13):
 """
 
 from apps.accounts.views import (  # noqa: F401
+    AcceptTermsView,
     ChangePasswordView,
     ForgotPasswordView,
+    LegalDocumentDetailView,
+    LegalDocumentListView,
     LoginView,
     LogoutView,
     MeView,
     RefreshView,
     RegisterView,
     ResetPasswordView,
+    UserLegalAcceptanceView,
     VerifyEmailView,
 )
 from django.urls import path
@@ -41,4 +45,10 @@ urlpatterns = [
     path("auth/reset-password", ResetPasswordView.as_view(), name="auth-reset-password"),
     path("auth/change-password", ChangePasswordView.as_view(), name="auth-change-password"),
     path("auth/me", MeView.as_view(), name="auth-me"),
+    # Documentos legales (públicos)
+    path("legal", LegalDocumentListView.as_view(), name="legal-list"),
+    path("legal/<str:doc_type>", LegalDocumentDetailView.as_view(), name="legal-detail"),
+    # Aceptación de términos del usuario
+    path("auth/legal-acceptance", UserLegalAcceptanceView.as_view(), name="auth-legal-acceptance"),
+    path("auth/accept-terms", AcceptTermsView.as_view(), name="auth-accept-terms"),
 ]

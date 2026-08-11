@@ -261,3 +261,66 @@ class PasswordResetToken(models.Model):
             True si todavía puede utilizarse para restablecer la contraseña.
         """
         return not self.used and self.expires_at > timezone.now()
+
+
+class LegalDocument(models.Model):
+    """Documentos legales con versionado: Términos, Privacidad, etc.
+
+    Cada versión se guarda como registro independiente. La versión «activa»
+    es la más reciente (por ``created_at``) de cada ``doc_type``.
+    """
+
+    class DocType(models.TextChoices):
+        TERMS = "terms", "Términos y Condiciones"
+        PRIVACY = "privacy", "Política de Privacidad"
+
+    doc_type = models.CharField(
+        max_length=20,
+        choices=DocType.choices,
+        verbose_name="Tipo de documento",
+    )
+    version = models.CharField(
+        max_length=30,
+        verbose_name="Versión",
+        help_text="Ej. v1-2026-08",
+    )
+    title = models.CharField(max_length=200, verbose_name="Título")
+    content = models.TextField(verbose_name="Contenido (Markdown)")
+    is_active = models.BooleanField(
+        default=False,
+        verbose_name="Activa",
+        help_text="Solo una versión por tipo puede estar activa a la vez.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Creada el")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Actualizada el")
+    effective_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Vigente desde",
+        help_text="Fecha desde la que aplica esta versión. Si no se indica, se usa created_at.",
+    )
+
+    class Meta:
+        verbose_name = "Documento legal"
+        verbose_name_plural = "Documentos legales"
+        ordering = ["doc_type", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["doc_type"],
+                condition=models.Q(is_active=True),
+                name="unique_active_legal_doc_per_type",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_doc_type_display()} {self.version}"
+
+    @classmethod
+    def get_active(cls, doc_type: str) -> "LegalDocument | None":
+        """Devuelve la versión activa de un tipo de documento."""
+        return cls.objects.filter(doc_type=doc_type, is_active=True).first()
+
+    @classmethod
+    def get_latest(cls, doc_type: str) -> "LegalDocument | None":
+        """Devuelve la versión más reciente (por created_at) de un tipo."""
+        return cls.objects.filter(doc_type=doc_type).order_by("-created_at").first()

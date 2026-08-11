@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogoutIcon, SaveIcon } from "@/components/icons";
+import { LogoutIcon, SaveIcon, ListIcon, CheckedIcon } from "@/components/icons";
 
 import { api, ApiErrorClass, setAccessToken } from "@/lib/api";
 import { queryKeys } from "@/hooks/use-queries";
@@ -10,7 +10,35 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import LegalAcceptanceDialog from "@/features/legal/legal-acceptance-dialog";
+import { renderLegalMarkdown } from "@/features/legal/render-legal";
 import type { User } from "@/lib/types";
+
+interface LegalDocument {
+  id: string;
+  doc_type: "terms" | "privacy";
+  version: string;
+  title: string;
+  content: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  effective_at: string | null;
+}
+
+interface LegalAcceptance {
+  accepted_terms_at: string | null;
+  accepted_terms_version: string;
+  current_terms_version: string;
+  needs_reacceptance: boolean;
+}
 
 export default function ProfilePage() {
   const { t } = useTranslation();
@@ -21,6 +49,21 @@ export default function ProfilePage() {
     queryKey: queryKeys.me,
     queryFn: () => api.get<User>("/auth/me"),
   });
+
+  const { data: legalDocs } = useQuery({
+    queryKey: ["legal", "documents"],
+    queryFn: () => api.get<LegalDocument[]>("/legal"),
+  });
+
+  const { data: legalAcceptance } = useQuery({
+    queryKey: ["legal", "acceptance"],
+    queryFn: () => api.get<LegalAcceptance>("/auth/legal-acceptance"),
+    enabled: !!me,
+  });
+
+  const [docDialogOpen, setDocDialogOpen] = useState(false);
+  const [activeDoc, setActiveDoc] = useState<LegalDocument | null>(null);
+  const [termsOpen, setTermsOpen] = useState(false);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -56,7 +99,7 @@ export default function ProfilePage() {
     },
   });
 
-useEffect(() => {
+  useEffect(() => {
     if (me) {
       setFirstName(me.first_name ?? "");
       setLastName(me.last_name ?? "");
@@ -65,16 +108,47 @@ useEffect(() => {
     }
   }, [me]);
 
-  return (
-    <div className="mt-4 space-y-6">
-      <h2 className="text-3xl font-bold text-on-surface">{t("profile.title")}</h2>
+  const openDoc = (doc: LegalDocument) => {
+    setActiveDoc(doc);
+    setDocDialogOpen(true);
+  };
 
-      {!me ? (
-        <Skeleton className="h-40 w-full" />
-      ) : (
-        <>
-          <form
-            className="glass-panel space-y-4 rounded-2xl p-5"
+  const acceptTerms = useMutation({
+    mutationFn: () =>
+      api.post<{
+        accepted_terms_at: string;
+        accepted_terms_version: string;
+      }>("/auth/accept-terms", { accepted: true }),
+    onSuccess: () => {
+      setTermsOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["legal", "acceptance"] });
+    },
+    onError: (err) => {
+      setError(
+        err instanceof ApiErrorClass ? err.message : t("errors.generic")
+      );
+    },
+  });
+
+  if (!me) {
+    return (
+      <>
+        <div className="mt-4 space-y-6">
+          <h2 className="text-3xl font-bold text-on-surface">{t("profile.title")}</h2>
+          <div className="h-40 w-full">
+            <Skeleton className="h-full w-full" />
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="mt-4 space-y-6">
+        <h2 className="text-3xl font-bold text-on-surface">{t("profile.title")}</h2>
+        <form
+          className="glass-panel space-y-4 rounded-2xl p-5"
             onSubmit={(e) => {
               e.preventDefault();
               setSaved(false);
@@ -150,6 +224,101 @@ useEffect(() => {
             </Button>
           </form>
 
+          {/* Sección Legal */}
+          <section className="glass-panel space-y-4 rounded-2xl p-5">
+            <h3 className="text-lg font-semibold text-on-surface flex items-center gap-2">
+              <ListIcon className="h-5 w-5" />
+              {t("profile.legalTitle")}
+            </h3>
+
+            {legalDocs && (
+              <div className="space-y-3">
+                {legalDocs.map((doc) => (
+                  <article
+                    key={doc.id}
+                    className="glass-panel-elevated rounded-xl p-4 border border-glass-border"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="font-semibold text-on-surface">{doc.title}</h4>
+                          <span
+                            className="px-3 py-1 text-sm rounded-full bg-primary/10 text-primary font-medium whitespace-nowrap shrink-0"
+                          >
+                            v{doc.version}
+                          </span>
+                          {legalAcceptance?.needs_reacceptance && doc.doc_type === "terms" && (
+                            <span className="flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-black whitespace-nowrap shrink-0">
+                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                              {t("profile.legalUpdateRequired")}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm text-on-surface-variant">
+                          {t("profile.legalEffective")} {new Date(doc.effective_at ?? doc.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openDoc(doc)}
+                        className="shrink-0"
+                      >
+                        <ListIcon className="h-4 w-4 mr-1" />
+                        {t("profile.legalView")}
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {legalAcceptance && (
+              <div className="pt-4 border-t border-glass-border">
+                <h4 className="font-medium text-on-surface mb-3">{t("profile.legalAcceptanceTitle")}</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">{t("profile.legalAcceptedAt")}</span>
+                    <span className="text-on-surface font-medium">
+                      {legalAcceptance.accepted_terms_at
+                        ? new Date(legalAcceptance.accepted_terms_at).toLocaleDateString()
+                        : t("profile.legalNotAccepted")}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">{t("profile.legalAcceptedVersion")}</span>
+                    <span className="text-on-surface font-medium">
+                      {legalAcceptance.accepted_terms_version || "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">{t("profile.legalCurrentVersion")}</span>
+                    <span className="text-on-surface font-medium">{legalAcceptance.current_terms_version}</span>
+                  </div>
+{legalAcceptance.needs_reacceptance && (
+                    <div className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3">
+                      <p className="flex items-center gap-2 text-sm font-medium text-black">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-yellow-100">
+                          <CheckedIcon className="h-4 w-4" />
+                        </span>
+                        {t("profile.legalReacceptRequired")}
+                      </p>
+                      <Button
+                        className="mt-3 w-full"
+                        onClick={() => setTermsOpen(true)}
+                        disabled={acceptTerms.isPending}
+                      >
+                        {acceptTerms.isPending
+                          ? t("common.loading")
+                          : t("profile.legalAcceptNow")}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+
           <Button
             variant="outline"
             className="w-full text-status-delayed"
@@ -158,8 +327,35 @@ useEffect(() => {
           >
             <LogoutIcon size={16} /> {logout.isPending ? t("common.loading") : t("auth.logout")}
           </Button>
-        </>
-      )}
-    </div>
+      </div>
+
+      <Dialog open={docDialogOpen} onOpenChange={setDocDialogOpen}>
+        {activeDoc && (
+          <DialogContent className="sm:max-w-2xl max-h-[80dvh]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between">
+                <span>{activeDoc.title}</span>
+                <span className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary">
+                  v{activeDoc.version}
+                </span>
+              </DialogTitle>
+              <DialogDescription>
+                {t("profile.legalEffective")} {new Date(activeDoc.effective_at ?? activeDoc.created_at).toLocaleDateString()}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[55dvh] overflow-y-auto pr-1 prose prose-sm max-w-none text-on-surface-variant">
+              {renderLegalMarkdown(activeDoc.content)}
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      <LegalAcceptanceDialog
+        open={termsOpen}
+        onOpenChange={setTermsOpen}
+        onAccept={() => acceptTerms.mutate()}
+        needsReacceptance={Boolean(legalAcceptance?.needs_reacceptance)}
+      />
+    </>
   );
 }

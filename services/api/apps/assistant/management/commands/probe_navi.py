@@ -14,6 +14,7 @@ import os
 import uuid
 
 import httpx
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -72,6 +73,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         from apps.accounts.models import User
         from apps.transactions.models import Transaction
+
+        # Herramienta exclusiva de desarrollo: nunca crea cuentas de prueba ni
+        # contacta endpoints en producción (evita abrirse en una BD real).
+        if not settings.DEBUG and not getattr(settings, "TEST", False):
+            raise CommandError(
+                "probe_navi solo puede ejecutarse en desarrollo/tests (DEBUG=True)."
+            )
 
         url = (options["url"] or os.getenv("NAVI_API_URL") or "http://localhost:8000").rstrip("/")
         user = self._resolve_user(options["user"] or "")

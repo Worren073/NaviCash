@@ -2,20 +2,26 @@ import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { LogIn } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiErrorClass, consumeSessionExpired, setAccessToken } from "@/lib/api";
-import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import LegalAcceptanceDialog from "@/features/legal/legal-acceptance-dialog";
 
 export default function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Terms acceptance modal state
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [needsReacceptance, setNeedsReacceptance] = useState(false);
 
   // A11 — aviso global de sesión expirada (flag consumido desde api.ts).
   useEffect(() => {
@@ -27,13 +33,57 @@ export default function LoginPage() {
       api.post<{ access: string }>("/auth/login", { email, password }),
     onSuccess: (data) => {
       setAccessToken(data.access);
-      navigate("/");
+      // Tras el login se comprueba si el usuario debe volver a aceptar los términos.
+      api
+        .get<{
+          needs_reacceptance: boolean;
+        }>("/auth/legal-acceptance")
+        .then((acceptance) => {
+          if (acceptance.needs_reacceptance) {
+            setNeedsReacceptance(true);
+            setTermsOpen(true);
+          } else {
+            navigate("/");
+          }
+        })
+        .catch(() => {
+          // Si no se puede consultar la aceptación, se deja entrar sin modal.
+          navigate("/");
+        });
     },
     onError: (err) => {
       if (err instanceof ApiErrorClass) setError(err.message);
       else setError(t("errors.generic"));
     },
   });
+
+  const acceptTerms = () => {
+    api
+      .post("/auth/accept-terms", { accepted: true })
+      .then(() => {
+        setTermsOpen(false);
+        void queryClient.invalidateQueries({
+          queryKey: ["legal", "acceptance"],
+        });
+        navigate("/");
+      })
+      .catch((err) => {
+        if (err instanceof ApiErrorClass) setError(err.message);
+        else setError(t("errors.generic"));
+      });
+  };
+
+  const declineTerms = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // Se ignora: el cierre de sesión local basta.
+    }
+    setAccessToken(null);
+    queryClient.clear();
+    setError(t("auth.termsDeclinedLogout"));
+    setTermsOpen(false);
+  };
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-6">
@@ -109,6 +159,19 @@ export default function LoginPage() {
           </Link>
         </p>
       </form>
+
+      <LegalAcceptanceDialog
+        open={termsOpen}
+        onOpenChange={(open) => {
+          // Si la re-aceptación es obligatoria, no se permite cerrar el modal
+          // por ESC/clic fuera: el usuario debe aceptar o rechazar (logout).
+          if (!open && needsReacceptance) return;
+          setTermsOpen(open);
+        }}
+        onAccept={acceptTerms}
+        onDecline={declineTerms}
+        needsReacceptance={needsReacceptance}
+      />
     </div>
   );
 }
