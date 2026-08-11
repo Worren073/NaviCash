@@ -102,9 +102,7 @@ services:
     type: web
     runtime: static
     rootDir: apps/web
-    # SPA fallback: tras el build, copiar index.html a spa.html para que Render
-    # sirva 200 en cualquier ruta no estática (deep-links / hard reloads).
-    buildCommand: npm run build && cp dist/index.html dist/spa.html
+    buildCommand: npm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
