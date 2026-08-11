@@ -1,7 +1,7 @@
 # render.yaml — Blueprint de Render para NaviCash (despliegue "todo en Render").
 # -----------------------------------------------------------------------------
 # Crea de una vez: Web Service (API Django) + Static Site (frontend PWA) +
-# Render Postgres + Render Key Value (Redis) + Cron Jobs (tasas y "retrasados").
+# Render Postgres + Render Key Value (Redis).
 #
 # - Con `rootDir`, todos los paths y comandos son RELATIVOS a esa raíz
 #   (dockerfilePath, dockerContext, staticPublishPath, buildCommand, startCommand).
@@ -114,67 +114,14 @@ services:
   # Key Value se define en `services` (no en `databases`, que es solo Postgres).
   # `ipAllowList` es obligatorio; vacío = solo conexiones internas (la API lo
   # usa por la red privada). `plan: free` es válido para Key Value.
+  # NOTA: si Render pidiera tarjeta por este Key Value, sustituirlo por un
+  # Redis externo gratuito (Upstash) poniendo REDIS_URL como secreto literal.
   - name: navicash-redis
     type: keyvalue
     ipAllowList: []
     plan: free
 
-  # ============================ Cron Jobs ====================================
-  # Cron: campo `startCommand` (no existe `command`). `plan` no puede ser free
-  # en cron (usa starter por defecto si se omite).
-  - name: navicash-cron-rates
-    type: cron
-    runtime: python
-    rootDir: services/api
-    schedule: "0 6 * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python manage.py refresh_rates
-    envVars: &api_env
-      - key: DEBUG
-        value: "0"
-      - key: DJANGO_ALLOWED_HOSTS
-        value: ".onrender.com"
-      - key: DJANGO_DB_ENGINE
-        value: django.db.backends.postgresql
-      - key: POSTGRES_DB
-        fromDatabase:
-          name: navicash-db
-          property: database
-      - key: POSTGRES_USER
-        fromDatabase:
-          name: navicash-db
-          property: user
-      - key: POSTGRES_PASSWORD
-        fromDatabase:
-          name: navicash-db
-          property: password
-      - key: POSTGRES_HOST
-        fromDatabase:
-          name: navicash-db
-          property: host
-      - key: POSTGRES_PORT
-        fromDatabase:
-          name: navicash-db
-          property: port
-      - key: DJANGO_DB_SSLMODE
-        value: require
-      - key: REDIS_URL
-        fromService:
-          name: navicash-redis
-          type: keyvalue
-          property: connectionString
-      - key: DJANGO_SECRET_KEY
-        sync: false
-      - key: RATE_PROVIDER
-        value: dolarapi
-      - key: RATE_TTL_MINUTES
-        value: "60"
-
-  - name: navicash-cron-overdue
-    type: cron
-    runtime: python
-    rootDir: services/api
-    schedule: "30 * * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python manage.py recalc_overdue
-    envVars: *api_env
+  # NOTA: los Cron Jobs se omiten de momento (plan `free` no aplica a cron y
+  # arrastrarían costo). Las tasas se refrescan de forma diferida al consultar
+  # y los estados "retrasados" se recalculan bajo demanda (R8). Se pueden
+  # añadir en una iteración posterior si se acepta el plan de pago.
