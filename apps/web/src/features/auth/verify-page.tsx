@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useLocation, useNavigate, Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { BadgeCheck } from "lucide-react";
@@ -19,8 +19,10 @@ export default function VerifyPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const state = (location.state ?? {}) as VerifyState;
+  const [searchParams] = useSearchParams();
+  const urlToken = searchParams.get("token") ?? "";
 
-  const [token, setToken] = useState(state.debugToken ?? "");
+  const [token, setToken] = useState(state.debugToken ?? urlToken);
   const [error, setError] = useState<string | null>(null);
 
   const verify = useMutation({
@@ -33,6 +35,17 @@ export default function VerifyPage() {
       else setError(t("errors.generic"));
     },
   });
+
+  // Si el enlace del correo trajo un token en la URL, auto-verifica al abrir.
+  const autoVerified = useRef(false);
+  useEffect(() => {
+    if (urlToken && !autoVerified.current) {
+      autoVerified.current = true;
+      setError(null);
+      verify.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlToken]);
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-6">

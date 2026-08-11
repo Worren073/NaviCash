@@ -31,7 +31,7 @@ def send_verification_email(email: str, token: str, name: str = "") -> bool:
         True si `send_mail` aceptó el envío (siempre en consola).
     """
     # En desarrollo el frontend usa este endpoint para volver el token a la app.
-    url = f"{settings.APP_BASE_URL}/verificar?token={token}"
+    url = f"{settings.APP_BASE_URL}/verify?token={token}"
     body = (
         f"Hola {name or '¡Hola!'},\n\n"
         f"Para activar tu cuenta de NaviCash haz clic en el siguiente enlace:\n{url}\n\n"
