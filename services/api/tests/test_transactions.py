@@ -39,7 +39,8 @@ class TestTransactionCreate:
 
     def test_creates_pending_with_usd_frozen(self, api_client) -> None:
         """Una operación en USD congela monto_usd = monto y tasa = 1."""
-        resp = api_client.post(self.URL, self._payload())
+        wallet = WalletFactory(user=api_client.user, currency="USD")
+        resp = api_client.post(self.URL, self._payload(wallet=str(wallet.id)))
         assert resp.status_code == 201
         body = resp.data
         assert body["estado"] == "pendiente"
@@ -183,6 +184,7 @@ class TestContactsAndCategories:
 
     def test_transaction_with_contact(self, api_client) -> None:
         """Crear una operación con contacto y categoría."""
+        wallet = WalletFactory(user=api_client.user, currency="USD")
         contact = ContactFactory(user=api_client.user)
         resp = api_client.post(
             "/api/transactions",
@@ -191,6 +193,7 @@ class TestContactsAndCategories:
                 "monto": "10.00",
                 "moneda": "USD",
                 "contact": str(contact.id),
+                "wallet": str(wallet.id),
             },
         )
         assert resp.status_code == 201

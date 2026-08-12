@@ -378,7 +378,7 @@ export default function NewOperationPage() {
               }
               create.mutate();
             }}
-            disabled={create.isPending || !monto}
+            disabled={create.isPending || !monto || !wallet}
           >
             <CheckCircle2 />
             {create.isPending ? t("common.loading") : t("addOperation.register")}
