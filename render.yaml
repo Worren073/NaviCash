@@ -73,19 +73,13 @@ services:
       - key: CAPTCHA_DEV_BYPASS
         value: "False"
       - key: DJANGO_EMAIL_BACKEND
-        value: django.core.mail.backends.smtp.EmailBackend
-      - key: DJANGO_EMAIL_HOST
-        value: smtp.gmail.com
-      - key: DJANGO_EMAIL_PORT
-        value: "465"
-      - key: DJANGO_EMAIL_HOST_USER
-        value: navicashvnz@gmail.com
-      - key: DJANGO_EMAIL_HOST_PASSWORD
+        value: django.core.mail.backends.console.EmailBackend
+      - key: BREVO_API_KEY
         sync: false
-      - key: DJANGO_EMAIL_USE_TLS
-        value: "False"
-      - key: DJANGO_EMAIL_USE_SSL
-        value: "True"
+      - key: BREVO_SENDER_EMAIL
+        value: "navicashvnz@gmail.com"
+      - key: BREVO_SENDER_NAME
+        value: "NaviCash"
       - key: DEFAULT_FROM_EMAIL
         value: "NaviCash <navicashvnz@gmail.com>"
       - key: EMAIL_TIMEOUT

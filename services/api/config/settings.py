@@ -52,6 +52,11 @@ env = environ.Env(
     DJANGO_EMAIL_USE_SSL=(bool, False),
     DEFAULT_FROM_EMAIL=(str, "NaviCash <navicashvnz@gmail.com>"),
     EMAIL_TIMEOUT=(int, 10),
+    # Brevo (API HTTP, puerto 443): envío de correos en producción. El egress
+    # SMTP (465/587) está bloqueado por red, por eso se usa la API HTTP.
+    BREVO_API_KEY=(str, ""),
+    BREVO_SENDER_EMAIL=(str, "navicashvnz@gmail.com"),
+    BREVO_SENDER_NAME=(str, "NaviCash"),
     JWT_ACCESS_MINUTES=(int, 15),
     JWT_REFRESH_DAYS=(int, 30),
     VERIFICATION_TOKEN_HOURS=(int, 24),
@@ -345,6 +350,9 @@ EMAIL_USE_TLS = env("DJANGO_EMAIL_USE_TLS")
 EMAIL_USE_SSL = env("DJANGO_EMAIL_USE_SSL")
 EMAIL_TIMEOUT = env("EMAIL_TIMEOUT")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
+BREVO_API_KEY = env("BREVO_API_KEY")
+BREVO_SENDER_EMAIL = env("BREVO_SENDER_EMAIL")
+BREVO_SENDER_NAME = env("BREVO_SENDER_NAME")
 
 # ---------------------------------------------------------------------------
 # Configuración de negocio (tasas, verificación)
