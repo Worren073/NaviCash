@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { LogIn } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +13,7 @@ import LegalAcceptanceDialog from "@/features/legal/legal-acceptance-dialog";
 export default function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,6 +28,12 @@ export default function LoginPage() {
   useEffect(() => {
     if (consumeSessionExpired()) setNotice(t("auth.sessionExpired"));
   }, [t]);
+
+  // Aviso de "cuenta creada" cuando se llega desde el registro (verificación off).
+  useEffect(() => {
+    const state = location.state as { registered?: boolean } | null;
+    if (state?.registered) setNotice(t("auth.registered"));
+  }, [location.state, t]);
 
   const login = useMutation({
     mutationFn: () =>

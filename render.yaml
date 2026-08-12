@@ -84,6 +84,8 @@ services:
         value: "NaviCash <navicashvnz@gmail.com>"
       - key: EMAIL_TIMEOUT
         value: "10"
+      - key: EMAIL_VERIFICATION_REQUIRED
+        value: "False"
       - key: RATE_PROVIDER
         value: dolarapi
       - key: RATE_TTL_MINUTES

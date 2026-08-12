@@ -167,6 +167,7 @@ export default {
     resetSubmit: "Restablecer contraseña",
     resetInvalidLink: "Este enlace es inválido o expiró. Solicita uno nuevo.",
     sessionExpired: "Tu sesión expiró, inicia sesión de nuevo",
+    registered: "Cuenta creada, inicia sesión",
     termsRequiredLogin: "Los términos han sido actualizados. Debes aceptarlos para continuar.",
     termsDeclinedLogout: "Si no aceptas los términos, se cerrará tu sesión.",
   },

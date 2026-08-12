@@ -104,17 +104,23 @@ class RegisterView(APIView):
                 serializer.validated_data.get("email", "?"),
             )
             return Response(
-                {"detail": "Revisa tu correo para continuar."},
+                {
+                    "detail": "Revisa tu correo para continuar.",
+                    "email_verification_required": settings.EMAIL_VERIFICATION_REQUIRED,
+                },
                 status=status.HTTP_201_CREATED,
             )
         user = serializer.save()
         logger.info(
-            "REGISTER_CREATED email=%s user=%s (correo de verificacion enviado)",
+            "REGISTER_CREATED email=%s user=%s",
             serializer.validated_data.get("email", "?"),
             user.id,
         )
-        payload = {"detail": "Revisa tu correo para continuar."}
-        if settings.DEBUG:
+        payload = {
+            "detail": "Revisa tu correo para continuar.",
+            "email_verification_required": settings.EMAIL_VERIFICATION_REQUIRED,
+        }
+        if settings.DEBUG and settings.EMAIL_VERIFICATION_REQUIRED:
             verification = user.verification
             payload["debug_token"] = verification.plain_token
         return Response(payload, status=status.HTTP_201_CREATED)

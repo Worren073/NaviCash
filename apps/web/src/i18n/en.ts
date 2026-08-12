@@ -167,6 +167,7 @@ export default {
     resetSubmit: "Reset password",
     resetInvalidLink: "This link is invalid or expired. Request a new one.",
     sessionExpired: "Your session expired, please log in again",
+    registered: "Account created, please log in",
   },
   menu: {
     title: "Menu",

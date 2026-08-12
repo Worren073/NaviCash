@@ -102,16 +102,25 @@ export default function RegisterPage() {
 
   const register = useMutation({
     mutationFn: () =>
-      api.post<{ detail: string; debug_token?: string }>("/auth/register", {
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        phone,
-        password,
-        accepted_terms: true,
-        captcha_token: captchaToken,
-      }),
+      api.post<{ detail: string; debug_token?: string; email_verification_required?: boolean }>(
+        "/auth/register",
+        {
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          phone,
+          password,
+          accepted_terms: true,
+          captcha_token: captchaToken,
+        }
+      ),
     onSuccess: (data) => {
+      // Si la verificación de email está desactivada, se crea la cuenta y se
+      // va directo al login con un aviso. Si está activa, se va a /verify.
+      if (data.email_verification_required === false) {
+        navigate("/login", { state: { registered: true } });
+        return;
+      }
       // En dev el backend devuelve el token para verificar sin correo real.
       navigate("/verify", { state: { debugToken: data.debug_token } });
     },

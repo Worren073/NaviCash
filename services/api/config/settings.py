@@ -57,6 +57,9 @@ env = environ.Env(
     BREVO_API_KEY=(str, ""),
     BREVO_SENDER_EMAIL=(str, "navicashvnz@gmail.com"),
     BREVO_SENDER_NAME=(str, "NaviCash"),
+    # Si False, los usuarios se crean activos sin requerir verificación de
+    # email (temporal, hasta tener dominio para Resend).
+    EMAIL_VERIFICATION_REQUIRED=(bool, True),
     JWT_ACCESS_MINUTES=(int, 15),
     JWT_REFRESH_DAYS=(int, 30),
     VERIFICATION_TOKEN_HOURS=(int, 24),
@@ -353,6 +356,7 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
 BREVO_API_KEY = env("BREVO_API_KEY")
 BREVO_SENDER_EMAIL = env("BREVO_SENDER_EMAIL")
 BREVO_SENDER_NAME = env("BREVO_SENDER_NAME")
+EMAIL_VERIFICATION_REQUIRED = env("EMAIL_VERIFICATION_REQUIRED")
 
 # ---------------------------------------------------------------------------
 # Configuración de negocio (tasas, verificación)

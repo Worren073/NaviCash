@@ -182,7 +182,13 @@ class RegisterSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data: dict) -> User:
-        """Crea el usuario inactivo y lanza el flujo de verificación."""
+        """Crea el usuario y, según la configuración, lanza la verificación.
+
+        Si ``EMAIL_VERIFICATION_REQUIRED`` es True (default) el usuario nace
+        inactivo y se envía el correo de confirmación. Si es False, nace activo
+        sin enviar correo (modo sin verificación).
+        """
+        verification_required = settings.EMAIL_VERIFICATION_REQUIRED
         user = User.objects.create_user(
             email=validated_data["email"],
             password=validated_data["password"],
@@ -190,12 +196,13 @@ class RegisterSerializer(serializers.Serializer):
             last_name=validated_data.get("last_name", ""),
             phone=validated_data.get("phone", ""),
             base_currency=validated_data.get("base_currency", "USD"),
-            is_active=False,  # Se activa al verificar el email.
+            is_active=not verification_required,  # Se activa al verificar el email.
             accepted_terms_at=timezone.now(),
             accepted_terms_version=settings.TERMS_VERSION,
         )
-        verification = EmailVerification.create_for_user(user)
-        send_verification_email(user.email, verification.token, user.name)
+        if verification_required:
+            verification = EmailVerification.create_for_user(user)
+            send_verification_email(user.email, verification.token, user.name)
         return user
 
 
