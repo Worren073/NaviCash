@@ -113,6 +113,7 @@ export default {
     typeCobro: "Cobro",
     typePago: "Pago",
     wallet: "Billetera",
+    walletRequired: "Selecciona una billetera",
     date: "Fecha",
     dueDate: "Fecha de vencimiento",
     note: "Nota",

@@ -113,6 +113,7 @@ export default {
     typeCobro: "Charge",
     typePago: "Payment",
     wallet: "Wallet",
+    walletRequired: "Select a wallet",
     date: "Date",
     dueDate: "Due date",
     note: "Note",

@@ -15,6 +15,8 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 from django.core.exceptions import ObjectDoesNotExist
+from datetime import datetime
+
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -39,6 +41,25 @@ from apps.accounts.serializers import (
     UserUpdateSerializer,
     VerifyEmailSerializer,
 )
+
+
+def _record_outstanding(user: User, refresh: RefreshToken) -> None:
+    """Registra un ``OutstandingToken`` para el refresh emitido.
+
+    La reuse-detection de ``RefreshView`` exige que el ``OutstandingToken`` del
+    refresh exista. ``RefreshToken.for_user`` no lo crea por sí solo en estos
+    flujos manuales, así que se registra aquí tanto en login como en rotación.
+    """
+    OutstandingToken.objects.get_or_create(
+        jti=refresh["jti"],
+        defaults={
+            "user": user,
+            "token": str(refresh),
+            "expires_at": datetime.fromtimestamp(
+                refresh["exp"], tz=timezone.get_current_timezone()
+            ),
+        },
+    )
 
 
 def _set_refresh_cookie(response: Response, token: RefreshToken) -> Response:
@@ -145,6 +166,7 @@ class LoginView(APIView):
         user = serializer.validated_data["user"]
 
         refresh = RefreshToken.for_user(user)
+        _record_outstanding(user, refresh)
         response = Response(
             {
                 "access": str(refresh.access_token),
@@ -189,6 +211,7 @@ class RefreshView(APIView):
                 raise TokenError("Sesión revocada.")
             refresh.blacklist()
             new_refresh = RefreshToken.for_user(user)
+            _record_outstanding(user, new_refresh)
         except (ObjectDoesNotExist, KeyError, TokenError):
             return Response(
                 {"detail": "Sesión inválida o expirada."},

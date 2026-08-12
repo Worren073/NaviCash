@@ -111,6 +111,10 @@ class TransactionWriteSerializer(serializers.ModelSerializer):
     def validate(self, attrs: dict) -> dict:
         """Valida coherencia entre billetera, moneda y fechas."""
         wallet = attrs.get("wallet")
+        if self.instance is None and not wallet:
+            raise serializers.ValidationError(
+                {"wallet": "Debes seleccionar una billetera."}
+            )
         if wallet:
             if wallet.user_id != self.context["request"].user.id:
                 raise serializers.ValidationError({"wallet": "Billetera no válida."})

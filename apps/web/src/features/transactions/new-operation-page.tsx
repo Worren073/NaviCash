@@ -372,6 +372,10 @@ export default function NewOperationPage() {
             className="w-full py-4 text-xl"
             onClick={() => {
               setError(null);
+              if (!wallet) {
+                setError(t("addOperation.walletRequired"));
+                return;
+              }
               create.mutate();
             }}
             disabled={create.isPending || !monto}
