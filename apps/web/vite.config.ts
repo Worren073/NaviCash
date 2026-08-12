@@ -36,6 +36,8 @@ export default defineConfig(({ command, mode }) => {
           display: "standalone",
           start_url: "/",
           lang: "es",
+          id: "/app/",
+          categories: ["finance", "productivity"],
           icons: [
             {
               src: "/favicon-192.svg",
@@ -49,20 +51,23 @@ export default defineConfig(({ command, mode }) => {
               type: "image/svg+xml",
               purpose: "any",
             },
-            {
-              src: "/pwa-192.png",
-              sizes: "192x192",
-              type: "image/png",
-            },
-            {
-              src: "/pwa-512.png",
-              sizes: "512x512",
-              type: "image/png",
-            },
           ],
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/navicash-api.*\.(jpg|jpeg|png|gif|svg)$/,
+              handler: "CacheFirst",
+              options: {
+                cacheName: "navicash-images",
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
+                },
+              },
+            },
+          ],
         },
       }),
     ],
