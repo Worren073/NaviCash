@@ -3,7 +3,7 @@ import { Navigate, Outlet, createBrowserRouter, useNavigate } from "react-router
 import { useQueryClient } from "@tanstack/react-query";
 
 import AppLayout from "@/app/layout";
-import { api, getAccessToken, onSessionExpired, setAccessToken } from "@/lib/api";
+import { api, getAccessToken, onSessionExpired, setAccessToken, BASE_URL } from "@/lib/api";
 import { Splash } from "@/components/ui/blur-loading";
 
 // M10 — code splitting: cada página se carga bajo demanda.
@@ -23,6 +23,9 @@ const ResetPasswordPage = lazy(() => import("@/features/auth/reset-password-page
 /**
  * Guard de sesión: comprueba si hay una sesión válida (access en memoria o
  * refresh cookie httpOnly) antes de mostrar las rutas privadas.
+ *
+ * Si no hay access en memoria, intenta refrescar usando la cookie. Si funciona,
+ * hace GET /api/auth/me para validar. Si el refresh falla, no hay sesión.
  */
 function RequireAuth() {
   const [checking, setChecking] = useState(() => !getAccessToken());
@@ -33,6 +36,18 @@ function RequireAuth() {
     let cancelled = false;
     (async () => {
       try {
+        // Sin access en memoria: intentar refrescar usando la cookie.
+        const refreshResp = await fetch(`${BASE_URL}/auth/refresh`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const refreshData = await refreshResp.json().catch(() => null);
+        if (!refreshResp.ok || !refreshData?.access) {
+          if (!cancelled) setOk(false);
+          return;
+        }
+        // Refresh exitoso: guardar el nuevo access y validar con /me.
+        setAccessToken(refreshData.access);
         const me = await api.get<{ id: string }>("/auth/me");
         if (!cancelled) setOk(Boolean(me));
       } catch {
