@@ -25,7 +25,7 @@ export default defineConfig(({ command, mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: "autoUpdate",
-        includeAssets: ["favicon.svg"],
+        includeAssets: ["favicon.svg", "favicon-192.svg", "favicon-512.svg"],
         manifest: {
           name: "NaviCash — Finanzas personales",
           short_name: "NaviCash",
@@ -37,6 +37,18 @@ export default defineConfig(({ command, mode }) => {
           start_url: "/",
           lang: "es",
           icons: [
+            {
+              src: "/favicon-192.svg",
+              sizes: "192x192",
+              type: "image/svg+xml",
+              purpose: "any",
+            },
+            {
+              src: "/favicon-512.svg",
+              sizes: "512x512",
+              type: "image/svg+xml",
+              purpose: "any",
+            },
             {
               src: "/pwa-192.png",
               sizes: "192x192",
