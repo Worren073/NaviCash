@@ -75,14 +75,16 @@ services:
       - key: DJANGO_EMAIL_BACKEND
         value: django.core.mail.backends.smtp.EmailBackend
       - key: DJANGO_EMAIL_HOST
-        value: smtp.resend.com
+        value: smtp.gmail.com
       - key: DJANGO_EMAIL_PORT
-        value: "587"
+        value: "465"
       - key: DJANGO_EMAIL_HOST_USER
-        value: resend
+        value: navicashvnz@gmail.com
       - key: DJANGO_EMAIL_HOST_PASSWORD
         sync: false
       - key: DJANGO_EMAIL_USE_TLS
+        value: "False"
+      - key: DJANGO_EMAIL_USE_SSL
         value: "True"
       - key: DEFAULT_FROM_EMAIL
         value: "NaviCash <navicashvnz@gmail.com>"
