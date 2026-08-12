@@ -9,7 +9,11 @@ La autenticación usa SimpleJWT con la siguiente división de responsabilidades:
 
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from rest_framework import status
@@ -95,11 +99,20 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         if serializer.email_already_registered:
             # B5: respuesta idéntica al éxito; no se crea ni se envía correo.
+            logger.info(
+                "REGISTER_DUPLICATE email=%s (no se envia correo, B5)",
+                serializer.validated_data.get("email", "?"),
+            )
             return Response(
                 {"detail": "Revisa tu correo para continuar."},
                 status=status.HTTP_201_CREATED,
             )
         user = serializer.save()
+        logger.info(
+            "REGISTER_CREATED email=%s user=%s (correo de verificacion enviado)",
+            serializer.validated_data.get("email", "?"),
+            user.id,
+        )
         payload = {"detail": "Revisa tu correo para continuar."}
         if settings.DEBUG:
             verification = user.verification
