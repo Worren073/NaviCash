@@ -7,10 +7,13 @@ en los logs del contenedor). En producción se configura un SMTP
 
 from __future__ import annotations
 
+import logging
 from urllib.parse import quote
 
 from django.conf import settings
 from django.core.mail import send_mail
+
+logger = logging.getLogger(__name__)
 
 #: Asunto enviado al registrar un usuario (verificación de email).
 SUBJECT_VERIFY = "NaviCash — Confirma tu correo"
@@ -38,7 +41,23 @@ def send_verification_email(email: str, token: str, name: str = "") -> bool:
         f"El enlace caduca en {getattr(settings, 'VERIFICATION_TOKEN_HOURS', 24)} horas.\n\n"
         "Si no solicitaste esta cuenta, ignora este correo."
     )
-    return send_mail(SUBJECT_VERIFY, body, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)
+    logger.info(
+        "EMAIL_VERIFY to=%s from=%s backend=%s host=%s port=%s tls=%s user=%s",
+        email,
+        settings.DEFAULT_FROM_EMAIL,
+        settings.EMAIL_BACKEND,
+        getattr(settings, "EMAIL_HOST", ""),
+        getattr(settings, "EMAIL_PORT", ""),
+        getattr(settings, "EMAIL_USE_TLS", ""),
+        getattr(settings, "EMAIL_HOST_USER", ""),
+    )
+    try:
+        result = send_mail(SUBJECT_VERIFY, body, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)
+        logger.info("EMAIL_VERIFY sent ok result=%s to=%s", result, email)
+        return result
+    except Exception as exc:  # noqa: BLE001 - loguear cualquier fallo SMTP
+        logger.error("EMAIL_VERIFY FAILED to=%s error=%r", email, exc)
+        raise
 
 
 def send_password_reset_email(email: str, token: str) -> bool:
