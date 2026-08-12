@@ -81,7 +81,6 @@ export function getOSName(os: DeviceOS): string {
 export function getIOSLimitations(): string[] {
   return [
     "Voz de Navi no disponible en iOS (limitación de Safari)",
-    "Burbuja de chat puede verse cuadrada",
     "Acceso offline limitado",
     "Algunas características PWA pueden no funcionar completamente",
   ];

@@ -17,7 +17,7 @@ export function IOSLimitationsNotice() {
   const limitations = getIOSLimitations();
 
   return (
-    <div className="fixed bottom-24 left-0 right-0 mx-5 z-40 rounded-lg border border-status-warning/30 bg-status-warning/10 p-4 shadow-lg">
+    <div className="fixed bottom-24 left-0 right-0 mx-5 z-40 rounded-lg border border-status-warning/30 bg-status-warning/20 p-4 shadow-lg backdrop-blur-md">
       <div className="flex gap-3">
         <AlertCircle className="h-5 w-5 shrink-0 text-status-warning mt-0.5" />
         <div className="flex-1">
