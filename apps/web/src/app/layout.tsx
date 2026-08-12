@@ -19,6 +19,8 @@ import { NaviBubble } from "@/features/assistant/navi-bubble";
 import { AssistantChat } from "@/features/assistant/assistant-chat";
 import { NaviVoice } from "@/features/assistant/navi-voice";
 import { useNotifications } from "@/hooks/use-queries";
+import { IOSLimitationsNotice } from "@/components/ios-limitations-notice";
+import { DeviceInfo } from "@/components/device-info";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -204,6 +206,8 @@ export default function AppLayout() {
       <NaviBubble onOpen={() => setAssistantOpen(true)} />
       <AssistantChat open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <NaviVoice open={voiceOpen} onClose={() => setVoiceOpen(false)} />
+      <IOSLimitationsNotice />
+      <DeviceInfo />
       <BottomNav onVoiceOpen={() => setVoiceOpen(true)} />
     </div>
   );
