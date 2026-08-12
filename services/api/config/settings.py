@@ -49,6 +49,7 @@ env = environ.Env(
     DJANGO_EMAIL_HOST_USER=(str, ""),
     DJANGO_EMAIL_HOST_PASSWORD=(str, ""),
     DJANGO_EMAIL_USE_TLS=(bool, True),
+    DEFAULT_FROM_EMAIL=(str, "NaviCash <navicashvnz@gmail.com>"),
     JWT_ACCESS_MINUTES=(int, 15),
     JWT_REFRESH_DAYS=(int, 30),
     VERIFICATION_TOKEN_HOURS=(int, 24),
@@ -339,7 +340,7 @@ EMAIL_PORT = env("DJANGO_EMAIL_PORT")
 EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD")
 EMAIL_USE_TLS = env("DJANGO_EMAIL_USE_TLS")
-DEFAULT_FROM_EMAIL = "NaviCash <no-reply@navicash.app>"
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
 
 # ---------------------------------------------------------------------------
 # Configuración de negocio (tasas, verificación)
