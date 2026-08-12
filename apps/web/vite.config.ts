@@ -36,11 +36,7 @@ export default defineConfig(({ command, mode }) => {
           display: "standalone",
           start_url: "/",
           lang: "es",
-<<<<<<< HEAD
           id: "/app/",
-=======
-          version: "2.0.0",
->>>>>>> f00ee55e8eb42355aa4086ddd82d1a0f02b09f39
           categories: ["finance", "productivity"],
           icons: [
             {
