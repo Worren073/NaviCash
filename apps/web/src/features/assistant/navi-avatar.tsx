@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 
+import { useDeviceOS } from "@/hooks/use-device-os";
 import { cn } from "@/lib/utils";
 
 interface NaviAvatarProps {
@@ -17,6 +18,7 @@ interface NaviAvatarProps {
  */
 export function NaviAvatar({ size = 48, thinking = false, className }: NaviAvatarProps) {
   const [blink, setBlink] = useState(false);
+  const { os } = useDeviceOS();
 
   useEffect(() => {
     let timeout: number | undefined;
@@ -35,9 +37,20 @@ export function NaviAvatar({ size = 48, thinking = false, className }: NaviAvata
     <div
       className={cn(
         "relative overflow-hidden rounded-full border border-white/30 bg-white/25 backdrop-blur-md",
+        os === "ios" && "webkit-antialiased",
         className
       )}
-      style={{ width: size, height: size }}
+      style={{
+        width: size,
+        height: size,
+        // Fix para iOS: asegurar que sea perfectamente redondo
+        ...(os === "ios" && {
+          borderRadius: "50%",
+          WebkitBorderRadius: "50%",
+          WebkitMaskImage: "radial-gradient(circle, black 0%, black 100%)",
+          MaskImage: "radial-gradient(circle, black 0%, black 100%)",
+        }),
+      }}
     >
       {/* Brillo azul en todo el borde del orbe */}
       <span className="pointer-events-none absolute -left-1 -top-1 h-1/2 w-1/2 rounded-full bg-sky-400/40 blur-md" />
