@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { motion, useMotionValue, useSpring } from "motion/react";
 
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
+import { useDeviceOS } from "@/hooks/use-device-os";
 import { cn } from "@/lib/utils";
 
 const BUBBLE_SIZE = 48;
@@ -24,9 +25,14 @@ interface NaviBubbleProps {
  * abre el chat.
  *
  * La posición se persiste en localStorage (preferencia de UI, no dato sensible).
+ * 
+ * En iOS, se aplican estilos adicionales para asegurar que la burbuja sea
+ * perfectamente redonda (Safari tiene limitaciones con border-radius en
+ * elementos position:fixed).
  */
 export function NaviBubble({ onOpen, hasUnread = false }: NaviBubbleProps) {
   const { t } = useTranslation();
+  const { os } = useDeviceOS();
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const springX = useSpring(x, { stiffness: 300, damping: 30 });
@@ -115,9 +121,18 @@ export function NaviBubble({ onOpen, hasUnread = false }: NaviBubbleProps) {
         height: BUBBLE_SIZE,
         touchAction: "none",
         cursor: dragging ? "grabbing" : "grab",
+        // Fix para iOS: asegurar que sea perfectamente redondo
+        ...(os === "ios" && {
+          borderRadius: "50%",
+          WebkitBorderRadius: "50%",
+          WebkitMaskImage: "radial-gradient(circle, black 0%, black 100%)",
+          MaskImage: "radial-gradient(circle, black 0%, black 100%)",
+        }),
       }}
       className={cn(
         "fixed left-0 top-0 z-40 rounded-full shadow-[0_6px_24px_rgba(0,106,97,0.25)] transition-shadow hover:shadow-[0_8px_32px_rgba(0,106,97,0.4)] active:scale-95",
+        // Estilos adicionales para iOS en Tailwind
+        os === "ios" && "webkit-antialiased",
         ready ? "" : "opacity-0",
       )}
     >
