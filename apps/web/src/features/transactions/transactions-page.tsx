@@ -69,7 +69,7 @@ function TxCard({ tx }: { tx: Transaction }) {
 
   return (
     <div
-      className="flex items-center justify-between rounded-lg border p-4 backdrop-blur-xl"
+      className="clip-rounded-lg flex items-center justify-between rounded-lg border p-4 backdrop-blur-xl"
       style={{
         background: `linear-gradient(135deg, ${withAlpha(color, 0.22)}, ${withAlpha(color, 0.08)})`,
         borderColor: withAlpha(color, 0.35),
@@ -254,7 +254,7 @@ export default function TransactionsPage() {
 
       <BlurLoading loading={isLoading}>
         {isError ? (
-          <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+          <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
             {t("errors.generic")}
           </p>
         ) : isLoading ? (
@@ -263,7 +263,7 @@ export default function TransactionsPage() {
             <Skeleton className="h-16 w-full" />
           </div>
         ) : results.length === 0 ? (
-          <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+          <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
             {tipoFilter || estadoFilter || fechaFilter
               ? t("transactions.noResults")
               : t("transactions.empty")}

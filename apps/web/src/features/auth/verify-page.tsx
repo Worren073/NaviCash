@@ -57,7 +57,7 @@ export default function VerifyPage() {
       </div>
 
       <form
-        className="glass-panel-elevated w-full max-w-sm space-y-4 rounded-2xl p-6"
+        className="glass-panel-elevated clip-rounded-2xl w-full max-w-sm space-y-4 rounded-2xl p-6"
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);

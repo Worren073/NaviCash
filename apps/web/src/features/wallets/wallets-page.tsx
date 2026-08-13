@@ -33,8 +33,11 @@ const SELECT_CLS =
 
 export function NewWalletDialog({
   defaultTipo = "cash",
+  lockTipo = false,
 }: {
   defaultTipo?: Wallet["tipo"];
+  /** Fija el tipo (p.ej. "saving") como solo lectura en el formulario. */
+  lockTipo?: boolean;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -122,17 +125,26 @@ export function NewWalletDialog({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="wallet-tipo">{t("wallet.type")}</Label>
-                <select
-                  id="wallet-tipo"
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value as Wallet["tipo"])}
-                  className={SELECT_CLS}
-                >
-                  <option value="cash">{t("wallet.typeCash")}</option>
-                  <option value="bank">{t("wallet.typeBank")}</option>
-                  <option value="saving">{t("wallet.typeSaving")}</option>
-                  <option value="other">{t("wallet.typeOther")}</option>
-                </select>
+                {lockTipo ? (
+                  <div
+                    id="wallet-tipo"
+                    className="flex h-11 w-full items-center rounded-xl border border-glass-border bg-surface-container px-4 text-base text-on-surface-variant"
+                  >
+                    {t("wallet.typeSaving")}
+                  </div>
+                ) : (
+                  <select
+                    id="wallet-tipo"
+                    value={tipo}
+                    onChange={(e) => setTipo(e.target.value as Wallet["tipo"])}
+                    className={SELECT_CLS}
+                  >
+                    <option value="cash">{t("wallet.typeCash")}</option>
+                    <option value="bank">{t("wallet.typeBank")}</option>
+                    <option value="saving">{t("wallet.typeSaving")}</option>
+                    <option value="other">{t("wallet.typeOther")}</option>
+                  </select>
+                )}
               </div>
             </div>
 
@@ -264,7 +276,7 @@ export function EditWalletDialog({ wallet, usdValue }: { wallet: Wallet; usdValu
             setOpen(true);
           }
         }}
-        className="glass-card relative cursor-pointer overflow-hidden rounded-xl bg-surface p-4 transition-transform active:scale-[0.99]"
+        className="glass-card clip-rounded-xl relative cursor-pointer overflow-hidden rounded-xl bg-surface p-4 transition-transform active:scale-[0.99]"
       >
         <CardGlow color={wallet.color || "#006a61"} />
         <div className="relative mb-4 flex items-start justify-between">
@@ -774,7 +786,7 @@ export default function WalletsPage() {
 
         {/* Total Balance (Bento) */}
         <BlurLoading loading={isLoading}>
-          <div className="glass-card relative mt-6 overflow-hidden rounded-xl bg-surface-container-low p-6">
+          <div className="glass-card clip-rounded-xl relative mt-6 overflow-hidden rounded-xl bg-surface-container-low p-6">
           <CardGlow color="#006a61" />
           <p className="relative mb-1 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
             {t("wallet.totalUsd")}
@@ -793,7 +805,7 @@ export default function WalletsPage() {
       </section>
 
       {isError ? (
-        <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+        <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
           {t("errors.generic")}
         </p>
       ) : (
@@ -807,7 +819,7 @@ export default function WalletsPage() {
                 <Skeleton className="h-28 w-full" />
               </>
             ) : regularWallets.length === 0 ? (
-              <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+              <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
                 {t("wallet.noRegular")}
               </p>
             ) : (
@@ -825,13 +837,13 @@ export default function WalletsPage() {
                 <Skeleton className="h-28 w-full" />
               </>
             ) : savingWallets.length === 0 ? (
-              <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+              <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
                 {t("wallet.noSaving")}
               </p>
             ) : (
               savingWallets.map(renderWallet)
             )}
-            <NewWalletDialog defaultTipo="saving" />
+            <NewWalletDialog defaultTipo="saving" lockTipo />
           </section>
         </>
       )}

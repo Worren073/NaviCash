@@ -152,7 +152,7 @@ function GoalCard({
   const pct = Number(goal.progress_percent);
 
   return (
-    <div className="glass-card relative overflow-hidden rounded-xl bg-surface p-4">
+    <div className="glass-card clip-rounded-xl relative overflow-hidden rounded-xl bg-surface p-4">
       <CardGlow color="#006a61" />
       <div className="relative mb-3">
         <h3 className="text-lg font-semibold text-on-surface">{goal.name}</h3>
@@ -306,7 +306,7 @@ const accountsUsd = savingWallets.reduce(
 
       {/* Dashboard: total ahorrado */}
       <BlurLoading loading={isLoading || walletsLoading}>
-        <div className="glass-card relative overflow-hidden rounded-xl bg-surface-container-low p-6">
+        <div className="glass-card clip-rounded-xl relative overflow-hidden rounded-xl bg-surface-container-low p-6">
           <CardGlow color="#006a61" />
           <p className="relative mb-1 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
             {t("savings.totalSaved")}
@@ -336,7 +336,7 @@ const accountsUsd = savingWallets.reduce(
             <Skeleton className="h-28 w-full" />
           </>
         ) : savingWallets.length === 0 ? (
-          <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+          <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
             {t("savings.noAccounts")}
           </p>
         ) : (
@@ -348,7 +348,7 @@ const accountsUsd = savingWallets.reduce(
             />
           ))
         )}
-        <NewWalletDialog defaultTipo="saving" />
+        <NewWalletDialog defaultTipo="saving" lockTipo />
       </section>
 
       {/* Metas de ahorro */}
@@ -356,13 +356,13 @@ const accountsUsd = savingWallets.reduce(
         <h3 className="text-lg font-semibold text-on-surface">{t("savings.goals")}</h3>
         <BlurLoading loading={isLoading}>
           {isError ? (
-            <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+            <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
               {t("errors.generic")}
             </p>
           ) : isLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : (data ?? []).length === 0 ? (
-            <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+            <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
               {t("savings.empty")}
             </p>
           ) : (

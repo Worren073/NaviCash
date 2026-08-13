@@ -168,7 +168,7 @@ export default function NewOperationPage() {
         />
 
         {/* Amount + currency */}
-        <section className="glass-panel-elevated relative flex min-h-[180px] flex-col items-center justify-center gap-7 overflow-hidden rounded-[2rem] px-6 py-10">
+        <section className="glass-panel-elevated clip-rounded-4xl relative flex min-h-[180px] flex-col items-center justify-center gap-7 overflow-hidden rounded-[2rem] px-6 py-10">
           <div className="pointer-events-none absolute top-1/2 left-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
           <div className="relative z-10 w-full max-w-[260px]">
             <Segmented
@@ -199,7 +199,7 @@ export default function NewOperationPage() {
         </section>
 
         {/* Details */}
-        <section className="glass-panel flex flex-col rounded-xl p-4">
+        <section className="glass-panel clip-rounded-xl flex flex-col rounded-xl p-4">
           {/* Concept */}
           <div className="flex items-center gap-4 border-b border-glass-border py-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-container-high">
@@ -285,7 +285,7 @@ export default function NewOperationPage() {
         </section>
 
         {/* Remind me */}
-        <section className="glass-panel flex flex-col rounded-xl p-4">
+        <section className="glass-panel clip-rounded-xl flex flex-col rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-container-high">
@@ -344,7 +344,7 @@ export default function NewOperationPage() {
         </section>
 
         {/* Ya realizado */}
-        <section className="glass-panel flex items-center justify-between rounded-xl p-4">
+        <section className="glass-panel clip-rounded-xl flex items-center justify-between rounded-xl p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-status-paid/20">
               <CheckCircle2 className="h-4 w-4 text-status-paid" />

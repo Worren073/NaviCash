@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
       </div>
 
       {sent ? (
-        <div className="glass-panel-elevated w-full max-w-sm space-y-4 rounded-2xl p-6">
+        <div className="glass-panel-elevated clip-rounded-2xl w-full max-w-sm space-y-4 rounded-2xl p-6">
           <h2 className="flex items-center gap-2 text-xl font-semibold text-on-surface">
             <Mail className="h-5 w-5 text-primary" />
             {t("auth.forgotTitle")}
@@ -49,7 +49,7 @@ export default function ForgotPasswordPage() {
         </div>
       ) : (
         <form
-          className="glass-panel-elevated w-full max-w-sm space-y-4 rounded-2xl p-6"
+          className="glass-panel-elevated clip-rounded-2xl w-full max-w-sm space-y-4 rounded-2xl p-6"
           onSubmit={(e) => {
             e.preventDefault();
             setError(null);

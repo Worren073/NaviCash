@@ -130,6 +130,29 @@
   }
 }
 
+/* Clip a la forma redondeada: corrige que iOS Safari no recorte el
+   backdrop-filter a los bordes redondeados (esquinas cuadradas). Aplica
+   en todas las plataformas; es visualmente idéntico a los rounded-*. */
+@utility clip-rounded-lg {
+  clip-path: inset(0 round var(--radius-lg));
+}
+
+@utility clip-rounded-xl {
+  clip-path: inset(0 round var(--radius-xl));
+}
+
+@utility clip-rounded-2xl {
+  clip-path: inset(0 round 1rem);
+}
+
+@utility clip-rounded-4xl {
+  clip-path: inset(0 round 2rem);
+}
+
+@utility clip-rounded-full {
+  clip-path: inset(0 round 50%);
+}
+
 /* ==========================================================================
    Animaciones de carga y transiciones de vista
    ========================================================================== */

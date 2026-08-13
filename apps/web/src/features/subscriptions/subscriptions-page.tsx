@@ -57,7 +57,7 @@ function SubscriptionCard({ sub }: { sub: Subscription }) {
   });
 
   return (
-    <div className="glass-card relative overflow-hidden rounded-xl bg-surface p-4">
+    <div className="glass-card clip-rounded-xl relative overflow-hidden rounded-xl bg-surface p-4">
       <CardGlow color={color} />
       <div className="relative mb-4 flex items-start justify-between">
         <div className="flex items-center gap-3">
@@ -431,7 +431,7 @@ export default function SubscriptionsPage() {
       </div>
 
       {isError ? (
-        <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+        <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
           {t("errors.generic")}
         </p>
       ) : isLoading ? (
@@ -440,7 +440,7 @@ export default function SubscriptionsPage() {
           <Skeleton className="h-28 w-full" />
         </div>
       ) : (data ?? []).length === 0 ? (
-        <p className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+        <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
           {t("subscriptions.empty")}
         </p>
       ) : (

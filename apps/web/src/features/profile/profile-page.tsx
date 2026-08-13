@@ -148,7 +148,7 @@ export default function ProfilePage() {
       <div className="mt-4 space-y-6">
         <h2 className="text-3xl font-bold text-on-surface">{t("profile.title")}</h2>
         <form
-          className="glass-panel space-y-4 rounded-2xl p-5"
+          className="glass-panel clip-rounded-2xl space-y-4 rounded-2xl p-5"
             onSubmit={(e) => {
               e.preventDefault();
               setSaved(false);
@@ -225,7 +225,7 @@ export default function ProfilePage() {
           </form>
 
           {/* Sección Legal */}
-          <section className="glass-panel space-y-4 rounded-2xl p-5">
+          <section className="glass-panel clip-rounded-2xl space-y-4 rounded-2xl p-5">
             <h3 className="text-lg font-semibold text-on-surface flex items-center gap-2">
               <ListIcon className="h-5 w-5" />
               {t("profile.legalTitle")}
@@ -236,7 +236,7 @@ export default function ProfilePage() {
                 {legalDocs.map((doc) => (
                   <article
                     key={doc.id}
-                    className="glass-panel-elevated rounded-xl p-4 border border-glass-border"
+                    className="glass-panel-elevated clip-rounded-xl rounded-xl p-4 border border-glass-border"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">

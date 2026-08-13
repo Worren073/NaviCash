@@ -48,7 +48,7 @@ function TopBar() {
   const [notifOpen, setNotifOpen] = useState(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between border-b border-glass-border bg-glass-surface/60 px-5 py-4 shadow-sm backdrop-blur-xl">
+    <header className="fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between border-b border-glass-border bg-glass-surface/60 px-5 pt-[calc(env(safe-area-inset-top)+1rem)] pb-4 shadow-sm backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-on-primary shadow-sm">
           N
@@ -141,7 +141,7 @@ function BottomNav({ onVoiceOpen }: { onVoiceOpen: () => void }) {
   return (
     <nav
       aria-label="Navegación principal"
-      className="fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2.5rem)] max-w-md -translate-x-1/2 items-center justify-around rounded-full border border-glass-border bg-glass-surface/60 p-2 shadow-[0_8px_32px_0_rgba(0,0,0,0.1)] backdrop-blur-2xl"
+      className="clip-rounded-full fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 flex w-[calc(100%-2.5rem)] max-w-md -translate-x-1/2 items-center justify-around rounded-full border border-glass-border bg-glass-surface/60 p-2 shadow-[0_8px_32px_0_rgba(0,0,0,0.1)] backdrop-blur-2xl"
     >
       {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
         <NavLink key={to} to={to} label={label} icon={Icon} matchEnd={to === "/"} />
@@ -196,9 +196,9 @@ export default function AppLayout() {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   return (
-    <div className="min-h-dvh pb-28">
+    <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)]">
       <TopBar />
-      <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-20">
+      <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-[calc(env(safe-area-inset-top)+5rem)]">
         <div key={location.pathname} className="view-enter">
           <Outlet />
         </div>

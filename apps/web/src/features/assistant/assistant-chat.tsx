@@ -49,7 +49,7 @@ export function AssistantChat({ open, onClose }: AssistantChatProps) {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 24, scale: 0.98 }}
                 transition={{ type: "spring", stiffness: 320, damping: 30 }}
-                className="fixed bottom-24 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-glass-border bg-white/60 shadow-[0_12px_40px_rgba(15,23,42,0.25)] backdrop-blur-2xl outline-none"
+                className="clip-rounded-2xl fixed bottom-24 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-glass-border bg-white/60 shadow-[0_12px_40px_rgba(15,23,42,0.25)] backdrop-blur-2xl outline-none"
                 style={{ maxHeight: "calc(100dvh - 8rem)" }}
               >
                 <DialogPrimitive.Title className="sr-only">{t("assistant.name")}</DialogPrimitive.Title>

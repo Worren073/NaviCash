@@ -47,7 +47,7 @@ function TxRow({ tx }: { tx: Transaction }) {
   const isTransfer = tx.tipo === "transferencia";
   const sign = isTransfer || isIncome ? "" : "-";
   return (
-    <div className="glass-panel flex items-center justify-between rounded-lg p-4">
+    <div className="glass-panel flex items-center justify-between clip-rounded-lg rounded-lg p-4">
       <div className="flex items-center gap-3">
         {isTransfer ? (
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-500">
@@ -105,7 +105,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Balance Header */}
-      <section className="glass-panel relative mt-4 overflow-hidden rounded-xl p-6">
+      <section className="glass-panel clip-rounded-xl relative mt-4 overflow-hidden rounded-xl p-6">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-50" />
         <div className="pointer-events-none absolute -left-10 -top-10 h-28 w-28 rounded-full bg-sky-400/40 blur-2xl" />
         <div className="pointer-events-none absolute -left-2 -top-6 h-16 w-16 rounded-full bg-primary/40 blur-xl" />
@@ -128,7 +128,7 @@ export default function DashboardPage() {
               </div>
             )}
             {data?.total_balance_ves != null && (
-              <div className="glass-panel mt-2 flex items-center gap-2 rounded-full px-4 py-1.5">
+              <div className="glass-panel clip-rounded-full mt-2 flex items-center gap-2 rounded-full px-4 py-1.5">
                 <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
                   {t("dashboard.totalBs")}
                 </span>
@@ -140,7 +140,7 @@ export default function DashboardPage() {
             {data?.rate && (
               <>
                 <div className="my-0.5 h-px w-24 bg-glass-border" />
-                <div className="glass-panel flex items-center gap-2 rounded-full px-4 py-1.5">
+                <div className="glass-panel clip-rounded-full flex items-center gap-2 rounded-full px-4 py-1.5">
                   <CurrencyDollarIcon size={16} className="text-primary" />
                   <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
                     {t("dashboard.bcvRate", {
@@ -156,7 +156,7 @@ export default function DashboardPage() {
 
       {/* Total en Ahorros (compacto) */}
       <Link to="/savings" className="block">
-        <section className="glass-panel relative overflow-hidden rounded-xl border border-glass-border px-5 py-4 transition-transform hover:scale-[1.01] active:scale-[0.99]">
+        <section className="glass-panel clip-rounded-xl relative overflow-hidden rounded-xl border border-glass-border px-5 py-4 transition-transform hover:scale-[1.01] active:scale-[0.99]">
           <div className="pointer-events-none absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-primary/10 to-transparent" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
@@ -181,7 +181,7 @@ export default function DashboardPage() {
         <section className="grid grid-cols-2 gap-2">
         <Link
           to="/transactions?tipo=cobro&estado=pendiente"
-          className="glass-panel flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99]"
         >
           <div className="flex items-start justify-between">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-income/20">
@@ -209,7 +209,7 @@ export default function DashboardPage() {
 
         <Link
           to="/transactions?tipo=pago&estado=pendiente"
-          className="glass-panel flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99]"
         >
           <div className="flex items-start justify-between">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-expense/20">
@@ -239,7 +239,7 @@ export default function DashboardPage() {
 
       <Link
         to="/transactions?estado=retrasado"
-        className="glass-panel flex flex-1 items-center justify-between rounded-lg border-error/30 p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+        className="glass-panel clip-rounded-lg flex flex-1 items-center justify-between rounded-lg border-error/30 p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
       >
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-status-delayed/20">
@@ -271,7 +271,7 @@ export default function DashboardPage() {
         </div>
 
         {isError ? (
-          <div className="glass-panel rounded-lg p-6 text-center">
+          <div className="glass-panel clip-rounded-lg rounded-lg p-6 text-center">
             <p className="mb-3 text-sm text-on-surface-variant">⚠️ {t("errors.generic")}</p>
             <Button size="sm" variant="outline" onClick={() => refetch()}>
               {t("common.retry")}
@@ -287,7 +287,7 @@ export default function DashboardPage() {
           <div className="space-y-2">
             {(data?.recent ?? []).map((tx) => <TxRow key={tx.id} tx={tx} />)}
             {(data?.recent ?? []).length === 0 && (
-              <div className="glass-panel rounded-lg p-6 text-center text-sm text-on-surface-variant">
+              <div className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
                 {t("dashboard.noRecent")}
               </div>
             )}

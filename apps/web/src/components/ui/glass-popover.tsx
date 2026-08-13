@@ -32,7 +32,7 @@ export function GlassPopover({ open, onClose, children, className }: GlassPopove
             exit={{ opacity: 0, y: -4, scale: 0.97, filter: "blur(4px)" }}
             transition={{ duration: 0.18, ease: "easeOut" }}
             className={cn(
-              "absolute right-0 top-full z-50 mt-2 w-80 origin-top-right overflow-hidden rounded-2xl border border-glass-border bg-white/10 shadow-[0_12px_40px_rgba(15,23,42,0.28)] backdrop-blur-2xl",
+              "clip-rounded-2xl absolute right-0 top-full z-50 mt-2 w-80 origin-top-right overflow-hidden rounded-2xl border border-glass-border bg-white/10 shadow-[0_12px_40px_rgba(15,23,42,0.28)] backdrop-blur-2xl",
               className
             )}
             role="menu"
