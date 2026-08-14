@@ -7,6 +7,8 @@ interface NaviAvatarProps {
   size?: number;
   /** Mientras "escribe/piensa": los ojos miran arriba y parpadean seguido. */
   thinking?: boolean;
+  /** Sin animación de parpadeo (avatar estático). */
+  static?: boolean;
   className?: string;
 }
 
@@ -15,10 +17,16 @@ interface NaviAvatarProps {
  * negros alargados (tipo palito). Compartido entre la burbuja flotante y el
  * chat. En estado `thinking` los ojos miran hacia arriba y parpadean.
  */
-export function NaviAvatar({ size = 48, thinking = false, className }: NaviAvatarProps) {
+export function NaviAvatar({
+  size = 48,
+  thinking = false,
+  static: isStatic = false,
+  className,
+}: NaviAvatarProps) {
   const [blink, setBlink] = useState(false);
 
   useEffect(() => {
+    if (isStatic) return;
     let timeout: number | undefined;
     const blink = () => {
       setBlink(true);
@@ -29,7 +37,7 @@ export function NaviAvatar({ size = 48, thinking = false, className }: NaviAvata
       clearInterval(interval);
       if (timeout !== undefined) clearTimeout(timeout);
     };
-  }, [thinking]);
+  }, [thinking, isStatic]);
 
   return (
     <div

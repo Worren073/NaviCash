@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "motion/react";
-import { Send, X } from "lucide-react";
+import { Send, X, Mic } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { useAssistant } from "@/hooks/use-assistant";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
+import { useVoiceChat } from "@/features/assistant/voice-chat-context";
 import { cn } from "@/lib/utils";
 
 interface AssistantChatProps {
@@ -23,6 +24,7 @@ interface AssistantChatProps {
 export function AssistantChat({ open, onClose }: AssistantChatProps) {
   const { t } = useTranslation();
   const { messages, thinking, send } = useAssistant();
+  const { openVoice } = useVoiceChat();
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -126,6 +128,17 @@ export function AssistantChat({ open, onClose }: AssistantChatProps) {
                     className="h-11 min-w-0 flex-1 rounded-xl border border-glass-border bg-glass-surface px-3 text-sm text-on-surface outline-none backdrop-blur-md transition-colors placeholder:text-on-surface-variant/70 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
                     autoComplete="off"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      openVoice();
+                    }}
+                    aria-label={t("assistant.voice.title")}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-surface text-primary backdrop-blur-md transition-all hover:bg-surface-container-high active:scale-90"
+                  >
+                    <Mic className="h-5 w-5" />
+                  </button>
                   <button
                     type="submit"
                     disabled={!draft.trim() || thinking}

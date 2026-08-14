@@ -161,6 +161,13 @@
    Animaciones de carga y transiciones de vista
    ========================================================================== */
 
+/* Toasts de Sileo: el viewport usa z-index 50 (igual que modales/dialogs),
+   por lo que queda debajo de ellos. Se sube para que los avisos siempre
+   aparezcan por encima de overlays y formularios. */
+[data-sileo-viewport] {
+  z-index: 9999 !important;
+}
+
 /* Brillo deslizante para skeletons (efecto "liquid glass" en movimiento) */
 @utility skeleton-shimmer {
   position: relative;

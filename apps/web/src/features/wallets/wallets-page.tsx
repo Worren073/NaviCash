@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, CreditCard, PiggyBank, Plus, Trash2 } from "lucide-react";
+import { sileo } from "sileo";
 import { PenIcon } from "@/components/icons";
 
 import { useOverview, useWallets, queryKeys } from "@/hooks/use-queries";
@@ -25,6 +26,7 @@ import { formatMoney, formatSymbol } from "@/lib/format";
 import { WALLET_COLORS } from "@/lib/constants";
 import { CardGlow } from "@/components/ui/card-glow";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
+import { BalanceCard } from "@/features/dashboard/balance-card";
 import { cn } from "@/lib/utils";
 import type { Currency, Wallet } from "@/lib/types";
 
@@ -260,6 +262,13 @@ export function EditWalletDialog({ wallet, usdValue }: { wallet: Wallet; usdValu
       void queryClient.invalidateQueries({ queryKey: queryKeys.savings });
       setOpen(false);
       setConfirmOpen(false);
+    },
+    onError: (err) => {
+      sileo.error({
+        title: t("errors.generic"),
+        description:
+          err instanceof ApiErrorClass ? err.message : undefined,
+      });
     },
   });
 
@@ -755,7 +764,7 @@ function AdjustBalanceDialog({ wallet }: { wallet: Wallet }) {  const { t } = us
 
 export default function WalletsPage() {
   const { t } = useTranslation();
-  const { data: overview } = useOverview();
+  const { data: overview, isLoading: overviewLoading } = useOverview();
   const { data: wallets, isLoading, isError } = useWallets();
 
   const usdValues = new Map<string, string>(
@@ -764,6 +773,22 @@ export default function WalletsPage() {
 
   const savingWallets = (wallets ?? []).filter((w) => w.tipo === "saving");
   const regularWallets = (wallets ?? []).filter((w) => w.tipo !== "saving");
+  const vesWallets = regularWallets.filter((w) => w.currency === "VES");
+  const usdWallets = regularWallets.filter((w) => w.currency === "USD");
+
+  const rate = overview?.rate ? Number(overview.rate) : null;
+  const totalUsd = regularWallets.reduce(
+    (acc, w) => acc + Number(usdValues.get(w.id) ?? 0),
+    0
+  );
+  const totalVes = rate != null ? totalUsd * rate : null;
+  const vesVes = vesWallets.reduce((acc, w) => acc + Number(w.saldo), 0);
+  const vesUsd =
+    rate != null
+      ? vesWallets.reduce((acc, w) => acc + Number(usdValues.get(w.id) ?? 0), 0)
+      : null;
+  const usdUsd = usdWallets.reduce((acc, w) => acc + Number(w.saldo), 0);
+  const usdVes = rate != null ? usdUsd * rate : null;
 
   const renderWallet = (wallet: Wallet) => (
     <EditWalletDialog
@@ -782,6 +807,50 @@ export default function WalletsPage() {
             <p className="text-base text-on-surface-variant">{t("wallet.subtitle")}</p>
           </div>
           <TransferWalletDialog />
+        </div>
+
+        {/* Balance Header (carrusel) */}
+        <div className="mt-6 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+          <BalanceCard
+            label={t("dashboard.totalBalance")}
+            symbol="$"
+            amount={overviewLoading ? null : formatMoney(totalUsd, "USD")}
+            isLoading={overviewLoading}
+            equivalentLabel={t("dashboard.totalBs")}
+            equivalentValue={
+              overviewLoading || totalVes == null
+                ? null
+                : formatMoney(totalVes, "VES", { symbol: true })
+            }
+            showRate
+            rate={overview?.rate ?? null}
+          />
+          <BalanceCard
+            label={t("dashboard.vesBalance")}
+            symbol="Bs"
+            amount={overviewLoading ? null : formatMoney(vesVes, "VES")}
+            isLoading={overviewLoading}
+            equivalentLabel={t("dashboard.usdEquivalent")}
+            equivalentValue={
+              overviewLoading || vesUsd == null
+                ? null
+                : formatMoney(vesUsd, "USD", { symbol: true })
+            }
+            tone="flag"
+          />
+          <BalanceCard
+            label={t("dashboard.usdBalance")}
+            symbol="$"
+            amount={overviewLoading ? null : formatMoney(usdUsd, "USD")}
+            isLoading={overviewLoading}
+            equivalentLabel={t("dashboard.totalBs")}
+            equivalentValue={
+              overviewLoading || usdVes == null
+                ? null
+                : formatMoney(usdVes, "VES", { symbol: true })
+            }
+            tone="green"
+          />
         </div>
 
         {/* Total Balance (Bento) */}
@@ -823,7 +892,28 @@ export default function WalletsPage() {
                 {t("wallet.noRegular")}
               </p>
             ) : (
-              regularWallets.map(renderWallet)
+              <>
+                {vesWallets.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="mt-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
+                      <span className="h-px flex-1 bg-glass-border" />
+                      {t("wallet.vesAccounts")}
+                      <span className="h-px flex-1 bg-glass-border" />
+                    </h4>
+                    {vesWallets.map(renderWallet)}
+                  </div>
+                )}
+                {usdWallets.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="mt-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
+                      <span className="h-px flex-1 bg-glass-border" />
+                      {t("wallet.usdAccounts")}
+                      <span className="h-px flex-1 bg-glass-border" />
+                    </h4>
+                    {usdWallets.map(renderWallet)}
+                  </div>
+                )}
+              </>
             )}
             <NewWalletDialog />
           </section>

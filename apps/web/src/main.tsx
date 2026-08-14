@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
+import { Toaster } from "sileo";
 
 import "@/index.css";
 import { AppProviders } from "@/app/providers";
@@ -18,6 +19,7 @@ createRoot(document.getElementById("root")!).render(
       <ErrorBoundary>
         <RouterProvider router={router} />
       </ErrorBoundary>
+      <Toaster position="top-center" theme="light" offset={{ top: 72 }} />
     </AppProviders>
   </StrictMode>
 );

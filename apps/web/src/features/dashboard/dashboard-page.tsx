@@ -4,8 +4,10 @@ import {
   ArrowDown,
   ArrowLeftRight,
   ArrowUp,
+  CalendarRange,
   ChevronRight,
   PersonStanding,
+  PiggyBank,
   Store,
   TriangleAlert,
   Wrench,
@@ -16,7 +18,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { BlurLoading } from "@/components/ui/blur-loading";
-import { CurrencyDollarIcon } from "@/components/icons";
+import { NaviAvatar } from "@/features/assistant/navi-avatar";
+import { useVoiceChat } from "@/features/assistant/voice-chat-context";
+import { BalanceCard } from "@/features/dashboard/balance-card";
 import { formatCompact, formatMoney, formatRelativeEvent } from "@/lib/format";
 import type { Transaction } from "@/lib/types";
 
@@ -92,67 +96,116 @@ function TxRow({ tx }: { tx: Transaction }) {
 
 export default function DashboardPage() {
   const { t } = useTranslation();
+  const { openVoice } = useVoiceChat();
   const { data, isLoading, isError, refetch } = useOverview();
   const { data: wallets } = useWallets();
 
   const usdValues = new Map<string, string>(
     (data?.wallets ?? []).map((w) => [w.id, w.usd_value])
   );
+  const walletTipo = new Map((wallets ?? []).map((w) => [w.id, w.tipo]));
+  const regularWallets = (data?.wallets ?? []).filter(
+    (w) => walletTipo.get(w.id) !== "saving"
+  );
+  const vesWallets = regularWallets.filter((w) => w.currency === "VES");
+  const usdWallets = regularWallets.filter((w) => w.currency === "USD");
+
   const savingsUsd = (wallets ?? [])
     .filter((w) => w.tipo === "saving")
     .reduce((acc, w) => acc + Number(usdValues.get(w.id) ?? w.saldo), 0);
 
+  const rate = data?.rate ? Number(data.rate) : null;
+  const totalUsd = regularWallets.reduce(
+    (acc, w) => acc + Number(w.usd_value ?? 0),
+    0
+  );
+  const totalVes = rate != null ? totalUsd * rate : null;
+  const vesVes = vesWallets.reduce((acc, w) => acc + Number(w.saldo), 0);
+  const vesUsd =
+    rate != null
+      ? vesWallets.reduce((acc, w) => acc + Number(w.usd_value ?? 0), 0)
+      : null;
+  const usdUsd = usdWallets.reduce((acc, w) => acc + Number(w.saldo), 0);
+  const usdVes = rate != null ? usdUsd * rate : null;
+
   return (
     <div className="space-y-8">
-      {/* Balance Header */}
-      <section className="glass-panel clip-rounded-xl relative mt-4 overflow-hidden rounded-xl p-6">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-50" />
-        <div className="pointer-events-none absolute -left-10 -top-10 h-28 w-28 rounded-full bg-sky-400/40 blur-2xl" />
-        <div className="pointer-events-none absolute -left-2 -top-6 h-16 w-16 rounded-full bg-primary/40 blur-xl" />
-        <div className="pointer-events-none absolute -right-10 -bottom-10 h-28 w-28 rounded-full bg-sky-400/30 blur-2xl" />
-        <div className="pointer-events-none absolute -right-2 -bottom-6 h-16 w-16 rounded-full bg-primary/30 blur-xl" />
-        <div className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-400/15 blur-2xl" />
-        <BlurLoading loading={isLoading}>
-          <div className="relative z-10 flex flex-col items-center space-y-2 text-center">
-            <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-              {t("dashboard.totalBalance")}
-            </span>
-            {isLoading ? (
-              <Skeleton className="h-11 w-44" />
-            ) : (
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-semibold text-primary">$</span>
-                <span className="text-4xl font-bold tracking-tight text-on-surface">
-                  {data?.total_balance_usd ?? "0.00"}
-                </span>
-              </div>
-            )}
-            {data?.total_balance_ves != null && (
-              <div className="glass-panel clip-rounded-full mt-2 flex items-center gap-2 rounded-full px-4 py-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-                  {t("dashboard.totalBs")}
-                </span>
-                <span className="text-sm font-bold text-on-surface">
-                  {formatMoney(data.total_balance_ves, "VES", { symbol: true })}
-                </span>
-              </div>
-            )}
-            {data?.rate && (
-              <>
-                <div className="my-0.5 h-px w-24 bg-glass-border" />
-                <div className="glass-panel clip-rounded-full flex items-center gap-2 rounded-full px-4 py-1.5">
-                  <CurrencyDollarIcon size={16} className="text-primary" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-                    {t("dashboard.bcvRate", {
-                      rate: Number(data.rate).toFixed(2),
-                    })}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-        </BlurLoading>
-      </section>
+      {/* Balance Header (carrusel) */}
+      <div className="mt-4 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+        <BalanceCard
+          label={t("dashboard.totalBalance")}
+          symbol="$"
+          amount={isLoading ? null : formatMoney(totalUsd, "USD")}
+          isLoading={isLoading}
+          equivalentLabel={t("dashboard.totalBs")}
+          equivalentValue={
+            isLoading || totalVes == null
+              ? null
+              : formatMoney(totalVes, "VES", { symbol: true })
+          }
+          showRate
+          rate={data?.rate ?? null}
+        />
+        <BalanceCard
+          label={t("dashboard.vesBalance")}
+          symbol="Bs"
+          amount={isLoading ? null : formatMoney(vesVes, "VES")}
+          isLoading={isLoading}
+          equivalentLabel={t("dashboard.usdEquivalent")}
+          equivalentValue={
+            isLoading || vesUsd == null
+              ? null
+              : formatMoney(vesUsd, "USD", { symbol: true })
+          }
+          tone="flag"
+        />
+        <BalanceCard
+          label={t("dashboard.usdBalance")}
+          symbol="$"
+          amount={isLoading ? null : formatMoney(usdUsd, "USD")}
+          isLoading={isLoading}
+          equivalentLabel={t("dashboard.totalBs")}
+          equivalentValue={
+            isLoading || usdVes == null
+              ? null
+              : formatMoney(usdVes, "VES", { symbol: true })
+          }
+          tone="green"
+        />
+      </div>
+
+      {/* Accesos rápidos */}
+      <div className="grid grid-cols-2 gap-2">
+        <Link
+          to="/savings"
+          className="glass-panel clip-rounded-lg flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <PiggyBank className="h-5 w-5 text-emerald-500" />
+          <span className="text-sm font-semibold text-on-surface">
+            {t("menu.savings")}
+          </span>
+        </Link>
+        <Link
+          to="/subscriptions"
+          className="glass-panel clip-rounded-lg flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <CalendarRange className="h-5 w-5 text-primary" />
+          <span className="text-sm font-semibold text-on-surface">
+            {t("menu.subscriptions")}
+          </span>
+        </Link>
+        <button
+          type="button"
+          onClick={openVoice}
+          aria-label={t("assistant.voice.title")}
+          className="glass-panel clip-rounded-lg col-span-2 flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <NaviAvatar size={28} static className="shrink-0" />
+          <span className="text-sm font-semibold text-on-surface">
+            {t("assistant.voice.title")}
+          </span>
+        </button>
+      </div>
 
       {/* Total en Ahorros (compacto) */}
       <Link to="/savings" className="block">
