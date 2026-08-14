@@ -198,7 +198,7 @@ export default function AppLayout() {
   return (
     <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)]">
       <TopBar />
-      <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-[calc(env(safe-area-inset-top)+2.5rem)]">
+      <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
         <div key={location.pathname} className="view-enter">
           <Outlet />
         </div>
