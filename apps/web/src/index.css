@@ -145,6 +145,10 @@
   clip-path: inset(0 round 1rem);
 }
 
+@utility clip-rounded-3xl {
+  clip-path: inset(0 round 1.5rem);
+}
+
 @utility clip-rounded-4xl {
   clip-path: inset(0 round 2rem);
 }
