@@ -38,7 +38,11 @@ from apps.assistant.actions import (
 )
 from apps.assistant.context import build_context
 from apps.assistant.intent_rules import answer_deterministic
-from apps.assistant.providers import MockAssistantProvider, get_provider
+from apps.assistant.providers import (
+    MockAssistantProvider,
+    get_provider,
+    get_transcriber,
+)
 from apps.core.exceptions import BusinessRuleError
 from apps.rates.service import get_usd_rate_for_conversion
 
@@ -666,3 +670,30 @@ def _persist_chat(user, session_id: "uuid.UUID", user_message: str, reply: str) 
 def mock_chat(user, message: str) -> str:
     """Respuesta de demostración (usada en tests y dev sin proveedor)."""
     return MockAssistantProvider().answer(build_context(user), [{"role": "user", "content": message}])
+
+
+# ---------------------------------------------------------------------------
+# Transcripción de voz (chat por voz, iOS y desktop)
+# ---------------------------------------------------------------------------
+
+
+def transcribe(audio: bytes, filename: str) -> dict:
+    """Transcribe un clip de voz del usuario usando el proveedor configurado.
+
+    Args:
+        audio: bytes del archivo de audio grabado (MediaRecorder).
+        filename: nombre original (porta la extensión/content-type).
+
+    Returns:
+        Dict ``{"transcript": str}`` con el texto transcrito.
+    """
+    try:
+        transcript = get_transcriber().transcribe(audio, filename)
+    except Exception as exc:
+        logger.warning("Falló la transcripción de voz: %s", exc)
+        raise BusinessRuleError("No pude procesar el audio. Intenta de nuevo.") from exc
+
+    transcript = (transcript or "").strip()
+    if not transcript:
+        raise BusinessRuleError("No capté lo que dijiste. Intenta de nuevo.")
+    return {"transcript": transcript}

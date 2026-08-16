@@ -1,4 +1,4 @@
-"""providers — Interfaz de proveedores de LLM para Navi.
+"""providers — Interfaz de proveedores de LLM y transcripción para Navi.
 
 Desacopla la decisión de respuesta del transporte: el servicio orquesta el
 contexto y delega en un proveedor que conoce cómo hablar con el modelo.
@@ -8,6 +8,11 @@ Fase 1:
   (usado en desarrollo/CI y como base de las reglas de fallback).
 - ``OpenAIProvider``: llamada HTTP al API de OpenAI chat.completions usando la
   clave configurada por entorno (útil para la Fase 2; se deja la interfaz lista).
+
+Voz (chat por voz en iOS/desktop):
+- ``MockTranscriber``: transcripción determinista sin red (dev/CI).
+- ``OpenAITranscriber``: llamada al endpoint OpenAI audio/transcriptions
+  (Whisper o compatible) con la misma clave de entorno.
 
 Los proveedores reciben el contexto ya construido y el historial de mensajes;
 NUNCA reciben credenciales ni tokens de sesión.
@@ -63,6 +68,79 @@ class AssistantProvider(Protocol):
             Texto de la respuesta del asistente.
         """
         ...
+
+
+class Transcriber(Protocol):
+    """Contrato de un proveedor de transcripción de voz a texto."""
+
+    def transcribe(self, audio: bytes, filename: str) -> str:
+        """Devuelve el texto transcrito del clip de audio.
+
+        Args:
+            audio: bytes del archivo de audio (mp4/webm/wav…).
+            filename: nombre original del archivo (para el content-type).
+
+        Returns:
+            Transcript del audio.
+        """
+        ...
+
+
+class MockTranscriber:
+    """Transcripción determinista sin red (dev/CI).
+
+    Devuelve una frase fija para que el flujo del chat por voz sea probable
+    de punta a punta sin clave de API ni red.
+    """
+
+    def transcribe(self, audio: bytes, filename: str) -> str:
+        return "Registro un pago de veinte dólares en efectivo"
+
+
+class OpenAITranscriber:
+    """Transcripción por OpenAI (audio/transcriptions, Whisper o compatible).
+
+    Lee las credenciales de las variables de entorno:
+        AAI_API_KEY: clave de API del proveedor.
+        AAI_TRANSCRIBE_MODEL: modelo de transcripción (default "whisper-1").
+
+    Usa el endpoint compatible con OpenAI audio/transcriptions; si el proveedor
+    no ofrece transcripción el servicio cae al mock (siempre responde).
+    """
+
+    def __init__(
+        self,
+        model: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        transport=None,
+    ) -> None:
+        self.api_key = api_key if api_key is not None else os.getenv("AAI_API_KEY", "")
+        self.model = model or os.getenv("AAI_TRANSCRIBE_MODEL", "whisper-1")
+        self.base_url = base_url or os.getenv("AAI_BASE_URL", "https://api.openai.com/v1")
+        self._transport = transport
+
+    @property
+    def available(self) -> bool:
+        """True si hay clave configurada (se puede llamar al API)."""
+        return bool(self.api_key)
+
+    def transcribe(self, audio: bytes, filename: str) -> str:
+        """Llamada a audio/transcriptions con el clip y modelo configurado."""
+        if not self.available:
+            raise RuntimeError("No hay AAI_API_KEY configurada para OpenAITranscriber")
+
+        url = f"{self.base_url.rstrip('/')}/audio/transcriptions"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        data = {"model": self.model, "language": "es"}
+        files = {"file": (filename, audio)}
+
+        # Timeout acotado: un clip de voz transcribe en unos segundos; nunca
+        # cuelga el worker más de 60 s.
+        with httpx.Client(transport=self._transport, timeout=httpx.Timeout(60.0)) as client:
+            response = client.post(url, headers=headers, data=data, files=files)
+        response.raise_for_status()
+        return response.json().get("text", "").strip()
 
 
 class MockAssistantProvider:
@@ -158,3 +236,16 @@ def get_provider() -> AssistantProvider:
         return OpenAIProvider()
     logger.info("AAI_PROVIDER sin configurar → usando MockAssistantProvider")
     return MockAssistantProvider()
+
+
+def get_transcriber() -> Transcriber:
+    """Devuelve el proveedor de transcripción según la configuración de entorno.
+
+    Igual criterio que ``get_provider``: clave/config OpenAI → real; si no,
+    Mock (dev/CI sin red).
+    """
+    configured = (os.getenv("AAI_PROVIDER") or "").lower()
+    if configured in {"openai", "azure", "openrouter"} or os.getenv("AAI_API_KEY"):
+        return OpenAITranscriber()
+    logger.info("AAI_API_KEY sin configurar → usando MockTranscriber")
+    return MockTranscriber()

@@ -8,6 +8,24 @@ from rest_framework import serializers
 
 from apps.assistant.models import ChatMessage
 
+#: Tamaño máximo de un clip de voz (10 MB ≈ varios minutos de audio AAC).
+#: El límite del proveedor (Whisper) es 25 MB; dejamos margen de sobra.
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
+
+#: Content-types aceptados (los que produce MediaRecorder y acepta Whisper).
+ALLOWED_AUDIO_TYPES = {
+    "audio/mp4",
+    "audio/aac",
+    "audio/m4a",
+    "audio/webm",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/x-m4a",
+    "audio/ogg",
+}
+
 
 class ChatRequestSerializer(serializers.Serializer):
     """Validación de la petición al chat del asistente.
@@ -48,3 +66,27 @@ class ChatMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatMessage
         fields = ["id", "session_id", "role", "content", "created_at"]
+
+
+class TranscriptionRequestSerializer(serializers.Serializer):
+    """Validación del clip de audio a transcribir.
+
+    Campos:
+        audio: archivo de audio (multipart) con el mensaje de voz del usuario.
+    """
+
+    audio = serializers.FileField(
+        error_messages={
+            "required": "Adjunta un audio para transcribir.",
+            "empty": "El audio está vacío.",
+        },
+    )
+
+    def validate_audio(self, value):
+        """Rechaza clips demasiado grandes o con formato no soportado."""
+        if value.size > MAX_AUDIO_BYTES:
+            raise serializers.ValidationError("El audio es demasiado grande (máximo 10 MB).")
+        content_type = (getattr(value, "content_type", "") or "").lower()
+        if content_type and content_type not in ALLOWED_AUDIO_TYPES:
+            raise serializers.ValidationError("Formato de audio no soportado.")
+        return value

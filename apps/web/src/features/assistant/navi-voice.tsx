@@ -1,46 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "motion/react";
-import { Mic, X } from "lucide-react";
+import { Mic, RefreshCw, X } from "lucide-react";
 
 import { useAssistant } from "@/hooks/use-assistant";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
+import {
+  getRecognitionKind,
+  getRecognitionProvider,
+  getSpeechProvider,
+} from "@/features/assistant/speech";
+import type { RecognitionErrorCode } from "@/features/assistant/speech/types";
 import { cn } from "@/lib/utils";
 
-type VoicePhase = "listening" | "thinking" | "speaking" | "idle" | "unsupported";
-
-interface SpeechRecognitionResultLike {
-  0: { transcript: string };
-  isFinal: boolean;
-}
-
-interface SpeechRecognitionEventLike {
-  results: { [index: number]: SpeechRecognitionResultLike } & { length: number };
-}
-
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  abort: () => void;
-}
-
-interface SpeechRecognitionConstructorLike {
-  new (): SpeechRecognitionLike;
-}
-
-const getSpeechRecognition = (): SpeechRecognitionConstructorLike | null => {
-  if (typeof window === "undefined") return null;
-  const w = window as unknown as {
-    SpeechRecognition?: SpeechRecognitionConstructorLike;
-    webkitSpeechRecognition?: SpeechRecognitionConstructorLike;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-};
+type VoicePhase =
+  | "listening"
+  | "recording"
+  | "thinking"
+  | "speaking"
+  | "idle"
+  | "unsupported"
+  | "micError";
 
 interface NaviVoiceProps {
   open: boolean;
@@ -50,11 +30,15 @@ interface NaviVoiceProps {
 /**
  * Interfaz de voz con "Navi": overlay a pantalla completa con el fondo
  * desenfocado, la bolita de Navi en grande y la conversación visible en
- * burbujas (Web Speech API: escucha → envía al backend → lee la respuesta).
+ * burbujas.
  *
- * El historial se mantiene mientras la app está abierta: si Navi hace una
- * pregunta (cuenta, monto, motivo…), su texto queda en pantalla hasta que
- * el usuario responde por voz.
+ * Entrada de voz:
+ * - Android/desktop → Web Speech API (escucha → envía el texto al backend).
+ * - iOS → grabación con MediaRecorder + corte por silencio (VAD) y
+ *   transcripción en el backend (`/api/assistant/transcribe`).
+ *
+ * Salida (TTS): ``speechSynthesis`` nativo con arreglos para iOS (warm-up del
+ * audio session en el gesto y carga de voces vía ``voiceschanged``).
  *
  * Se abre manteniendo presionado el botón "+" del navbar.
  */
@@ -62,36 +46,68 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
   const { t } = useTranslation();
   const { messages, thinking, send, abort } = useAssistant();
   const [phase, setPhase] = useState<VoicePhase>("idle");
+  const [micErrorCode, setMicErrorCode] = useState<RecognitionErrorCode | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const recRef = useRef<SpeechRecognitionLike | null>(null);
+  const recRef = useRef<ReturnType<typeof getRecognitionProvider>>(null);
+  const speechRef = useRef<ReturnType<typeof getSpeechProvider>>(null);
   const mountedRef = useRef(false);
-  const transcriptRef = useRef("");
   const lastCountRef = useRef(0);
   const phaseRef = useRef<VoicePhase>("idle");
+
+  // El proveedor de entrada decide el estado activo (live vs grabación iOS).
+  const recognitionKind = useMemo(() => getRecognitionKind(), []);
+  const activePhase: VoicePhase = recognitionKind === "recording" ? "recording" : "listening";
 
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
 
-  // Arranca al abrir: cancelar audio previo y escuchar.
+  // Proveedor de salida (TTS): se configura una vez.
+  useEffect(() => {
+    const speech = getSpeechProvider();
+    speechRef.current = speech;
+    if (speech) {
+      speech.onEnd = () => {
+        if (!mountedRef.current) return;
+        setPhase("idle");
+      };
+    }
+    return () => {
+      if (speech) speech.onEnd = null;
+    };
+  }, []);
+
+  // Arranca al abrir: cancelar audio previo, desbloquear TTS y escuchar.
   useEffect(() => {
     if (!open) return;
     mountedRef.current = true;
     lastCountRef.current = messages.length;
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 
-    const SR = getSpeechRecognition();
-    if (!SR) {
+    const speech = getSpeechProvider();
+    speechRef.current = speech;
+    speech?.cancel();
+    // iOS exige que la primera emisión de audio ocurra dentro de un gesto:
+    // el tap que abre el overlay es ese gesto → warm-up aquí.
+    speech?.warmUp();
+
+    const rec = getRecognitionProvider();
+    recRef.current = rec;
+    if (!rec) {
       setPhase("unsupported");
       return;
     }
-    setPhase("listening");
+    rec.onResult = handleResult;
+    rec.onError = handleRecError;
     startListening();
     return () => {
       mountedRef.current = false;
-      recRef.current?.abort();
+      rec?.cancel();
       recRef.current = null;
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      if (rec) {
+        rec.onResult = null;
+        rec.onError = null;
+      }
+      speech?.cancel();
       // A12 — abortar la petición del backend si hay una en curso.
       abort();
     };
@@ -104,71 +120,52 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, thinking, open]);
 
-  function startListening() {
+  function handleResult(transcript: string) {
     if (!mountedRef.current) return;
-    // Nunca dejar una instancia activa: el browser solo permite una escucha.
-    if (recRef.current) {
-      recRef.current.abort();
-      recRef.current = null;
-    }
-    const SR = getSpeechRecognition();
-    if (!SR) {
-      setPhase("unsupported");
-      return;
-    }
-    const rec = new SR();
-    recRef.current = rec;
-    rec.lang = "es-ES";
-    rec.continuous = false;
-    rec.interimResults = false;
+    setPhase("thinking");
+    void send(transcript);
+  }
 
-    rec.onresult = (e: SpeechRecognitionEventLike) => {
-      const transcript = e.results[0]?.[0]?.transcript?.trim() ?? "";
-      if (transcript) transcriptRef.current = transcript;
-    };
-
-    rec.onerror = () => {
-      if (!mountedRef.current) return;
-      if (recRef.current === rec) recRef.current = null;
-      setPhase("idle");
-    };
-
-    rec.onend = () => {
-      if (!mountedRef.current) return;
-      if (recRef.current === rec) recRef.current = null;
-      const transcript = transcriptRef.current;
-      transcriptRef.current = "";
-      if (transcript) {
-
-        setPhase("thinking");
-        void send(transcript);
-      } else {
+  function handleRecError(code: RecognitionErrorCode) {
+    if (!mountedRef.current) return;
+    switch (code) {
+      case "timeout": {
         // Silencio: vuelve a escuchar (solo si nada lo reemplazó).
         window.setTimeout(() => {
-          if (mountedRef.current && recRef.current === null && phaseRef.current === "listening") {
+          if (mountedRef.current && recRef.current && phaseRef.current === activePhase) {
             startListening();
           }
         }, 600);
+        break;
       }
-    };
-
-    try {
-      rec.start();
-    } catch {
-      // Chrome puede negarse justo después de hablar (audio sin liberar).
-      recRef.current = null;
-      window.setTimeout(() => {
-        if (mountedRef.current && phaseRef.current === "listening") startListening();
-      }, 400);
+      case "unsupported":
+        setPhase("unsupported");
+        break;
+      default:
+        setMicErrorCode(code);
+        setPhase("micError");
+        break;
     }
+  }
+
+  function startListening() {
+    if (!mountedRef.current) return;
+    const rec = recRef.current;
+    if (!rec) {
+      setPhase("unsupported");
+      return;
+    }
+    setMicErrorCode(null);
+    setPhase(activePhase);
+    rec.start();
   }
 
   // Re-escucha manual: corta la voz (si Navi está hablando) y vuelve a oír.
   function relisten() {
     if (phase === "thinking" || !mountedRef.current) return;
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-
-    setPhase("listening");
+    speechRef.current?.cancel();
+    setMicErrorCode(null);
+    setPhase(activePhase);
     // Retardo breve: el browser libera el micrófono tras hablar.
     window.setTimeout(startListening, 250);
   }
@@ -179,31 +176,19 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
     lastCountRef.current = messages.length;
     const last = messages[messages.length - 1];
     if (last?.role !== "assistant") return;
-    setPhase("speaking");
-    if (!("speechSynthesis" in window)) {
+
+    const speech = speechRef.current;
+    if (!speech || !speech.isSupported()) {
       setPhase("idle");
       return;
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(last.text);
-    utterance.lang = "es-ES";
-    utterance.rate = 1.05;
-    const esVoice = window.speechSynthesis
-      .getVoices()
-      .find((v) => v.lang?.toLowerCase().startsWith("es"));
-    if (esVoice) utterance.voice = esVoice;
-    utterance.onend = () => {
-      if (!mountedRef.current) return;
-      setPhase("idle");
-    };
-    utterance.onerror = () => {
-      if (!mountedRef.current) return;
-      setPhase("idle");
-    };
-    window.speechSynthesis.speak(utterance);
+    setPhase("speaking");
+    speech.speak(last.text);
   }, [messages, phase]);
 
-  const listening = phase === "listening";
+  const listening = phase === "listening" || phase === "recording";
+  const micDenied = micErrorCode === "permission";
+  const transcriptionFailed = micErrorCode === "network";
 
   return (
     <AnimatePresence>
@@ -268,12 +253,18 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
             {listening && (
               <>
                 <motion.span
-                  className="absolute inset-0 rounded-full border border-sky-400/60"
+                  className={cn(
+                    "absolute inset-0 rounded-full border",
+                    phase === "recording" ? "border-status-delayed/60" : "border-sky-400/60"
+                  )}
                   animate={{ scale: [1, 1.12], opacity: [0.8, 0] }}
                   transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
                 />
                 <motion.span
-                  className="absolute inset-0 rounded-full border border-sky-400/50"
+                  className={cn(
+                    "absolute inset-0 rounded-full border",
+                    phase === "recording" ? "border-status-delayed/50" : "border-sky-400/50"
+                  )}
                   animate={{ scale: [1, 1.12], opacity: [0.8, 0] }}
                   transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut", delay: 0.5 }}
                 />
@@ -290,8 +281,9 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
               type="button"
               aria-label={t("assistant.voice.talkAgain")}
               onClick={relisten}
-              className="relative rounded-full focus-visible:outline-none"
+              className="relative rounded-full focus-visible:outline-none disabled:cursor-not-allowed"
               style={{ touchAction: "none" }}
+              disabled={phase === "thinking" || phase === "micError"}
             >
               <NaviAvatar size={180} thinking={phase === "thinking"} />
             </button>
@@ -300,28 +292,40 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
           {/* Estado */}
           <div className="flex shrink-0 flex-col items-center gap-2 pb-4 pt-5">
             {phase === "unsupported" ? (
-              <p className="text-sm text-on-surface-variant">
-                {t("assistant.voice.unsupported")}
+              <p className="text-sm text-on-surface-variant">{t("assistant.voice.unsupported")}</p>
+            ) : phase === "micError" ? (
+              <p className="max-w-xs text-center text-sm text-on-surface-variant">
+                {micDenied
+                  ? t("assistant.voice.micDenied")
+                  : transcriptionFailed
+                    ? t("assistant.voice.transcriptionError")
+                    : t("assistant.voice.micError")}
               </p>
             ) : (
               <p className="text-sm text-on-surface-variant">
-                {listening
+                {phase === "listening"
                   ? t("assistant.voice.listening")
-                  : phase === "thinking"
-                    ? t("assistant.voice.thinking")
-                    : phase === "speaking"
-                      ? t("assistant.voice.speaking")
-                      : t("assistant.voice.talkAgain")}
+                  : phase === "recording"
+                    ? t("assistant.voice.recording")
+                    : phase === "thinking"
+                      ? t("assistant.voice.thinking")
+                      : phase === "speaking"
+                        ? t("assistant.voice.speaking")
+                        : t("assistant.voice.talkAgain")}
               </p>
             )}
-            {phase === "idle" && (
+            {(phase === "idle" || phase === "micError") && (
               <button
                 type="button"
-                aria-label={t("assistant.voice.talkAgain")}
+                aria-label={phase === "micError" ? t("assistant.voice.retry") : t("assistant.voice.talkAgain")}
                 onClick={relisten}
                 className="mt-2 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-on-primary shadow-sm transition-all hover:opacity-90 active:scale-90"
               >
-                <Mic className="h-5 w-5" />
+                {phase === "micError" ? (
+                  <RefreshCw className="h-5 w-5" />
+                ) : (
+                  <Mic className="h-5 w-5" />
+                )}
               </button>
             )}
           </div>

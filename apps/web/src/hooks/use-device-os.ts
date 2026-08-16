@@ -19,6 +19,16 @@ interface DeviceInfo {
   supportsNotifications: boolean;
 }
 
+/** Detecta iOS por UA (y iPad como desktop con pantalla táctil). */
+export function isIOSDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const userAgent = navigator.userAgent.toLowerCase();
+  return (
+    /iphone|ipad|ipod|ios/.test(userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
 export function useDeviceOS(): DeviceInfo {
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo>({
     os: "web",
@@ -31,23 +41,24 @@ export function useDeviceOS(): DeviceInfo {
 
   useEffect(() => {
     const userAgent = navigator.userAgent.toLowerCase();
-    
+
     // Detectar OS
-    const isIOS = /iphone|ipad|ipod|ios/.test(userAgent) || 
-                  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isIOS = isIOSDevice();
     const isAndroid = /android|webos/.test(userAgent);
     const os: DeviceOS = isIOS ? "ios" : isAndroid ? "android" : "web";
 
     // Detectar si es PWA instalada
-    const isStandalone = 
-      (window.navigator as any).standalone === true ||
+    const isStandalone =
+      (window.navigator as { standalone?: boolean }).standalone === true ||
       window.matchMedia("(display-mode: standalone)").matches ||
       window.matchMedia("(display-mode: fullscreen)").matches;
-    
+
     const appType: AppType = isStandalone ? "pwa" : "web";
 
-    // Detectar soporte de APIs
-    const supportsVoice = "speechSynthesis" in window && !isIOS;
+    // Detectar soporte de APIs: la síntesis de voz (speechSynthesis) existe
+    // también en iOS; la entrada por voz se resuelve por proveedor en el
+    // asistente (Web Speech en Android/desktop, grabación+transcripción en iOS).
+    const supportsVoice = "speechSynthesis" in window;
     const supportsNotifications = "Notification" in window;
 
     setDeviceInfo({
@@ -80,7 +91,7 @@ export function getOSName(os: DeviceOS): string {
  */
 export function getIOSLimitations(): string[] {
   return [
-    "Voz de Navi no disponible en iOS (limitación de Safari)",
+    "El micrófono requiere permiso del navegador",
     "Acceso offline limitado",
     "Algunas características PWA pueden no funcionar completamente",
   ];

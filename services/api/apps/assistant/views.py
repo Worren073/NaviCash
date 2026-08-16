@@ -19,8 +19,9 @@ from apps.assistant.serializers import (
     ChatMessageSerializer,
     ChatRequestSerializer,
     ChatResponseSerializer,
+    TranscriptionRequestSerializer,
 )
-from apps.assistant.services import chat
+from apps.assistant.services import chat, transcribe
 
 #: Límite duro del historial (M4): se devuelven como máximo estos mensajes.
 HISTORY_LIMIT = 50
@@ -88,3 +89,26 @@ class ChatHistoryView(GenericAPIView):
         rows.reverse()
         serializer = self.get_serializer(rows, many=True)
         return Response(serializer.data)
+
+
+class TranscriptionView(GenericAPIView):
+    """POST /api/assistant/transcribe → transcript del clip de voz del usuario.
+
+    Recibe un multipart con el audio grabado por el cliente (MediaRecorder),
+    lo transcribe con el proveedor configurado (Whisper o mock) y devuelve
+    ``{"transcript": str}`` listo para enviar al chat.
+    """
+
+    serializer_class = TranscriptionRequestSerializer
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [UserScopedRateThrottle]
+    throttle_scope = "transcribe"
+
+    def post(self, request) -> Response:
+        """Transcribe el clip y devuelve el texto para el chat de voz."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        upload = serializer.validated_data["audio"]
+        result = transcribe(upload.read(), upload.name or "audio")
+        return Response({"transcript": result["transcript"]}, status=status.HTTP_200_OK)
