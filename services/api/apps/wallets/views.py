@@ -8,8 +8,6 @@ Endpoints:
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -19,7 +17,7 @@ from apps.core.permissions import IsOwner
 from apps.transactions.serializers import TransactionReadSerializer
 from apps.transactions.services import create_transfer
 from apps.wallets.models import Wallet
-from apps.wallets.serializers import TransferSerializer, WalletSerializer
+from apps.wallets.serializers import AdjustBalanceSerializer, TransferSerializer, WalletSerializer
 from apps.wallets.services import adjust_balance
 
 
@@ -45,14 +43,16 @@ class WalletViewSet(viewsets.ModelViewSet):
         ``{"new_balance": "500.00"}`` para fijar directamente el saldo.
         """
         wallet = self.get_object()
-        try:
-            if "new_balance" in request.data:
-                new_balance = Decimal(str(request.data["new_balance"]))
-                delta = new_balance - wallet.saldo
-            else:
-                delta = Decimal(str(request.data["delta"]))
-        except (InvalidOperation, KeyError, TypeError) as exc:
-            raise BusinessRuleError("Debes enviar 'delta' o 'new_balance' numérico.") from exc
+        # El serializer valida los decimales (rechaza NaN/Infinity, monto mal
+        # formado o ausente) y devuelve 400 en vez de un 500 (AUDIT A5).
+        serializer = AdjustBalanceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        if "new_balance" in data:
+            delta = data["new_balance"] - wallet.saldo
+        else:
+            delta = data["delta"]
 
         try:
             new_saldo = adjust_balance(wallet, delta, reason="ajuste_manual")

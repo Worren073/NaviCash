@@ -41,6 +41,31 @@ class WalletSerializer(serializers.ModelSerializer):
         return wallet
 
 
+class AdjustBalanceSerializer(serializers.Serializer):
+    """Valida el cuerpo de ``POST /api/wallets/<id>/adjust``.
+
+    Acepta exactamente uno de:
+        delta: variación del saldo (positivo suma, negativo resta).
+        new_balance: saldo final deseado de la billetera.
+
+    Rechaza valores no finitos (NaN/Infinity) y cantidades con más de 2
+    decimales o de magnitud desmedida, con 400 en vez de un 500.
+    """
+
+    delta = serializers.DecimalField(
+        max_digits=20, decimal_places=2, required=False, write_only=True
+    )
+    new_balance = serializers.DecimalField(
+        max_digits=20, decimal_places=2, required=False, write_only=True
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        """Debe venir al menos uno de los dos campos."""
+        if "delta" not in attrs and "new_balance" not in attrs:
+            raise serializers.ValidationError("Debes enviar 'delta' o 'new_balance' numérico.")
+        return attrs
+
+
 class TransferSerializer(serializers.Serializer):
     """Valida el cuerpo de ``POST /api/wallets/transfer``.
 

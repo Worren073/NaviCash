@@ -84,6 +84,22 @@ class TestWalletAdjust:
         resp = api_client.post(f"/api/wallets/{wallet.id}/adjust", {})
         assert resp.status_code == 400
 
+    def test_nan_delta_rejected(self, api_client) -> None:
+        """NaN no se acepta como delta: 400 en vez de corromper el saldo."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("10.00"))
+        resp = api_client.post(f"/api/wallets/{wallet.id}/adjust", {"delta": "NaN"})
+        assert resp.status_code == 400
+        wallet.refresh_from_db()
+        assert wallet.saldo == Decimal("10.00")
+
+    def test_infinity_new_balance_rejected(self, api_client) -> None:
+        """Infinity no se acepta como new_balance: 400."""
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("10.00"))
+        resp = api_client.post(f"/api/wallets/{wallet.id}/adjust", {"new_balance": "Infinity"})
+        assert resp.status_code == 400
+        wallet.refresh_from_db()
+        assert wallet.saldo == Decimal("10.00")
+
 
 @pytest.mark.django_db
 class TestAdjustBalanceService:
