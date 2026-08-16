@@ -227,6 +227,7 @@ export default {
       micError: "No pude acceder al micrófono. Intenta de nuevo.",
       transcriptionError: "No pude entender el audio. Intenta de nuevo.",
       retry: "Reintentar",
+      silentMode: "Si el botón de silencio está activado, no escucharás la voz de Navi.",
     },
   },
   savings: {

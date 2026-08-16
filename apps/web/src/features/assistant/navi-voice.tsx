@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "motion/react";
-import { Mic, RefreshCw, X } from "lucide-react";
+import { Mic, RefreshCw, VolumeX, X } from "lucide-react";
 
 import { useAssistant } from "@/hooks/use-assistant";
+import { isIOSDevice } from "@/hooks/use-device-os";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
 import {
   getRecognitionKind,
@@ -59,6 +60,9 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
   // El proveedor de entrada decide el estado activo (live vs grabación iOS).
   const recognitionKind = useMemo(() => getRecognitionKind(), []);
   const activePhase: VoicePhase = recognitionKind === "recording" ? "recording" : "listening";
+  // En iOS el interruptor de silencio silencia speechSynthesis (sin API para
+  // forzarlo): se muestra un recordatorio persistente.
+  const isIOS = isIOSDevice();
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -228,7 +232,7 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
             type="button"
             aria-label={t("common.close")}
             onClick={onClose}
-            className="absolute right-5 top-5 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-glass-border bg-glass-surface/80 text-on-surface transition-colors hover:bg-surface-container-high active:scale-95"
+            className="absolute right-5 top-[calc(env(safe-area-inset-top)+1.25rem)] z-10 flex h-11 w-11 items-center justify-center rounded-full border border-glass-border bg-glass-surface/80 text-on-surface transition-colors hover:bg-surface-container-high active:scale-95"
           >
             <X className="h-5 w-5" />
           </button>
@@ -353,6 +357,16 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
               </button>
             )}
           </div>
+
+          {/* iOS: recordatorio del interruptor de silencio (silencio TTS) */}
+          {isIOS && (
+            <div className="flex shrink-0 items-center justify-center gap-1.5 px-6 pb-2 text-center">
+              <VolumeX className="h-3.5 w-3.5 shrink-0 text-on-surface-variant" />
+              <p className="text-[11px] leading-snug text-on-surface-variant">
+                {t("assistant.voice.silentMode")}
+              </p>
+            </div>
+          )}
 
           {/* Aviso legal: Navi no es asesor financiero */}
           <div className="shrink-0 px-6 pb-6 text-center">

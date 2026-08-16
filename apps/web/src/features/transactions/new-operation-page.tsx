@@ -136,8 +136,9 @@ export default function NewOperationPage() {
 
   return (
     <div className="fixed inset-0 z-40 flex h-full w-full flex-col bg-surface/95 backdrop-blur-3xl">
-      {/* Header */}
-      <header className="flex w-full shrink-0 items-center justify-between px-5 py-4">
+      {/* Header: el overlay es fixed inset-0 y cubre el notch iOS → la X no
+          debe quedar detrás del reloj (env(safe-area-inset-top) es 0 fuera). */}
+      <header className="flex w-full shrink-0 items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+1rem)] pb-4">
         <button
           type="button"
           aria-label={t("common.close")}

@@ -225,6 +225,7 @@ export default {
       micError: "I couldn't access the microphone. Try again.",
       transcriptionError: "I couldn't understand the audio. Try again.",
       retry: "Retry",
+      silentMode: "If silent mode is on, you won't hear Navi's voice.",
     },
   },
   savings: {
