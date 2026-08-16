@@ -99,13 +99,19 @@ services:
       - key: TERMS_VERSION
         value: v1-2026-08
 
-  # ====================== Frontend / PWA (estático) ==========================
+  # ================== Frontend / PWA (Docker + nginx) =======================
+  # Render Static Site no permite emitir headers HTTP (CSP, X-Frame-Options,
+  # Referrer-Policy, HSTS). Para endurecer la entrega se sirve la PWA desde un
+  # contenedor nginx (Dockerfile.prod multi-stage): build de Vite + nginx con
+  # las cabeceras de seguridad (AUDIT frontend). VITE_API_URL / VITE_CAPTCHA_
+  # SITE_KEY se inyectan como env durante el build (igual que en Static Site).
   - name: navicash-web
     type: web
-    runtime: static
+    runtime: docker
     rootDir: apps/web
-    buildCommand: npm run build
-    staticPublishPath: dist
+    dockerfilePath: Dockerfile.prod
+    dockerContext: .
+    plan: free
     envVars:
       - key: VITE_API_URL
         sync: false
