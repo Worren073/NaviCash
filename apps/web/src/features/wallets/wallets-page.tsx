@@ -6,6 +6,7 @@ import { sileo } from "sileo";
 import { PenIcon } from "@/components/icons";
 
 import { useOverview, useWallets, queryKeys } from "@/hooks/use-queries";
+import { useHideBalances } from "@/hooks/use-hide-balances";
 import { api, ApiErrorClass } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,6 +28,7 @@ import { WALLET_COLORS } from "@/lib/constants";
 import { CardGlow } from "@/components/ui/card-glow";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { BalanceCard } from "@/features/dashboard/balance-card";
+import { BalanceVisibilityToggle } from "@/features/dashboard/balance-visibility-toggle";
 import { cn } from "@/lib/utils";
 import type { Currency, Wallet } from "@/lib/types";
 
@@ -766,6 +768,7 @@ export default function WalletsPage() {
   const { t } = useTranslation();
   const { data: overview, isLoading: overviewLoading } = useOverview();
   const { data: wallets, isLoading, isError } = useWallets();
+  const { hidden: hideBalances, toggle: toggleBalances } = useHideBalances();
 
   const usdValues = new Map<string, string>(
     (overview?.wallets ?? []).map((w) => [w.id, w.usd_value])
@@ -810,47 +813,58 @@ export default function WalletsPage() {
         </div>
 
         {/* Balance Header (carrusel) */}
-        <div className="mt-6 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
-          <BalanceCard
-            label={t("dashboard.totalBalance")}
-            symbol="$"
-            amount={overviewLoading ? null : formatMoney(totalUsd, "USD")}
-            isLoading={overviewLoading}
-            equivalentLabel={t("dashboard.totalBs")}
-            equivalentValue={
-              overviewLoading || totalVes == null
-                ? null
-                : formatMoney(totalVes, "VES", { symbol: true })
-            }
-            showRate
-            rate={overview?.rate ?? null}
-          />
-          <BalanceCard
-            label={t("dashboard.vesBalance")}
-            symbol="Bs"
-            amount={overviewLoading ? null : formatMoney(vesVes, "VES")}
-            isLoading={overviewLoading}
-            equivalentLabel={t("dashboard.usdEquivalent")}
-            equivalentValue={
-              overviewLoading || vesUsd == null
-                ? null
-                : formatMoney(vesUsd, "USD", { symbol: true })
-            }
-            tone="flag"
-          />
-          <BalanceCard
-            label={t("dashboard.usdBalance")}
-            symbol="$"
-            amount={overviewLoading ? null : formatMoney(usdUsd, "USD")}
-            isLoading={overviewLoading}
-            equivalentLabel={t("dashboard.totalBs")}
-            equivalentValue={
-              overviewLoading || usdVes == null
-                ? null
-                : formatMoney(usdVes, "VES", { symbol: true })
-            }
-            tone="green"
-          />
+        <div>
+          <div className="mt-6 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              {t("dashboard.balances")}
+            </span>
+            <BalanceVisibilityToggle hidden={hideBalances} onToggle={toggleBalances} />
+          </div>
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+            <BalanceCard
+              label={t("dashboard.totalBalance")}
+              symbol="$"
+              amount={overviewLoading ? null : formatMoney(totalUsd, "USD")}
+              isLoading={overviewLoading}
+              equivalentLabel={t("dashboard.totalBs")}
+              equivalentValue={
+                overviewLoading || totalVes == null
+                  ? null
+                  : formatMoney(totalVes, "VES", { symbol: true })
+              }
+              showRate
+              rate={overview?.rate ?? null}
+              hideAmounts={hideBalances}
+            />
+            <BalanceCard
+              label={t("dashboard.vesBalance")}
+              symbol="Bs"
+              amount={overviewLoading ? null : formatMoney(vesVes, "VES")}
+              isLoading={overviewLoading}
+              equivalentLabel={t("dashboard.usdEquivalent")}
+              equivalentValue={
+                overviewLoading || vesUsd == null
+                  ? null
+                  : formatMoney(vesUsd, "USD", { symbol: true })
+              }
+              tone="flag"
+              hideAmounts={hideBalances}
+            />
+            <BalanceCard
+              label={t("dashboard.usdBalance")}
+              symbol="$"
+              amount={overviewLoading ? null : formatMoney(usdUsd, "USD")}
+              isLoading={overviewLoading}
+              equivalentLabel={t("dashboard.totalBs")}
+              equivalentValue={
+                overviewLoading || usdVes == null
+                  ? null
+                  : formatMoney(usdVes, "VES", { symbol: true })
+              }
+              tone="green"
+              hideAmounts={hideBalances}
+            />
+          </div>
         </div>
 
         {/* Total Balance (Bento) */}
@@ -865,7 +879,9 @@ export default function WalletsPage() {
               <Skeleton className="h-10 w-40" />
             ) : (
               <span className="text-4xl font-bold tracking-tight text-on-surface">
-                {formatMoney(overview?.total_balance_usd ?? 0, "USD", { symbol: true })}
+                {hideBalances
+                  ? "••••"
+                  : formatMoney(overview?.total_balance_usd ?? 0, "USD", { symbol: true })}
               </span>
             )}
           </div>

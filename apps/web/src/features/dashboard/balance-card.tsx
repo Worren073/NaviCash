@@ -13,7 +13,10 @@ interface BalanceCardProps {
   tone?: "default" | "flag" | "green";
   showRate?: boolean;
   rate?: string | null;
+  hideAmounts?: boolean;
 }
+
+const HIDDEN = "••••";
 
 /**
  * Tarjeta de balance con cristal esmerilado, brillo y equivalente.
@@ -29,6 +32,7 @@ export function BalanceCard({
   tone = "default",
   showRate,
   rate,
+  hideAmounts = false,
 }: BalanceCardProps) {
   const { t } = useTranslation();
   const glow =
@@ -59,7 +63,7 @@ export function BalanceCard({
             "bg-primary/30",
           ];
   return (
-    <section className="glass-panel clip-rounded-xl relative w-[85%] shrink-0 snap-center overflow-hidden rounded-xl p-6">
+    <section className="glass-panel clip-rounded-xl relative w-[92%] shrink-0 snap-center overflow-hidden rounded-xl p-6">
       <div
         className={`absolute inset-0 opacity-50 ${
           tone === "flag"
@@ -85,7 +89,7 @@ export function BalanceCard({
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-semibold text-primary">{symbol}</span>
               <span className="text-4xl font-bold tracking-tight text-on-surface">
-                {amount ?? "0.00"}
+                {hideAmounts ? HIDDEN : amount ?? "0.00"}
               </span>
             </div>
           )}
@@ -95,7 +99,7 @@ export function BalanceCard({
                 {equivalentLabel}
               </span>
               <span className="text-sm font-bold text-on-surface">
-                {equivalentValue}
+                {hideAmounts ? HIDDEN : equivalentValue}
               </span>
             </div>
           )}
@@ -105,9 +109,11 @@ export function BalanceCard({
               <div className="glass-panel clip-rounded-2xl flex items-center gap-2 rounded-2xl px-4 py-1.5">
                 <CurrencyDollarIcon size={16} className="text-primary" />
                 <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-                  {t("dashboard.bcvRate", {
-                    rate: Number(rate).toFixed(2),
-                  })}
+                  {hideAmounts
+                    ? HIDDEN
+                    : t("dashboard.bcvRate", {
+                        rate: Number(rate).toFixed(2),
+                      })}
                 </span>
               </div>
             </>

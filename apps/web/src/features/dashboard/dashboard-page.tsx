@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { useOverview, useWallets } from "@/hooks/use-queries";
+import { useHideBalances } from "@/hooks/use-hide-balances";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ import { BlurLoading } from "@/components/ui/blur-loading";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
 import { useVoiceChat } from "@/features/assistant/voice-chat-context";
 import { BalanceCard } from "@/features/dashboard/balance-card";
+import { BalanceVisibilityToggle } from "@/features/dashboard/balance-visibility-toggle";
 import { formatCompact, formatMoney, formatRelativeEvent } from "@/lib/format";
 import type { Transaction } from "@/lib/types";
 
@@ -99,6 +101,7 @@ export default function DashboardPage() {
   const { openVoice } = useVoiceChat();
   const { data, isLoading, isError, refetch } = useOverview();
   const { data: wallets } = useWallets();
+  const { hidden: hideBalances, toggle: toggleBalances } = useHideBalances();
 
   const usdValues = new Map<string, string>(
     (data?.wallets ?? []).map((w) => [w.id, w.usd_value])
@@ -131,47 +134,58 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Balance Header (carrusel) */}
-      <div className="mt-4 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
-        <BalanceCard
-          label={t("dashboard.totalBalance")}
-          symbol="$"
-          amount={isLoading ? null : formatMoney(totalUsd, "USD")}
-          isLoading={isLoading}
-          equivalentLabel={t("dashboard.totalBs")}
-          equivalentValue={
-            isLoading || totalVes == null
-              ? null
-              : formatMoney(totalVes, "VES", { symbol: true })
-          }
-          showRate
-          rate={data?.rate ?? null}
-        />
-        <BalanceCard
-          label={t("dashboard.vesBalance")}
-          symbol="Bs"
-          amount={isLoading ? null : formatMoney(vesVes, "VES")}
-          isLoading={isLoading}
-          equivalentLabel={t("dashboard.usdEquivalent")}
-          equivalentValue={
-            isLoading || vesUsd == null
-              ? null
-              : formatMoney(vesUsd, "USD", { symbol: true })
-          }
-          tone="flag"
-        />
-        <BalanceCard
-          label={t("dashboard.usdBalance")}
-          symbol="$"
-          amount={isLoading ? null : formatMoney(usdUsd, "USD")}
-          isLoading={isLoading}
-          equivalentLabel={t("dashboard.totalBs")}
-          equivalentValue={
-            isLoading || usdVes == null
-              ? null
-              : formatMoney(usdVes, "VES", { symbol: true })
-          }
-          tone="green"
-        />
+      <div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+            {t("dashboard.balances")}
+          </span>
+          <BalanceVisibilityToggle hidden={hideBalances} onToggle={toggleBalances} />
+        </div>
+        <div className="mt-3 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+          <BalanceCard
+            label={t("dashboard.totalBalance")}
+            symbol="$"
+            amount={isLoading ? null : formatMoney(totalUsd, "USD")}
+            isLoading={isLoading}
+            equivalentLabel={t("dashboard.totalBs")}
+            equivalentValue={
+              isLoading || totalVes == null
+                ? null
+                : formatMoney(totalVes, "VES", { symbol: true })
+            }
+            showRate
+            rate={data?.rate ?? null}
+            hideAmounts={hideBalances}
+          />
+          <BalanceCard
+            label={t("dashboard.vesBalance")}
+            symbol="Bs"
+            amount={isLoading ? null : formatMoney(vesVes, "VES")}
+            isLoading={isLoading}
+            equivalentLabel={t("dashboard.usdEquivalent")}
+            equivalentValue={
+              isLoading || vesUsd == null
+                ? null
+                : formatMoney(vesUsd, "USD", { symbol: true })
+            }
+            tone="flag"
+            hideAmounts={hideBalances}
+          />
+          <BalanceCard
+            label={t("dashboard.usdBalance")}
+            symbol="$"
+            amount={isLoading ? null : formatMoney(usdUsd, "USD")}
+            isLoading={isLoading}
+            equivalentLabel={t("dashboard.totalBs")}
+            equivalentValue={
+              isLoading || usdVes == null
+                ? null
+                : formatMoney(usdVes, "VES", { symbol: true })
+            }
+            tone="green"
+            hideAmounts={hideBalances}
+          />
+        </div>
       </div>
 
       {/* Accesos rápidos */}
@@ -222,7 +236,9 @@ export default function DashboardPage() {
               <Skeleton className="h-7 w-32" />
             ) : (
               <span className="text-2xl font-bold tracking-tight text-on-surface">
-                {formatMoney(savingsUsd, "USD", { symbol: true })}
+                {hideBalances
+                  ? "••••"
+                  : formatMoney(savingsUsd, "USD", { symbol: true })}
               </span>
             )}
           </div>
