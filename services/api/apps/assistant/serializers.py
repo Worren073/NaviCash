@@ -12,18 +12,18 @@ from apps.assistant.models import ChatMessage
 #: El límite del proveedor (Whisper) es 25 MB; dejamos margen de sobra.
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
-#: Content-types aceptados (los que produce MediaRecorder y acepta Whisper).
-ALLOWED_AUDIO_TYPES = {
-    "audio/mp4",
-    "audio/aac",
-    "audio/m4a",
-    "audio/webm",
-    "audio/mpeg",
-    "audio/mp3",
-    "audio/wav",
-    "audio/x-wav",
-    "audio/x-m4a",
-    "audio/ogg",
+#: Extensiones aceptadas (las que produce MediaRecorder y acepta Whisper).
+#: El content-type del multipart no es fiable (iOS Safari lo manda a veces como
+#: ``application/octet-stream`` o vacío), así que se valida por extensión.
+ALLOWED_AUDIO_EXTENSIONS = {
+    ".mp4",
+    ".m4a",
+    ".aac",
+    ".webm",
+    ".mp3",
+    ".mpeg",
+    ".wav",
+    ".ogg",
 }
 
 
@@ -83,10 +83,17 @@ class TranscriptionRequestSerializer(serializers.Serializer):
     )
 
     def validate_audio(self, value):
-        """Rechaza clips demasiado grandes o con formato no soportado."""
+        """Rechaza clips demasiado grandes o con extensión no soportada.
+
+        El content-type que manda el navegador es poco fiable (Safari puede
+        enviar ``application/octet-stream`` aunque el audio sea mp4), así que
+        se valida por extensión del nombre; el proveedor real (Whisper) es
+        quien juzga el contenido.
+        """
         if value.size > MAX_AUDIO_BYTES:
             raise serializers.ValidationError("El audio es demasiado grande (máximo 10 MB).")
-        content_type = (getattr(value, "content_type", "") or "").lower()
-        if content_type and content_type not in ALLOWED_AUDIO_TYPES:
+        name = (getattr(value, "name", "") or "").lower()
+        extension = f".{name.rsplit('.', 1)[-1]}" if "." in name else ""
+        if extension not in ALLOWED_AUDIO_EXTENSIONS:
             raise serializers.ValidationError("Formato de audio no soportado.")
         return value

@@ -12,7 +12,7 @@
  *    por ``onResult``.
  */
 
-import { api } from "@/lib/api";
+import { api, ApiErrorClass } from "@/lib/api";
 import type { RecognitionErrorCode, RecognitionProvider } from "./types";
 
 const MAX_DURATION_MS = 30_000;
@@ -47,8 +47,11 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
   private startedAt = 0;
   private finalized = false;
   private aborting = false;
+  private mimeType = "audio/mp4";
+  // iOS no emite transcripción en vivo: solo entrega el resultado final.
+  onPartial: ((text: string) => void) | null = null;
   onResult: ((transcript: string) => void) | null = null;
-  onError: ((code: RecognitionErrorCode) => void) | null = null;
+  onError: ((code: RecognitionErrorCode, message?: string) => void) | null = null;
 
   isSupported(): boolean {
     if (typeof window === "undefined") return false;
@@ -96,6 +99,7 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
   private startRecorder(stream: MediaStream): void {
     const MR = window.MediaRecorder as unknown as MediaRecorderConstructorLike;
     const mimeType = MR.isTypeSupported("audio/mp4") ? "audio/mp4" : "audio/webm";
+    this.mimeType = mimeType;
     const recorder = new MR(stream, { mimeType });
     this.recorder = recorder;
 
@@ -198,7 +202,10 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
 
   private async upload(blob: Blob): Promise<void> {
     const form = new FormData();
-    form.append("audio", blob, "navi-voice.mp4");
+    // La extensión debe coincidir con el contenedor real (Whisper lo usa para
+    // inferir el formato). iOS graba mp4; el fallback webm.
+    const ext = this.mimeType.includes("webm") ? "webm" : "mp4";
+    form.append("audio", blob, `navi-voice.${ext}`);
     try {
       const { transcript } = await api.post<{ transcript: string }>(
         "/assistant/transcribe",
@@ -212,9 +219,16 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
       } else {
         this.onError?.("timeout");
       }
-    } catch {
+    } catch (err) {
       this.release();
-      this.onError?.("network");
+      if (err instanceof ApiErrorClass) {
+        // El servidor explicó el motivo (formato, tamaño, proveedor…): pasarlo
+        // para mostrarlo al usuario en vez de un mensaje genérico.
+        const detail = err.fieldErrors?.audio?.[0] ?? err.message;
+        this.onError?.("network", detail);
+      } else {
+        this.onError?.("network");
+      }
     }
   }
 

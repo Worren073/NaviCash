@@ -98,6 +98,12 @@ services:
         value: "24"
       - key: TERMS_VERSION
         value: v1-2026-08
+      # Voz (chat de Navi): sin AAI_API_KEY se usa la transcripción Mock
+      # (frase fija para dev). Con clave se llama a OpenAI audio/transcriptions.
+      - key: AAI_API_KEY
+        sync: false
+      - key: AAI_TRANSCRIBE_MODEL
+        value: whisper-1
 
   # ================== Frontend / PWA (Docker + nginx) =======================
   # Render Static Site no permite emitir headers HTTP (CSP, X-Frame-Options,

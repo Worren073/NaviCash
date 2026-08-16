@@ -51,11 +51,55 @@ class TestTranscriptionEndpoint:
         assert resp.status_code == 400
         assert "errors" in resp.data
 
-    def test_disallowed_content_type_rejected(self, api_client) -> None:
-        """Content-type que no es audio → 400."""
+    def test_disallowed_extension_rejected(self, api_client) -> None:
+        """Extensión que no es audio → 400 (se valida por nombre, no content-type)."""
         resp = api_client.post(URL, {"audio": _audio(name="a.txt", content_type="text/plain")}, format="multipart")
         assert resp.status_code == 400
         assert "errors" in resp.data
+
+    def test_missing_extension_rejected(self, api_client) -> None:
+        """Nombre sin extensión → 400."""
+        resp = api_client.post(
+            URL,
+            {"audio": _audio(name="audio", content_type="audio/mp4")},
+            format="multipart",
+        )
+        assert resp.status_code == 400
+        assert "errors" in resp.data
+
+    def test_octet_stream_content_type_accepted(self, api_client, monkeypatch) -> None:
+        """Safari a veces manda el multipart como application/octet-stream.
+
+        El content-type del navegador es poco fiable; con extensión válida el
+        audio se acepta y el proveedor decide.
+        """
+        class FakeTranscriber:
+            def transcribe(self, audio, filename):
+                return "Registro un pago"
+
+        monkeypatch.setattr("apps.assistant.services.get_transcriber", lambda: FakeTranscriber())
+        resp = api_client.post(
+            URL,
+            {"audio": _audio(name="nota.mp4", content_type="application/octet-stream")},
+            format="multipart",
+        )
+        assert resp.status_code == 200
+        assert resp.data == {"transcript": "Registro un pago"}
+
+    def test_empty_content_type_accepted(self, api_client, monkeypatch) -> None:
+        """Sin content-type en el multipart, la extensión válida lo acepta."""
+        class FakeTranscriber:
+            def transcribe(self, audio, filename):
+                return "Hola Navi"
+
+        monkeypatch.setattr("apps.assistant.services.get_transcriber", lambda: FakeTranscriber())
+        resp = api_client.post(
+            URL,
+            {"audio": _audio(name="nota.webm", content_type="")},
+            format="multipart",
+        )
+        assert resp.status_code == 200
+        assert resp.data == {"transcript": "Hola Navi"}
 
     def test_returns_transcript(self, api_client, monkeypatch) -> None:
         """Con un proveedor real (mockeado) devuelve el transcript en 200."""
