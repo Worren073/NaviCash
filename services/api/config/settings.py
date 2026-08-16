@@ -76,6 +76,11 @@ env = environ.Env(
     CAPTCHA_DEV_BYPASS=(bool, True),
     # Versión vigente de los términos que se graba al aceptar.
     TERMS_VERSION=(str, "v1-2026-08"),
+    # Lockout por cuenta (AUDIT A1): tras N intentos fallidos de login la
+    # cuenta queda bloqueada M minutos. Los contadores viven en la caché
+    # compartida (Redis en prod), así el bloqueo aplica a todos los workers.
+    MAX_FAILED_LOGIN_ATTEMPTS=(int, 5),
+    LOGIN_LOCKOUT_MINUTES=(int, 15),
 )
 
 # ---------------------------------------------------------------------------
@@ -95,6 +100,8 @@ ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
 _DEV_SECRET_KEY = "dev-secret-key-cambiar-en-produccion"
 _DEV_DB_PASSWORD = "navicash-dev-password"
 _DEV_REDIS_URL = "redis://redis:6379/0"
+_DEV_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "api"]
+_DEV_CORS_ORIGINS = ["http://localhost:5173"]
 
 if not DEBUG:
     if not SECRET_KEY or SECRET_KEY == _DEV_SECRET_KEY:
@@ -119,6 +126,25 @@ if not DEBUG:
             "REDIS_URL es obligatoria en producción (DEBUG=False): el default "
             "de desarrollo ('redis://redis:6379/0') no es válido fuera del "
             "compose local. Configura la URL de tu Redis gestionado."
+        )
+    # AUDIT A2 (extensión): sin un Host permitido real la app respondería al
+    # Host header de cualquiera. El default de desarrollo (localhost/127.0.0.1/
+    # api) es local; en prod debe listarse el dominio real (p. ej. .onrender.com).
+    if not ALLOWED_HOSTS or ALLOWED_HOSTS == _DEV_ALLOWED_HOSTS:
+        raise ImproperlyConfigured(
+            "DJANGO_ALLOWED_HOSTS debe configurarse en producción (DEBUG=False): "
+            "el default de desarrollo (localhost/127.0.0.1/api) no es válido. "
+            "Indica el dominio real, p. ej. '.onrender.com'."
+        )
+    # AUDIT A2 (extensión): sin origenes CORS reales la cookie httpOnly del
+    # refresh no viajaría y, peor, el frontend de otro dominio no pasaría el
+    # chequeo de Origin del refresh. El default es solo el dev server local.
+    _cors_origins = env("CORS_ALLOWED_ORIGINS")
+    if not _cors_origins or _cors_origins == _DEV_CORS_ORIGINS:
+        raise ImproperlyConfigured(
+            "CORS_ALLOWED_ORIGINS debe configurarse en producción (DEBUG=False): "
+            "listar los origenes de la SPA (p. ej. https://navicash-web.onrender.com). "
+            "El default de desarrollo ('http://localhost:5173') no es válido."
         )
 
 # ---------------------------------------------------------------------------
@@ -244,6 +270,11 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+# Lockout por cuenta tras intentos fallidos de login (AUDIT A1). Los contadores
+# se guardan en la caché compartida (Redis en prod), ver LoginView.
+MAX_FAILED_LOGIN_ATTEMPTS = env("MAX_FAILED_LOGIN_ATTEMPTS")
+LOGIN_LOCKOUT_MINUTES = env("LOGIN_LOCKOUT_MINUTES")
+
 # ---------------------------------------------------------------------------
 # DRF y JWT
 # ---------------------------------------------------------------------------
@@ -274,6 +305,8 @@ REST_FRAMEWORK = {
         "register": "3/hour",
         "email_verify": "10/hour",
         "assistant": env("ASSISTANT_THROTTLE_RATE", default="30/hour"),
+        # Transcripción de voz: cada clip es una llamada paga al proveedor.
+        "transcribe": env("TRANSCRIBE_THROTTLE_RATE", default="20/hour"),
     },
     # Errores en el mismo formato/estilo espagnol-friendly.
     "EXCEPTION_HANDLER": "apps.core.exceptions.base_exception_handler",
@@ -292,6 +325,15 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_SAMESITE": "None" if not DEBUG else "Lax",
     "AUTH_COOKIE_PATH": "/api/auth/",
 }
+
+# ---------------------------------------------------------------------------
+# Subidas de archivos (voz del chat, etc.)
+# ---------------------------------------------------------------------------
+# Los clips de voz del chat (MediaRecorder) llegan como multipart; se sube el
+# límite global de petición para que clips de hasta 10 MB (el máximo real se
+# valida por serializer en apps/assistant) se procesen sin rechazo previo.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # CAPTCHA (Cloudflare Turnstile) y términos de servicio

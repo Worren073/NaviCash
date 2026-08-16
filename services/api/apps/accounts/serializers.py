@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 from django.conf import settings
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, password_validation
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
@@ -24,8 +24,10 @@ from django.core.validators import validate_email
 PHONE_RE = re.compile(r"^\+?[\d\s()-]{7,20}$")
 
 
-def validate_password_strength(value: str) -> str:
-    """Fuerza contraseña: ≥ 8 caracteres, al menos una letra y un número.
+def validate_password_strength(value: str, user=None) -> str:
+    """Fuerza contraseña: ≥ 8 caracteres, una letra, un número y los
+    validadores de Django configurados en ``settings.AUTH_PASSWORD_VALIDATORS``
+    (similitud con atributos del usuario, común, numérica — AUDIT A5).
 
     Regla compartida por registro y recuperación/cambio de contraseña.
     """
@@ -35,6 +37,9 @@ def validate_password_strength(value: str) -> str:
         raise serializers.ValidationError("La contraseña debe incluir al menos una letra.")
     if not re.search(r"\d", value):
         raise serializers.ValidationError("La contraseña debe incluir al menos un número.")
+    # AUDIT A5: en producción se ejecutan los validators de Django; en tests
+    # ``AUTH_PASSWORD_VALIDATORS`` está vacío (ver config/test_settings.py).
+    password_validation.validate_password(value, user=user)
     return value
 
 
@@ -164,7 +169,12 @@ class RegisterSerializer(serializers.Serializer):
         return value
 
     def validate_password(self, value: str) -> str:
-        """Aplica la regla común de fortaleza de contraseña."""
+        """Aplica la regla común de fortaleza de contraseña + validators de Django.
+
+        El usuario aún no existe al registrar, así que la validación de
+        similitud (UserAttributeSimilarityValidator) se omite para el registro
+        (no hay atributos previos que comparar).
+        """
         return validate_password_strength(value)
 
     def validate_accepted_terms(self, value: bool) -> bool:
@@ -298,11 +308,14 @@ class ResetPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError("Enlace inválido o ya utilizado.")
         if not reset.is_valid():
             raise serializers.ValidationError("El enlace caducó o ya fue utilizado.")
+        # Se recuerda el usuario para validar la nueva clave contra sus
+        # atributos (similitud) y no permitir claves iguales a sus datos.
+        self._reset_user = reset.user
         return value
 
     def validate_password(self, value: str) -> str:
-        """Aplica la regla común de fortaleza de contraseña."""
-        return validate_password_strength(value)
+        """Aplica la regla común de fortaleza + validators de Django."""
+        return validate_password_strength(value, user=getattr(self, "_reset_user", None))
 
     def save(self) -> User:
         """Cambia la contraseña e invalida el token (one-time).
@@ -342,8 +355,9 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
     def validate_new_password(self, value: str) -> str:
-        """Aplica la regla común de fortaleza de contraseña."""
-        return validate_password_strength(value)
+        """Aplica la regla común de fortaleza + validators de Django (con el
+        usuario autenticado, para que la clave no se parezca a sus datos)."""
+        return validate_password_strength(value, user=self.user)
 
     def validate(self, attrs: dict) -> dict:
         """La nueva contraseña debe diferir de la actual."""

@@ -102,7 +102,9 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     server: {
-      host: "0.0.0.0",
+      // AUDIT: solo loopback por defecto (no exponer el dev server a la LAN).
+      // En el contenedor docker-compose se fuerza explícitamente --host 0.0.0.0.
+      host: "127.0.0.1",
       port: 5173,
       proxy: {
         "/api": {

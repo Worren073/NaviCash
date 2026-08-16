@@ -15,16 +15,19 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.cache import cache
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.emails import send_password_reset_email
@@ -101,6 +104,29 @@ def _revoke_refresh_family(user: User) -> None:
     OutstandingToken.objects.filter(user=user, expires_at__gt=timezone.now()).delete()
 
 
+def _origin_is_allowed(request) -> bool:
+    """Comprueba que el Origin/Referer del request esté permitido (defensa CSRF).
+
+    El navegador siempre adjunta ``Origin`` (o ``Referer``) en las peticiones
+    cross-site; si no coincide con un origen CORS permitido, la petición no
+    viene de nuestra SPA y se rechaza. Clientes no-navegador (curl, móvil) que
+    no envían cabecera de origen pasan (el JWT/cookie ya no se expone a ellos).
+    """
+    origin = request.META.get("HTTP_ORIGIN") or request.META.get("HTTP_REFERER")
+    if not origin:
+        return True
+    parts = urlsplit(origin)
+    if not parts.scheme or not parts.netloc:
+        return False
+    normalized = f"{parts.scheme}://{parts.netloc}".rstrip("/")
+    return normalized in set(settings.CORS_ALLOWED_ORIGINS or [])
+
+
+def _login_lock_key(user: User) -> str:
+    """Clave de caché del contador de intentos fallidos de login de la cuenta."""
+    return f"login_failed:{user.pk}"
+
+
 class RegisterView(APIView):
     """Crea una cuenta nueva y envía el correo de verificación.
 
@@ -161,8 +187,35 @@ class LoginView(APIView):
     throttle_scope = "login"
 
     def post(self, request):
-        serializer = LoginSerializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
+        email = (request.data.get("email") or "").strip().lower()
+        target = User.objects.filter(email__iexact=email).first()
+
+        # Lockout por cuenta (AUDIT A1): tras N intentos fallidos la cuenta se
+        # bloquea unos minutos. Los contadores viven en la caché compartida
+        # (Redis en prod), así el bloqueo aplica aunque cambie el worker.
+        lock_key = _login_lock_key(target) if target else None
+        if lock_key:
+            failures = cache.get(lock_key, 0)
+            if failures >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
+                return Response(
+                    {
+                        "detail": "Demasiados intentos fallidos. "
+                        "Espera unos minutos e intenta de nuevo."
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
+        try:
+            serializer = LoginSerializer(data=request.data, context={"request": request})
+            serializer.is_valid(raise_exception=True)
+        except AuthenticationFailed:
+            if lock_key:
+                failures = cache.get(lock_key, 0) + 1
+                cache.set(lock_key, failures, timeout=settings.LOGIN_LOCKOUT_MINUTES * 60)
+            raise
+
+        if lock_key:
+            cache.delete(lock_key)
         user = serializer.validated_data["user"]
 
         refresh = RefreshToken.for_user(user)
@@ -190,6 +243,20 @@ class RefreshView(APIView):
     throttle_scope = "login"
 
     def post(self, request):
+        if not _origin_is_allowed(request):
+            # CSRF (AUDIT C6): la cookie httpOnly viaja sola en requests
+            # cross-site; sin verificar el origen, un formulario malicioso
+            # podría forzar una rotación. Se rechaza con el mismo 401 genérico
+            # para no revelar por qué.
+            logger.warning(
+                "REFRESH_ORIGIN_REJECTED origin=%s",
+                request.META.get("HTTP_ORIGIN") or request.META.get("HTTP_REFERER"),
+            )
+            return Response(
+                {"detail": "Sesión inválida o expirada."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
         cookie_name = settings.SIMPLE_JWT["AUTH_COOKIE"]
         refresh_value = request.COOKIES.get(cookie_name)
         if not refresh_value:
@@ -198,25 +265,60 @@ class RefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         try:
-            refresh = RefreshToken(refresh_value)
-            refresh.check_blacklist()
+            refresh = RefreshToken(refresh_value, verify=False)
             user = User.objects.get(pk=refresh["user_id"])
-            if not user.is_active:
-                # Cuenta desactivada: no debe poder renovar sesiones (A7).
-                raise TokenError("Cuenta inactiva.")
-            if not OutstandingToken.objects.filter(user=user, jti=refresh["jti"]).exists():
-                # Reuse-detection (C3): si la familia fue revocada/logout y el
-                # OutstandingToken ya no existe, ``blacklist()`` lo recrearía.
-                # Rechazar aquí impide revivir un refresh borrado.
-                raise TokenError("Sesión revocada.")
-            refresh.blacklist()
-            new_refresh = RefreshToken.for_user(user)
-            _record_outstanding(user, new_refresh)
-        except (ObjectDoesNotExist, KeyError, TokenError):
+        except (TokenError, ObjectDoesNotExist, KeyError):
+            # Token malformado/indecodificable o usuario inexistente: no es
+            # necesariamente reuse, así que NO se revoca la familia.
             return Response(
                 {"detail": "Sesión inválida o expirada."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
+
+        # Reuse-detection (C3): un refresh ya rotado está blacklisted. El
+        # atacante pudo conservar copias anteriores de la familia: se revoca
+        # TODA la familia para neutralizarlas de golpe. La comprobación es
+        # explícita aquí porque el constructor de ``RefreshToken`` (verify=True)
+        # ya lanza ``TokenError`` al ver un token blacklisted, antes de que el
+        # flujo pudiera entrar en este bloque.
+        if BlacklistedToken.objects.filter(token__jti=refresh["jti"]).exists():
+            logger.warning("REFRESH_REUSE_DETECTED user=%s", user.id)
+            _revoke_refresh_family(user)
+            return Response(
+                {"detail": "Sesión inválida o expirada."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        try:
+            # Valida firma y expiración (ya descartado el blacklist arriba).
+            refresh.verify()
+        except TokenError:
+            # Firma inválida o token expirado: no es reuse (no blacklistado),
+            # así que NO se revoca la familia (evita DoS por tokens basura).
+            return Response(
+                {"detail": "Sesión inválida o expirada."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if not user.is_active:
+            # Cuenta desactivada: no debe poder renovar sesiones (A7).
+            return Response(
+                {"detail": "Sesión inválida o expirada."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if not OutstandingToken.objects.filter(user=user, jti=refresh["jti"]).exists():
+            # Reuse-detection (C3): si la familia fue revocada/logout y el
+            # OutstandingToken ya no existe, ``blacklist()`` lo recrearía.
+            # Rechazar aquí impide revivir un refresh borrado.
+            return Response(
+                {"detail": "Sesión inválida o expirada."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        refresh.blacklist()
+        new_refresh = RefreshToken.for_user(user)
+        _record_outstanding(user, new_refresh)
         response = Response({"access": str(new_refresh.access_token)}, status=status.HTTP_200_OK)
         return _set_refresh_cookie(response, new_refresh)
 

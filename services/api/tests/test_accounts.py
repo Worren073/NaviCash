@@ -342,6 +342,101 @@ class TestAuthFlow:
             statuses.append(resp.status_code)
         assert 429 in statuses
 
+    def test_refresh_rejects_untrusted_origin(self) -> None:
+        """Refresh con Origin de otro sitio responde 401 (defensa CSRF).
+
+        La cookie httpOnly viaja sola en requests cross-site; sin verificar el
+        origen, un formulario malicioso podría forzar la rotación. El Origin
+        debe coincidir con un origen CORS permitido.
+        """
+        from rest_framework.test import APIClient
+
+        user = UserFactory(email="origin@example.com")
+        client = APIClient()
+        login = client.post(
+            self.LOGIN_URL, {"email": "origin@example.com", "password": "test-password-123"}
+        )
+        assert login.status_code == 200
+        client.cookies["refresh_token"] = login.cookies["refresh_token"]
+
+        # Origin permitido (http://localhost:5173) → 200.
+        allowed = client.post(
+            "/api/auth/refresh", HTTP_ORIGIN="http://localhost:5173"
+        )
+        assert allowed.status_code == 200
+
+        client.cookies["refresh_token"] = allowed.cookies["refresh_token"]
+        # Origin de un sitio atacante → 401 y no rota.
+        evil = client.post("/api/auth/refresh", HTTP_ORIGIN="https://evil.example.com")
+        assert evil.status_code == 401
+
+    def test_login_locks_account_after_attempts(self) -> None:
+        """Tras N intentos fallidos la cuenta se bloquea (429) unos minutos."""
+        from django.conf import settings
+        from rest_framework.test import APIClient
+
+        UserFactory(email="bloqueo@example.com")
+        client = APIClient()
+        for _ in range(settings.MAX_FAILED_LOGIN_ATTEMPTS):
+            resp = client.post(
+                self.LOGIN_URL, {"email": "bloqueo@example.com", "password": "incorrecta"}
+            )
+            assert resp.status_code == 401
+        # El siguiente intento (aunque sea con la clave correcta) queda bloqueado.
+        resp = client.post(
+            self.LOGIN_URL, {"email": "bloqueo@example.com", "password": "test-password-123"}
+        )
+        assert resp.status_code == 429
+
+    def test_login_success_clears_failed_counter(self) -> None:
+        """Un login correcto resetea el contador de intentos fallidos."""
+        from django.conf import settings
+        from django.core.cache import cache
+        from rest_framework.test import APIClient
+
+        from apps.accounts.views import _login_lock_key
+
+        user = UserFactory(email="limpia@example.com")
+        client = APIClient()
+        for _ in range(settings.MAX_FAILED_LOGIN_ATTEMPTS - 1):
+            assert client.post(
+                self.LOGIN_URL, {"email": "limpia@example.com", "password": "incorrecta"}
+            ).status_code == 401
+        # Antes del acierto el contador lleva MAX-1 fallos acumulados.
+        assert cache.get(_login_lock_key(user)) == settings.MAX_FAILED_LOGIN_ATTEMPTS - 1
+        # Un acierto limpia el contador; los intentos previos no cuentan.
+        ok = client.post(
+            self.LOGIN_URL, {"email": "limpia@example.com", "password": "test-password-123"}
+        )
+        assert ok.status_code == 200
+        assert cache.get(_login_lock_key(user)) is None
+
+    def test_refresh_reuse_revokes_whole_family(self) -> None:
+        """Reutilizar un refresh ya rotado revoca TODA la familia (C3)."""
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+
+        user = UserFactory(email="familia-reuso@example.com")
+        client = APIClient()
+        login = client.post(
+            self.LOGIN_URL, {"email": "familia-reuso@example.com", "password": "test-password-123"}
+        )
+        assert login.status_code == 200
+        old_refresh = login.cookies["refresh_token"]
+        # Segundo dispositivo: otro refresh outstanding de la misma cuenta.
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        RefreshToken.for_user(user)
+
+        client.cookies["refresh_token"] = old_refresh
+        assert client.post("/api/auth/refresh").status_code == 200
+        # Reuso del token rotado: 401 y además la familia quedó revocada.
+        client.cookies["refresh_token"] = old_refresh
+        assert client.post("/api/auth/refresh").status_code == 401
+        assert not OutstandingToken.objects.filter(
+            user=user, expires_at__gt=timezone.now()
+        ).exists()
+
 
 @pytest.mark.django_db
 class TestPasswordRecovery:
