@@ -88,8 +88,10 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
     const speech = getSpeechProvider();
     speechRef.current = speech;
     speech?.cancel();
-    // iOS exige que la primera emisión de audio ocurra dentro de un gesto:
-    // el tap que abre el overlay es ese gesto → warm-up aquí.
+    // iOS exige que la primera emisión de audio ocurra dentro de un gesto.
+    // El gesto real ya desbloqueó en el botón (unlockSpeech); este warm-up es
+    // refuerzo por si el overlay se abre desde otro camino. El re-desbloqueo
+    // tras la grabación del micrófono ocurre en cada toque del overlay.
     speech?.warmUp();
 
     const rec = getRecognitionProvider();
@@ -217,6 +219,9 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
           role="dialog"
           aria-modal="true"
           aria-label={t("assistant.voice.title")}
+          // iOS: el micrófono (grabación) vuelve a bloquear el audio session;
+          // cada toque del usuario re-desbloquea la salida de voz de Navi.
+          onPointerDown={() => getSpeechProvider()?.warmUp()}
         >
           {/* Cerrar */}
           <button

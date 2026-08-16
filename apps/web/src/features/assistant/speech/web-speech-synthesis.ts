@@ -4,9 +4,13 @@
  * Funciona en todos los navegadores que exponen la Web Speech API (incluido
  * iOS Safari). Incluye los arreglos específicos de iOS:
  * - ``getVoices()`` llega vacío hasta que el usuario interactúa y dispara
- *   ``voiceschanged``: las voces se recargan en ese evento.
+ *   ``voiceschanged``: las voces se recargan en ese evento y de nuevo en cada
+ *   ``speak()`` (en iOS pueden llegar tarde a la primera respuesta).
  * - El audio solo se "desbloquea" dentro de un gesto del usuario: ``warmUp()``
- *   emite un utterance en silencio desde el tap que abre el overlay.
+ *   emite un utterance casi silencioso desde el gesto (tap/pointer) que abre
+ *   el overlay. No se cancela de inmediato (eso anularía el desbloqueo).
+ * - El micrófono (MediaRecorder) vuelve a bloquear el audio session de iOS:
+ *   por eso el overlay re-ejecuta ``warmUp()`` en cada toque del usuario.
  * - ``onend`` no siempre se dispara en iOS: se usa un timer de respaldo
  *   calculado a partir de la longitud del texto.
  */
@@ -33,6 +37,10 @@ export class WebSpeechSynthesisProvider implements SpeechProvider {
     const synth = window.speechSynthesis;
     synth.cancel();
     this.clearTimer();
+
+    // En iOS las voces llegan tarde (voiceschanged): recargar justo antes de
+    // hablar garantiza elegir una voz en español en la primera respuesta.
+    this.loadVoices();
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "es-ES";
@@ -61,10 +69,15 @@ export class WebSpeechSynthesisProvider implements SpeechProvider {
     const synth = window.speechSynthesis;
     synth.cancel();
     try {
+      // Volume 0.01 (no 0: algunos iOS ignoran el mute y 0 anula la emisión).
+      // NO se cancela de inmediato: iOS necesita que la utterance llegue a
+      // emitirse para desbloquear el audio session; se corta un instante
+      // después como limpieza.
       const silent = new SpeechSynthesisUtterance(" ");
-      silent.volume = 0;
+      silent.volume = 0.01;
+      silent.rate = 1;
       synth.speak(silent);
-      synth.cancel();
+      window.setTimeout(() => synth.cancel(), 150);
     } catch {
       /* best effort: desbloqueo del audio session iOS */
     }

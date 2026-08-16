@@ -29,6 +29,32 @@ export function getSpeechProvider(): SpeechProvider | null {
   return cachedSpeech;
 }
 
+let unlockedCtx: AudioContext | null = null;
+
+/**
+ * Desbloquea el audio session del navegador. iOS Safari silencia
+ * ``speechSynthesis`` hasta que la primera emisión ocurre dentro de un gesto
+ * del usuario; llamar desde el gesto que abre la voz (pointerdown/click).
+ *
+ * Combina dos técnicas: el utterance casi silencioso del ``warmUp()`` y un
+ * ``AudioContext`` que se resume (patrón estándar para activar la sesión de
+ * audio de iOS). Es idempotente y seguro llamarla en cada gesto.
+ */
+export function unlockSpeech(): void {
+  getSpeechProvider()?.warmUp();
+  if (typeof window === "undefined") return;
+  try {
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    unlockedCtx = unlockedCtx ?? new Ctor();
+    if (unlockedCtx.state === "suspended") void unlockedCtx.resume();
+  } catch {
+    /* best effort: algunos navegadores no exponen AudioContext */
+  }
+}
+
 export function getRecognitionProvider(): RecognitionProvider | null {
   if (cachedRecognition !== undefined) return cachedRecognition;
   if (typeof window === "undefined") {

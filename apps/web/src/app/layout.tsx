@@ -18,6 +18,7 @@ import { AppMenu } from "@/features/layout/app-menu";
 import { NaviBubble } from "@/features/assistant/navi-bubble";
 import { AssistantChat } from "@/features/assistant/assistant-chat";
 import { NaviVoice } from "@/features/assistant/navi-voice";
+import { unlockSpeech } from "@/features/assistant/speech";
 import { VoiceChatContext } from "@/features/assistant/voice-chat-context";
 import { useNotifications } from "@/hooks/use-queries";
 import { IOSLimitationsNotice } from "@/components/ios-limitations-notice";
@@ -102,6 +103,9 @@ function AddButton({ onVoiceOpen }: { onVoiceOpen: () => void }) {
   function onPointerDown() {
     held.current = false;
     clearHold();
+    // iOS exige que el audio de voz se desbloquee dentro de un gesto: el
+    // primer toque del "+" (posible hold → voz de Navi) es ese gesto.
+    unlockSpeech();
     // Mantener presionado → voz de Navi.
     holdTimer.current = window.setTimeout(() => {
       held.current = true;
@@ -200,7 +204,16 @@ export default function AppLayout() {
     <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)]">
       <TopBar />
       <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
-        <VoiceChatContext.Provider value={{ openVoice: () => setVoiceOpen(true) }}>
+        <VoiceChatContext.Provider
+          value={{
+            // Los botones que abren la voz (dashboard) son gestos de usuario:
+            // desbloquear el audio session de iOS dentro del mismo gesto.
+            openVoice: () => {
+              unlockSpeech();
+              setVoiceOpen(true);
+            },
+          }}
+        >
           <div key={location.pathname} className="view-enter">
             <Outlet />
           </div>
