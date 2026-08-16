@@ -54,8 +54,9 @@ export class WebSpeechRecognitionProvider implements RecognitionProvider {
   private rec: SpeechRecognitionLike | null = null;
   private transcript = "";
   private startAttempts = 0;
+  onPartial: ((text: string) => void) | null = null;
   onResult: ((transcript: string) => void) | null = null;
-  onError: ((code: RecognitionErrorCode) => void) | null = null;
+  onError: ((code: RecognitionErrorCode, message?: string) => void) | null = null;
 
   isSupported(): boolean {
     return getSpeechRecognition() !== null;
@@ -77,11 +78,25 @@ export class WebSpeechRecognitionProvider implements RecognitionProvider {
     this.transcript = "";
     rec.lang = "es-ES";
     rec.continuous = false;
-    rec.interimResults = false;
+    // Resultados intermedios: mientras el usuario habla se emiten por
+    // ``onPartial`` para pintar el texto palabra por palabra.
+    rec.interimResults = true;
 
     rec.onresult = (e) => {
-      const transcript = e.results[0]?.[0]?.transcript?.trim() ?? "";
-      if (transcript) this.transcript = transcript;
+      const interim: string[] = [];
+      for (let i = 0; i < e.results.length; i++) {
+        const result = e.results[i];
+        const text = result?.[0]?.transcript?.trim() ?? "";
+        if (!text) continue;
+        if (result.isFinal) {
+          // Acumular el tramo definitivo; se entrega completo al terminar.
+          this.transcript = [this.transcript, text].filter(Boolean).join(" ");
+        } else {
+          interim.push(text);
+        }
+      }
+      const provisional = [this.transcript, ...interim].filter(Boolean).join(" ");
+      if (provisional) this.onPartial?.(provisional);
     };
 
     rec.onerror = () => {

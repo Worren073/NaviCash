@@ -39,7 +39,17 @@ export interface RecognitionProvider {
   stop(): void;
   /** Aborta sin resultado. */
   cancel(): void;
+  /**
+   * Texto provisional mientras se escucha (palabra por palabra). Solo los
+   * proveedores con transcripción en tiempo real lo emiten (Web Speech);
+   * iOS (grabación) entrega solo el resultado final por ``onResult``.
+   */
+  onPartial: ((text: string) => void) | null;
   /** Texto final capturado (transcript local o del backend). */
   onResult: ((transcript: string) => void) | null;
-  onError: ((code: RecognitionErrorCode) => void) | null;
+  /**
+   * Error de captura/transcripción. ``message`` (opcional) porta el detalle
+   * del servidor cuando está disponible, para mostrarlo al usuario.
+   */
+  onError: ((code: RecognitionErrorCode, message?: string) => void) | null;
 }

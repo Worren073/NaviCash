@@ -47,6 +47,8 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
   const { messages, thinking, send, abort } = useAssistant();
   const [phase, setPhase] = useState<VoicePhase>("idle");
   const [micErrorCode, setMicErrorCode] = useState<RecognitionErrorCode | null>(null);
+  const [micErrorMessage, setMicErrorMessage] = useState<string | null>(null);
+  const [liveText, setLiveText] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const recRef = useRef<ReturnType<typeof getRecognitionProvider>>(null);
   const speechRef = useRef<ReturnType<typeof getSpeechProvider>>(null);
@@ -97,6 +99,7 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
       return;
     }
     rec.onResult = handleResult;
+    rec.onPartial = handlePartial;
     rec.onError = handleRecError;
     startListening();
     return () => {
@@ -105,6 +108,7 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
       recRef.current = null;
       if (rec) {
         rec.onResult = null;
+        rec.onPartial = null;
         rec.onError = null;
       }
       speech?.cancel();
@@ -122,11 +126,17 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
 
   function handleResult(transcript: string) {
     if (!mountedRef.current) return;
+    setLiveText("");
     setPhase("thinking");
     void send(transcript);
   }
 
-  function handleRecError(code: RecognitionErrorCode) {
+  function handlePartial(text: string) {
+    if (!mountedRef.current) return;
+    setLiveText(text);
+  }
+
+  function handleRecError(code: RecognitionErrorCode, message?: string) {
     if (!mountedRef.current) return;
     switch (code) {
       case "timeout": {
@@ -143,6 +153,7 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
         break;
       default:
         setMicErrorCode(code);
+        setMicErrorMessage(message ?? null);
         setPhase("micError");
         break;
     }
@@ -156,6 +167,8 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
       return;
     }
     setMicErrorCode(null);
+    setMicErrorMessage(null);
+    setLiveText("");
     setPhase(activePhase);
     rec.start();
   }
@@ -165,6 +178,8 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
     if (phase === "thinking" || !mountedRef.current) return;
     speechRef.current?.cancel();
     setMicErrorCode(null);
+    setMicErrorMessage(null);
+    setLiveText("");
     setPhase(activePhase);
     // Retardo breve: el browser libera el micrófono tras hablar.
     window.setTimeout(startListening, 250);
@@ -253,22 +268,23 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
             {listening && (
               <>
                 <motion.span
-                  className={cn(
-                    "absolute inset-0 rounded-full border",
-                    phase === "recording" ? "border-status-delayed/60" : "border-sky-400/60"
-                  )}
+                  className="absolute inset-0 rounded-full border border-sky-400/60"
                   animate={{ scale: [1, 1.12], opacity: [0.8, 0] }}
                   transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
                 />
                 <motion.span
-                  className={cn(
-                    "absolute inset-0 rounded-full border",
-                    phase === "recording" ? "border-status-delayed/50" : "border-sky-400/50"
-                  )}
+                  className="absolute inset-0 rounded-full border border-sky-400/50"
                   animate={{ scale: [1, 1.12], opacity: [0.8, 0] }}
                   transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut", delay: 0.5 }}
                 />
               </>
+            )}
+            {phase === "micError" && (
+              <motion.span
+                className="absolute inset-0 rounded-full border border-status-delayed/60"
+                animate={{ scale: [1, 1.12], opacity: [0.8, 0] }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
+              />
             )}
             {phase === "idle" && (
               <motion.span
@@ -295,23 +311,26 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
               <p className="text-sm text-on-surface-variant">{t("assistant.voice.unsupported")}</p>
             ) : phase === "micError" ? (
               <p className="max-w-xs text-center text-sm text-on-surface-variant">
-                {micDenied
-                  ? t("assistant.voice.micDenied")
-                  : transcriptionFailed
-                    ? t("assistant.voice.transcriptionError")
-                    : t("assistant.voice.micError")}
+                {micErrorMessage ??
+                  (micDenied
+                    ? t("assistant.voice.micDenied")
+                    : transcriptionFailed
+                      ? t("assistant.voice.transcriptionError")
+                      : t("assistant.voice.micError"))}
               </p>
             ) : (
               <p className="text-sm text-on-surface-variant">
-                {phase === "listening"
-                  ? t("assistant.voice.listening")
-                  : phase === "recording"
-                    ? t("assistant.voice.recording")
-                    : phase === "thinking"
-                      ? t("assistant.voice.thinking")
-                      : phase === "speaking"
-                        ? t("assistant.voice.speaking")
-                        : t("assistant.voice.talkAgain")}
+                {listening && liveText
+                  ? liveText
+                  : phase === "listening"
+                    ? t("assistant.voice.listening")
+                    : phase === "recording"
+                      ? t("assistant.voice.recording")
+                      : phase === "thinking"
+                        ? t("assistant.voice.thinking")
+                        : phase === "speaking"
+                          ? t("assistant.voice.speaking")
+                          : t("assistant.voice.talkAgain")}
               </p>
             )}
             {(phase === "idle" || phase === "micError") && (
