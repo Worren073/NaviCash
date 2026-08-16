@@ -2,9 +2,13 @@
 
 - ``POST /api/assistant/transcribe``: validación de multipart, auth y respuesta.
 - ``OpenAITranscriber``: arma el multipart contra audio/transcriptions.
+- ``GeminiTranscriber``: envía el audio en base64 a generateContent.
 """
 
 from __future__ import annotations
+
+import base64
+import json
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -123,6 +127,19 @@ class TestTranscriptionEndpoint:
         assert resp.status_code == 400
         assert "detail" in resp.data
 
+    def test_provider_auth_error_friendly(self, api_client, monkeypatch) -> None:
+        """Error de clave del proveedor llega al usuario como mensaje claro."""
+        from apps.assistant.providers import TranscriptionProviderError
+
+        class AuthFailingTranscriber:
+            def transcribe(self, audio, filename):
+                raise TranscriptionProviderError("clave inválida", code="auth")
+
+        monkeypatch.setattr("apps.assistant.services.get_transcriber", lambda: AuthFailingTranscriber())
+        resp = api_client.post(URL, {"audio": _audio()}, format="multipart")
+        assert resp.status_code == 400
+        assert "clave" in resp.data["detail"].lower()
+
     def test_empty_transcript_friendly(self, api_client, monkeypatch) -> None:
         """Transcript vacío (proveedor devolvió nada) → mensaje legible."""
         class EmptyTranscriber:
@@ -208,4 +225,144 @@ def test_default_mock_transcriber(monkeypatch) -> None:
 
     monkeypatch.delenv("AAI_API_KEY", raising=False)
     monkeypatch.delenv("AAI_PROVIDER", raising=False)
+    monkeypatch.delenv("AAI_BASE_URL", raising=False)
+    monkeypatch.delenv("AAI_MODEL", raising=False)
     assert isinstance(get_transcriber(), MockTranscriber)
+
+
+class TestGeminiTranscriber:
+    """GeminiTranscriber envía el audio en base64 a generateContent."""
+
+    def test_posts_generate_content_and_returns_text(self) -> None:
+        """La llamada llega a models/<model>:generateContent con inline_data."""
+        from httpx import MockTransport, Request, Response
+
+        from apps.assistant.providers import GeminiTranscriber
+
+        captured: dict = {}
+
+        def handler(request: Request) -> Response:
+            captured["url"] = str(request.url)
+            captured["auth"] = request.headers.get("x-goog-api-key", "")
+            captured["payload"] = json.loads(request.read())
+            return Response(
+                200,
+                json={"candidates": [{"content": {"parts": [{"text": "Registro un pago"}]}}]},
+            )
+
+        provider = GeminiTranscriber(
+            api_key="gk-test",
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            transport=MockTransport(handler),
+        )
+
+        result = provider.transcribe(b"audio-bytes", "nota.mp4")
+
+        assert result == "Registro un pago"
+        assert "models/gemini-2.0-flash:generateContent" in captured["url"]
+        assert captured["auth"] == "gk-test"
+
+        parts = captured["payload"]["contents"][0]["parts"]
+        inline = next(p["inline_data"] for p in parts if "inline_data" in p)
+        assert inline["mime_type"] == "audio/mp4"
+        assert inline["data"] == base64.b64encode(b"audio-bytes").decode("ascii")
+
+    def test_strips_openai_suffix_for_native_api(self, monkeypatch) -> None:
+        """De la base OpenAI-compatible del chat se deriva la API nativa."""
+        from httpx import MockTransport, Request, Response
+
+        from apps.assistant.providers import GeminiTranscriber
+
+        captured: dict = {}
+
+        def handler(request: Request) -> Response:
+            captured["url"] = str(request.url)
+            return Response(200, json={"candidates": [{"content": {"parts": [{"text": "x"}]}}]})
+
+        monkeypatch.setenv("AAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
+        provider = GeminiTranscriber(api_key="gk-test", transport=MockTransport(handler))
+        provider.transcribe(b"audio", "nota.mp4")
+
+        assert captured["url"].startswith(
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+        )
+
+    def test_uses_gemini_model_ignoring_whisper(self, monkeypatch) -> None:
+        """Un AAI_TRANSCRIBE_MODEL=whisper-1 heredado no rompe el modelo de Gemini."""
+        from httpx import MockTransport, Request, Response
+
+        from apps.assistant.providers import GeminiTranscriber
+
+        captured: dict = {}
+
+        def handler(request: Request) -> Response:
+            captured["url"] = str(request.url)
+            return Response(200, json={"candidates": [{"content": {"parts": [{"text": "x"}]}}]})
+
+        monkeypatch.setenv("AAI_TRANSCRIBE_MODEL", "whisper-1")
+        monkeypatch.setenv("AAI_MODEL", "gemini-3.5-flash-lite")
+        provider = GeminiTranscriber(api_key="gk-test", transport=MockTransport(handler))
+        provider.transcribe(b"audio", "nota.mp4")
+
+        assert "models/gemini-3.5-flash-lite:generateContent" in captured["url"]
+
+    def test_raises_without_key(self, monkeypatch) -> None:
+        """Sin clave configurada el proveedor se niega a llamar."""
+        from apps.assistant.providers import GeminiTranscriber
+
+        monkeypatch.delenv("AAI_API_KEY", raising=False)
+        provider = GeminiTranscriber(api_key="")
+        with pytest.raises(RuntimeError):
+            provider.transcribe(b"audio", "nota.mp4")
+
+    def test_maps_http_errors_to_codes(self) -> None:
+        """Estado HTTP → TranscriptionProviderError con categoría para el mensaje."""
+        from httpx import MockTransport, Request, Response
+
+        from apps.assistant.providers import (
+            GeminiTranscriber,
+            TranscriptionProviderError,
+        )
+
+        def handler(request: Request) -> Response:
+            return Response(403, json={"error": {"message": "API key not valid"}})
+
+        provider = GeminiTranscriber(
+            api_key="gk-test",
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            transport=MockTransport(handler),
+        )
+        with pytest.raises(TranscriptionProviderError) as exc_info:
+            provider.transcribe(b"audio", "nota.mp4")
+        assert exc_info.value.code == "forbidden"
+
+
+class TestTranscriberSelection:
+    """get_transcriber elige el proveedor según la configuración de entorno."""
+
+    def test_gemini_selected_for_generativelanguage(self, monkeypatch) -> None:
+        """Base generativelanguage → se transcribe con Gemini."""
+        from apps.assistant.providers import GeminiTranscriber, get_transcriber
+
+        monkeypatch.setenv("AAI_API_KEY", "gk-test")
+        monkeypatch.setenv("AAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
+        monkeypatch.setenv("AAI_MODEL", "gemini-3.5-flash-lite")
+        assert isinstance(get_transcriber(), GeminiTranscriber)
+
+    def test_gemini_selected_for_gemini_model(self, monkeypatch) -> None:
+        """Modelo gemini → se transcribe con Gemini aunque la base sea OpenAI."""
+        from apps.assistant.providers import GeminiTranscriber, get_transcriber
+
+        monkeypatch.setenv("AAI_API_KEY", "gk-test")
+        monkeypatch.setenv("AAI_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("AAI_MODEL", "gemini-3.5-flash-lite")
+        assert isinstance(get_transcriber(), GeminiTranscriber)
+
+    def test_openai_selected_for_openai_config(self, monkeypatch) -> None:
+        """Sin Gemini en la config, una clave configurada usa OpenAI/Whisper."""
+        from apps.assistant.providers import OpenAITranscriber, get_transcriber
+
+        monkeypatch.setenv("AAI_API_KEY", "sk-test")
+        monkeypatch.setenv("AAI_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("AAI_MODEL", "gpt-4o-mini")
+        assert isinstance(get_transcriber(), OpenAITranscriber)

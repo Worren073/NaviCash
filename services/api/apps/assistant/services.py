@@ -40,6 +40,7 @@ from apps.assistant.context import build_context
 from apps.assistant.intent_rules import answer_deterministic
 from apps.assistant.providers import (
     MockAssistantProvider,
+    TranscriptionProviderError,
     get_provider,
     get_transcriber,
 )
@@ -50,6 +51,18 @@ logger = logging.getLogger(__name__)
 
 #: TTL de las transferencias pendientes de confirmar (10 minutos).
 PENDING_TTL_SECONDS = 600
+
+#: Mensajes accionables para los errores del proveedor de transcripción.
+PROVIDER_ERROR_MESSAGES = {
+    "auth": "La clave del servicio de transcripción no es válida.",
+    "forbidden": (
+        "El servicio de transcripción no está disponible en tu región "
+        "o la clave no tiene permisos para audio."
+    ),
+    "quota": "Se alcanzó el límite del servicio de transcripción. Intenta de nuevo más tarde.",
+    "format": "No pude procesar el audio (el formato no es compatible).",
+    "provider": "El servicio de transcripción no está disponible. Intenta de nuevo.",
+}
 
 
 def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
@@ -689,6 +702,10 @@ def transcribe(audio: bytes, filename: str) -> dict:
     """
     try:
         transcript = get_transcriber().transcribe(audio, filename)
+    except TranscriptionProviderError as exc:
+        logger.warning("El proveedor de transcripción falló (%s): %s", exc.code, exc)
+        message = PROVIDER_ERROR_MESSAGES.get(exc.code, PROVIDER_ERROR_MESSAGES["provider"])
+        raise BusinessRuleError(message) from exc
     except Exception as exc:
         logger.warning("Falló la transcripción de voz: %s", exc)
         raise BusinessRuleError("No pude procesar el audio. Intenta de nuevo.") from exc

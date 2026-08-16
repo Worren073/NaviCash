@@ -13,6 +13,9 @@ Voz (chat por voz en iOS/desktop):
 - ``MockTranscriber``: transcripción determinista sin red (dev/CI).
 - ``OpenAITranscriber``: llamada al endpoint OpenAI audio/transcriptions
   (Whisper o compatible) con la misma clave de entorno.
+- ``GeminiTranscriber``: transcripción por la API nativa de Gemini
+  (generateContent con audio inline) cuando el proveedor es Gemini, porque el
+  endpoint OpenAI ``/audio/transcriptions`` no existe allí.
 
 Los proveedores reciben el contexto ya construido y el historial de mensajes;
 NUNCA reciben credenciales ni tokens de sesión.
@@ -20,6 +23,7 @@ NUNCA reciben credenciales ni tokens de sesión.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -139,8 +143,167 @@ class OpenAITranscriber:
         # cuelga el worker más de 60 s.
         with httpx.Client(transport=self._transport, timeout=httpx.Timeout(60.0)) as client:
             response = client.post(url, headers=headers, data=data, files=files)
-        response.raise_for_status()
+        _raise_for_provider(response)
         return response.json().get("text", "").strip()
+
+
+class TranscriptionProviderError(RuntimeError):
+    """Error de un proveedor de transcripción con código para mensaje amigable.
+
+    ``code`` se mapea en ``services.transcribe`` a un mensaje claro para el
+    usuario (clave inválida, región, límite, formato, etc.).
+    """
+
+    def __init__(self, message: str, code: str = "provider") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def _raise_for_provider(response: httpx.Response) -> None:
+    """Valida la respuesta y eleva ``TranscriptionProviderError`` con código útil.
+
+    Mapea los códigos HTTP típicos a categorías entendibles por el usuario:
+    formato (400), clave (401), región/permisos (403), proveedor (404) y
+    límite (429). Cualquier otro estado se trata como error del proveedor.
+    """
+    if response.is_success:
+        return
+    codes = {
+        400: "format",
+        401: "auth",
+        403: "forbidden",
+        404: "provider",
+        429: "quota",
+    }
+    detail = ""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            detail = payload.get("error", {}).get("message", "")
+    except ValueError:
+        pass
+    message = f"Proveedor de transcripción {response.status_code}: {detail}".strip()
+    raise TranscriptionProviderError(message, code=codes.get(response.status_code, "provider"))
+
+
+#: MIME de audio por extensión (Gemini exige el tipo explícito en inline_data).
+_AUDIO_MIME_BY_EXTENSION = {
+    "mp4": "audio/mp4",
+    "m4a": "audio/mp4",
+    "aac": "audio/aac",
+    "webm": "audio/webm",
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "ogg": "audio/ogg",
+}
+
+
+def _audio_mime_from_filename(filename: str) -> str:
+    """MIME de audio inferido de la extensión del archivo (default mp4)."""
+    extension = (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
+    return _AUDIO_MIME_BY_EXTENSION.get(extension, "audio/mp4")
+
+
+def _gemini_native_base_url() -> str:
+    """Base de la API nativa de Gemini derivada de ``AAI_BASE_URL``.
+
+    El chat usa el endpoint OpenAI-compatible ``.../v1beta/openai``; la API
+    nativa (generateContent) vive en ``.../v1beta`` sin el sufijo ``/openai``.
+    """
+    configured = (os.getenv("AAI_BASE_URL") or "").strip().rstrip("/")
+    if not configured:
+        return "https://generativelanguage.googleapis.com/v1beta"
+    if configured.endswith("/openai"):
+        return configured[: -len("/openai")]
+    return configured
+
+
+def _resolve_gemini_model() -> str:
+    """Modelo de Gemini para transcribir (debe ser un id de Gemini).
+
+    Se prefiere ``AAI_TRANSCRIBE_MODEL`` y luego ``AAI_MODEL``, pero se ignoran
+    valores tipo ``whisper-1`` que no son modelos de Gemini (pueden quedar de
+    un ``render.yaml`` antiguo) para no llamar a ``models/whisper-1``.
+    """
+    for key in ("AAI_TRANSCRIBE_MODEL", "AAI_MODEL"):
+        candidate = os.getenv(key) or ""
+        if candidate and "gemini" in candidate.lower():
+            return candidate
+    return "gemini-2.0-flash"
+
+
+class GeminiTranscriber:
+    """Transcripción por Gemini (generateContent con audio inline).
+
+    Gemini NO ofrece el endpoint OpenAI ``/audio/transcriptions`` de Whisper;
+    ese 404 rompía el chat por voz en iOS. En su lugar se envía el clip en
+    base64 (``inline_data``) a ``{base}/models/{model}:generateContent`` con la
+    MISMA clave y modelo del chat (gemini flash), que ya funcionan, sin
+    configuración extra.
+
+    Variables de entorno:
+        AAI_API_KEY: clave de Google (la misma del chat).
+        AAI_TRANSCRIBE_MODEL: modelo de transcripción; si falta, AAI_MODEL.
+        AAI_BASE_URL: base del chat (p. ej. ``.../v1beta/openai``); se le
+            quita el sufijo ``/openai`` para usar la API nativa ``.../v1beta``.
+
+    Límite: el API acepta hasta 20 MB de audio inline (el endpoint valida 10 MB).
+    """
+
+    TRANSCRIPTION_PROMPT = (
+        "Transcribe el audio a texto en español. "
+        "Devuelve únicamente el texto transcrito, sin comentarios."
+    )
+
+    def __init__(
+        self,
+        model: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        transport=None,
+    ) -> None:
+        self.api_key = api_key if api_key is not None else os.getenv("AAI_API_KEY", "")
+        self.model = model or _resolve_gemini_model()
+        self.base_url = base_url or _gemini_native_base_url()
+        self._transport = transport
+
+    @property
+    def available(self) -> bool:
+        """True si hay clave configurada (se puede llamar al API)."""
+        return bool(self.api_key)
+
+    def transcribe(self, audio: bytes, filename: str) -> str:
+        """Llamada a generateContent con el clip en base64 y el modelo configurado."""
+        if not self.available:
+            raise RuntimeError("No hay AAI_API_KEY configurada para GeminiTranscriber")
+
+        url = f"{self.base_url.rstrip('/')}/models/{self.model}:generateContent"
+        headers = {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": self.TRANSCRIPTION_PROMPT},
+                        {
+                            "inline_data": {
+                                "mime_type": _audio_mime_from_filename(filename),
+                                "data": base64.b64encode(audio).decode("ascii"),
+                            }
+                        },
+                    ]
+                }
+            ],
+            "generationConfig": {"temperature": 0},
+        }
+
+        # Timeout acotado: un clip de voz transcribe en unos segundos; nunca
+        # cuelga el worker más de 60 s.
+        with httpx.Client(transport=self._transport, timeout=httpx.Timeout(60.0)) as client:
+            response = client.post(url, headers=headers, json=payload)
+        _raise_for_provider(response)
+
+        parts = ((response.json().get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+        return "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
 
 
 class MockAssistantProvider:
@@ -241,10 +404,20 @@ def get_provider() -> AssistantProvider:
 def get_transcriber() -> Transcriber:
     """Devuelve el proveedor de transcripción según la configuración de entorno.
 
-    Igual criterio que ``get_provider``: clave/config OpenAI → real; si no,
-    Mock (dev/CI sin red).
+    Selección:
+    - Gemini (base ``generativelanguage`` o modelo con ``gemini``) →
+      ``GeminiTranscriber`` (generateContent; el endpoint /audio/transcriptions
+      no existe en Gemini).
+    - OpenAI/Azure/OpenRouter o clave configurada → ``OpenAITranscriber``.
+    - Sin clave → ``MockTranscriber`` (dev/CI sin red).
     """
     configured = (os.getenv("AAI_PROVIDER") or "").lower()
+    base_url = (os.getenv("AAI_BASE_URL") or "").lower()
+    model = (os.getenv("AAI_MODEL") or os.getenv("AAI_TRANSCRIBE_MODEL") or "").lower()
+    uses_gemini = "generativelanguage" in base_url or "gemini" in model
+
+    if uses_gemini and (configured or os.getenv("AAI_API_KEY")):
+        return GeminiTranscriber()
     if configured in {"openai", "azure", "openrouter"} or os.getenv("AAI_API_KEY"):
         return OpenAITranscriber()
     logger.info("AAI_API_KEY sin configurar → usando MockTranscriber")
