@@ -18,9 +18,11 @@ import { AppMenu } from "@/features/layout/app-menu";
 import { NaviBubble } from "@/features/assistant/navi-bubble";
 import { AssistantChat } from "@/features/assistant/assistant-chat";
 import { NaviVoice } from "@/features/assistant/navi-voice";
+import { NaviTourGlobe } from "@/features/assistant/navi-tour";
+import { useNaviTour } from "@/features/assistant/use-navi-tour";
 import { unlockSpeech } from "@/features/assistant/speech";
 import { VoiceChatContext } from "@/features/assistant/voice-chat-context";
-import { useNotifications } from "@/hooks/use-queries";
+import { useMe, useNotifications } from "@/hooks/use-queries";
 import { IOSLimitationsNotice } from "@/components/ios-limitations-notice";
 import { DeviceInfo } from "@/components/device-info";
 import { cn } from "@/lib/utils";
@@ -197,9 +199,18 @@ function NavLink({
 }
 
 export default function AppLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+
+  // Tour guiado de Navi: solo para usuarios que aún no lo completaron.
+  const { data: me } = useMe();
+  const { view, stepIndex, totalSteps, visible, next, skip } = useNaviTour(location.pathname);
+  const onboarding = Boolean(me) && !me?.is_onboarded;
+  const tourShown = onboarding && visible && !assistantOpen && !voiceOpen;
+  const tourMounted = onboarding && Boolean(view);
+
   return (
     <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)]">
       <TopBar />
@@ -219,7 +230,22 @@ export default function AppLayout() {
           </div>
         </VoiceChatContext.Provider>
       </main>
-      <NaviBubble onOpen={() => setAssistantOpen(true)} />
+      <NaviBubble
+        onOpen={() => setAssistantOpen(true)}
+        tour={
+          tourMounted && view ? (
+            <NaviTourGlobe
+              visible={tourShown}
+              stepIndex={stepIndex}
+              totalSteps={totalSteps}
+              title={t(`assistant.tour.views.${view.pathKey}.${stepIndex}.title`)}
+              body={t(`assistant.tour.views.${view.pathKey}.${stepIndex}.body`)}
+              onNext={next}
+              onSkip={skip}
+            />
+          ) : undefined
+        }
+      />
       <AssistantChat open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <NaviVoice open={voiceOpen} onClose={() => setVoiceOpen(false)} />
       <IOSLimitationsNotice />

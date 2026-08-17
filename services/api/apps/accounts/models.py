@@ -42,6 +42,8 @@ class User(AbstractBaseUser, PermissionsMixin):
                   recordatorios se calculan en esta zona — ver Riesgo R8).
         reminder_days: regla global de recordatorio: avisar N días antes del
                        vencimiento (ADR-09).
+        is_onboarded: True cuando el usuario ya vio el tour guiado de Navi
+                      (tutorial de las secciones para usuarios nuevos).
         is_active: False hasta que se verifique el email (ADR-06).
     """
 
@@ -86,6 +88,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         default=3,
         verbose_name="Días de recordatorio",
         help_text="Regla global: avisar pagos que vencen en N días (ADR-09).",
+    )
+    is_onboarded = models.BooleanField(
+        default=False,
+        verbose_name="Tutorial visto",
+        help_text="True cuando el usuario ya completó el tour guiado de Navi.",
     )
     is_active = models.BooleanField(
         default=False,

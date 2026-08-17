@@ -182,6 +182,7 @@ export default {
     title: "Menu",
     savings: "Savings",
     subscriptions: "Subscriptions",
+    replayTour: "Replay tutorial",
   },
   notifications: {
     title: "Notifications",
@@ -226,6 +227,102 @@ export default {
       transcriptionError: "I couldn't understand the audio. Try again.",
       retry: "Retry",
       silentMode: "If silent mode is on, you won't hear Navi's voice.",
+    },
+    tour: {
+      next: "Next",
+      skip: "Skip",
+      views: {
+        dashboard: [
+          {
+            title: "Hi! I'm Navi",
+            body: "Welcome to NaviCash! Let me show you around in a minute. Important: this app only keeps track of your finances, it doesn't move real money.",
+          },
+          {
+            title: "Your balances at a glance",
+            body: "Home shows your total balance, what you have to collect, to pay and what you've saved. Tap the eye to hide amounts from others.",
+          },
+          {
+            title: "Shortcuts",
+            body: "Hold the + button to talk to me by voice, or tap my bubble to chat with me. I'm always here!",
+          },
+        ],
+        wallets: [
+          {
+            title: "Your accounts",
+            body: "Here you connect your accounts in dollars or bolívares: cash, bank, savings or other. Remember it's just a record, not linked to a real bank.",
+          },
+          {
+            title: "Connect and adjust",
+            body: "Tap 'Connect new account' to add one, and use 'Adjust balance' when you want to fix the amount you registered.",
+          },
+          {
+            title: "Transfer",
+            body: "With 'Transfer' you move money between accounts, even across currencies, using the official rate or a custom one.",
+          },
+        ],
+        transactions: [
+          {
+            title: "Collections and payments",
+            body: "In Operations you register what people owe you (collections) and what you owe (payments). Each can be pending, paid, overdue or cancelled.",
+          },
+          {
+            title: "Filter and search",
+            body: "Use the status and date filters to find what you need fast, or tap the + button to register a new operation.",
+          },
+          {
+            title: "Pro tips",
+            body: "Hold the + button to talk to me by voice and register operations with your voice. Very handy!",
+          },
+        ],
+        newOperation: [
+          {
+            title: "Collection or payment",
+            body: "Choose whether it's a collection (someone pays you) or a payment (you pay), enter the amount and pick the wallet.",
+          },
+          {
+            title: "Remind me",
+            body: "Turn on 'Remind me' and pick a due date: I'll notify you before it's due so you don't forget.",
+          },
+          {
+            title: "Already done?",
+            body: "If you already paid or collected, turn on 'Already done?': it's marked as paid and your wallet balance updates automatically.",
+          },
+        ],
+        savings: [
+          {
+            title: "Save with goals",
+            body: "In Savings you create goals with a target and a date. Link your savings accounts so progress adds up automatically.",
+          },
+          {
+            title: "Contribute",
+            body: "Transfer money to the savings account linked to your goal: the amount adds to the goal's progress automatically.",
+          },
+          {
+            title: "Track your progress",
+            body: "Each goal shows its progress as a percentage and the amount saved. Every contribution counts!",
+          },
+        ],
+        subscriptions: [
+          {
+            title: "Subscriptions",
+            body: "Register your subscriptions and monthly commitments (gym, streaming, etc.) with their start and end dates.",
+          },
+          {
+            title: "Renew",
+            body: "When a subscription ends, tap 'Renew' to register it again: pick the account and the amount.",
+          },
+        ],
+        profile: [
+          {
+            title: "Your profile",
+            body: "Here you edit your name, phone, base currency and how many days in advance you want to be reminded of due dates.",
+          },
+          {
+            title: "Sign out",
+            body: "You can sign out whenever you want. Your data stays safe in your account.",
+          },
+        ],
+      },
     },
   },
   savings: {

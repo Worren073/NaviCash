@@ -184,6 +184,7 @@ export default {
     title: "Menú",
     savings: "Ahorros",
     subscriptions: "Mensualidades",
+    replayTour: "Repetir tutorial",
   },
   notifications: {
     title: "Notificaciones",
@@ -228,6 +229,102 @@ export default {
       transcriptionError: "No pude entender el audio. Intenta de nuevo.",
       retry: "Reintentar",
       silentMode: "Si el botón de silencio está activado, no escucharás la voz de Navi.",
+    },
+    tour: {
+      next: "Siguiente",
+      skip: "Omitir",
+      views: {
+        dashboard: [
+          {
+            title: "¡Hola! Soy Navi",
+            body: "¡Bienvenido a NaviCash! Te muestro cómo funciona cada sección en un minuto. Importante: aquí solo llevas el registro de tus finanzas, no se mueve dinero real.",
+          },
+          {
+            title: "Tus saldos de un vistazo",
+            body: "En Inicio ves tu saldo total, lo que tienes por cobrar, por pagar y lo que llevas ahorrado. Toca el ojito si no quieres que otros vean los montos.",
+          },
+          {
+            title: "Atajos",
+            body: "Mantén presionado el botón + para hablar conmigo por voz, o toca mi burbuja para escribirme en el chat. ¡Siempre estoy por aquí!",
+          },
+        ],
+        wallets: [
+          {
+            title: "Tus cuentas",
+            body: "Aquí conectas tus cuentas en dólares o bolívares: efectivo, banco, ahorro u otro. Recuerda que es solo un registro, no está conectado a un banco real.",
+          },
+          {
+            title: "Conectar y ajustar",
+            body: "Toca 'Conectar nueva cuenta' para agregar una, y usa 'Ajustar saldo' cuando quieras corregir el monto que registraste.",
+          },
+          {
+            title: "Transferir",
+            body: "Con 'Transferir' mueves dinero entre tus cuentas, incluso entre monedas, usando la tasa BCV o una personalizada.",
+          },
+        ],
+        transactions: [
+          {
+            title: "Cobros y pagos",
+            body: "En Operaciones registras lo que te deben (cobros) y lo que debes (pagos). Cada uno puede estar pendiente, pagado, atrasado o cancelado.",
+          },
+          {
+            title: "Filtra y busca",
+            body: "Usa los filtros de estado y fecha para encontrar rápido lo que buscas, o toca el botón + para registrar una operación nueva.",
+          },
+          {
+            title: "Trucos",
+            body: "Mantén presionado el botón + para hablar conmigo por voz y registrar operaciones con tu voz. ¡Es muy práctico!",
+          },
+        ],
+        newOperation: [
+          {
+            title: "Cobro o pago",
+            body: "Elige si es un cobro (alguien te paga) o un pago (tú pagas), escribe el monto y elige la billetera de donde sale.",
+          },
+          {
+            title: "Recordarme",
+            body: "Activa 'Recordarme' y elige una fecha de vencimiento: te avisaré antes de que se cumpla para que no se te olvide.",
+          },
+          {
+            title: "¿Ya lo realicé?",
+            body: "Si ya lo pagaste o cobraste, activa '¿Ya lo realicé?': se marca como pagado y el saldo de tu billetera se actualiza solo.",
+          },
+        ],
+        savings: [
+          {
+            title: "Ahorra con metas",
+            body: "En Ahorros creas metas con un objetivo y una fecha. Vincula tus cuentas de ahorro para que el avance se sume automáticamente.",
+          },
+          {
+            title: "Aporta",
+            body: "Transfiere dinero a la cuenta de ahorro vinculada a tu meta: el monto se suma al progreso de la meta automáticamente.",
+          },
+          {
+            title: "Sigue tu avance",
+            body: "Cada meta muestra su progreso en porcentaje y el monto ahorrado. ¡Cada aporte cuenta!",
+          },
+        ],
+        subscriptions: [
+          {
+            title: "Mensualidades",
+            body: "Registra tus suscripciones y compromisos mensuales (gimnasio, streaming, etc.) con su fecha de inicio y cierre.",
+          },
+          {
+            title: "Renovar",
+            body: "Cuando una mensualidad termine, toca 'Renovar' para registrarla de nuevo: eliges la cuenta del gasto y el monto.",
+          },
+        ],
+        profile: [
+          {
+            title: "Tu perfil",
+            body: "Aquí editas tu nombre, teléfono, moneda base y cuántos días antes quieres que te avise de los vencimientos.",
+          },
+          {
+            title: "Cerrar sesión",
+            body: "Puedes cerrar sesión cuando quieras. Tus datos quedan seguros en tu cuenta.",
+          },
+        ],
+      },
     },
   },
   savings: {

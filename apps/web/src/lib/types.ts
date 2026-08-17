@@ -14,6 +14,7 @@ export interface User {
   base_currency: Currency;
   timezone_name: string;
   reminder_days: number;
+  is_onboarded: boolean;
 }
 
 export interface Wallet {

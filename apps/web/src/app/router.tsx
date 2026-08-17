@@ -5,6 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import AppLayout from "@/app/layout";
 import { api, getAccessToken, onSessionExpired, setAccessToken, BASE_URL } from "@/lib/api";
 import { Splash } from "@/components/ui/blur-loading";
+import { queryKeys } from "@/hooks/use-queries";
+import type { User } from "@/lib/types";
 
 // M10 — code splitting: cada página se carga bajo demanda.
 const DashboardPage = lazy(() => import("@/features/dashboard/dashboard-page"));
@@ -30,6 +32,7 @@ const ResetPasswordPage = lazy(() => import("@/features/auth/reset-password-page
 function RequireAuth() {
   const [checking, setChecking] = useState(() => !getAccessToken());
   const [ok, setOk] = useState(() => Boolean(getAccessToken()));
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (getAccessToken()) return;
@@ -48,7 +51,10 @@ function RequireAuth() {
         }
         // Refresh exitoso: guardar el nuevo access y validar con /me.
         setAccessToken(refreshData.access);
-        const me = await api.get<{ id: string }>("/auth/me");
+        const me = await api.get<User>("/auth/me");
+        // Pre-cargar el perfil para que el layout (y el tour de Navi) lo lean
+        // de react-query sin una petición extra.
+        queryClient.setQueryData(queryKeys.me, me);
         if (!cancelled) setOk(Boolean(me));
       } catch {
         if (!cancelled) setOk(false);
@@ -59,7 +65,7 @@ function RequireAuth() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [queryClient]);
 
   if (checking) {
     return <Splash />;

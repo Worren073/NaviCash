@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import type { NotificationsResponse, Overview, Subscription, Wallet } from "@/lib/types";
+import type { NotificationsResponse, Overview, Subscription, User, Wallet } from "@/lib/types";
 
 export const queryKeys = {
   overview: ["overview"] as const,
@@ -21,6 +21,13 @@ export function useOverview() {
   return useQuery({
     queryKey: queryKeys.overview,
     queryFn: ({ signal }) => api.get<Overview>("/overview", { signal }),
+  });
+}
+
+export function useMe() {
+  return useQuery({
+    queryKey: queryKeys.me,
+    queryFn: ({ signal }) => api.get<User>("/auth/me", { signal }),
   });
 }
 

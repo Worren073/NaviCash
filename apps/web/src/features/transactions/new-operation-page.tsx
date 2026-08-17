@@ -12,11 +12,13 @@ import {
 } from "lucide-react";
 
 import { api, ApiErrorClass } from "@/lib/api";
-import { queryKeys } from "@/hooks/use-queries";
+import { queryKeys, useMe } from "@/hooks/use-queries";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
+import { NaviTourGlobe } from "@/features/assistant/navi-tour";
+import { useNaviTour } from "@/features/assistant/use-navi-tour";
 import { cn } from "@/lib/utils";
 import { formatSymbol } from "@/lib/format";
 import type { Category, Contact, Currency, Paginated, Wallet } from "@/lib/types";
@@ -68,6 +70,11 @@ export default function NewOperationPage() {
   const [reminderDays, setReminderDays] = useState("");
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Tour guiado de Navi para este formulario (ruta /operations/new).
+  const { data: me } = useMe();
+  const { view, stepIndex, totalSteps, visible, next, skip } = useNaviTour("/operations/new");
+  const showTour = Boolean(me) && !me?.is_onboarded && visible;
 
   const { data: categories } = useQuery({
     queryKey: queryKeys.categories,
@@ -386,6 +393,19 @@ export default function NewOperationPage() {
           </Button>
         </div>
       </footer>
+
+      {view && (
+        <NaviTourGlobe
+          visible={showTour}
+          stepIndex={stepIndex}
+          totalSteps={totalSteps}
+          title={t(`assistant.tour.views.${view.pathKey}.${stepIndex}.title`)}
+          body={t(`assistant.tour.views.${view.pathKey}.${stepIndex}.body`)}
+          onNext={next}
+          onSkip={skip}
+          anchored={false}
+        />
+      )}
     </div>
   );
 }

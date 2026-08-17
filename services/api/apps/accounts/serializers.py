@@ -61,6 +61,7 @@ class UserSerializer(serializers.ModelSerializer):
             "language",
             "timezone_name",
             "reminder_days",
+            "is_onboarded",
             "is_active",
             "date_joined",
         ]
@@ -84,6 +85,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             "language",
             "timezone_name",
             "reminder_days",
+            "is_onboarded",
         ]
         extra_kwargs = {
             "reminder_days": {"min_value": 0, "max_value": 30},

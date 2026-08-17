@@ -195,6 +195,28 @@ class TestAuthFlow:
         assert resp.status_code == 200
         assert resp.data["email"]
 
+    def test_me_returns_is_onboarded_false_by_default(self, api_client) -> None:
+        """Un usuario nuevo aún no ha visto el tutorial (is_onboarded=False)."""
+        resp = api_client.get(self.ME_URL)
+        assert resp.status_code == 200
+        assert resp.data["is_onboarded"] is False
+
+    def test_me_marks_is_onboarded(self, api_client) -> None:
+        """PATCH /api/auth/me {is_onboarded: true} persiste el tutorial visto."""
+        resp = api_client.patch(self.ME_URL, {"is_onboarded": True})
+        assert resp.status_code == 200
+        assert resp.data["is_onboarded"] is True
+        api_client.user.refresh_from_db()
+        assert api_client.user.is_onboarded is True
+
+    def test_me_rejects_invalid_is_onboarded(self, api_client) -> None:
+        """is_onboarded debe ser booleano; valores raros se rechazan."""
+        resp = api_client.patch(self.ME_URL, {"is_onboarded": "si"})
+        assert resp.status_code == 400
+        assert "is_onboarded" in resp.data["errors"]
+        api_client.user.refresh_from_db()
+        assert api_client.user.is_onboarded is False
+
     def test_me_updates_profile(self, api_client) -> None:
         """PATCH /api/auth/me actualiza el perfil (RF-05)."""
         resp = api_client.patch(
