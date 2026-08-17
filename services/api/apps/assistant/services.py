@@ -191,8 +191,9 @@ def _execute_ledger(user, proposal: ActionProposal) -> str:
         )
     except BusinessRuleError as exc:
         return (
-            f"No pude registrar el {proposal.tipo}: {exc} "
-            "Revisa la billetera y la moneda e inténtalo de nuevo."
+            "El modo agéntico para registros no se encuentra disponible en estos "
+            "momentos. Por favor ingrese la transacción de manera manual o "
+            "intente más tarde."
         )
 
     return _ledger_confirm_text(tx, conversion=conversion_txt)
@@ -254,7 +255,11 @@ def _execute_transfer(user, pending: dict, session_id: uuid.UUID) -> str:
                 concepto=pending.get("concepto", ""),
             )
     except BusinessRuleError as exc:
-        return f"No pude completar la transferencia: {exc}"
+        return (
+            "El modo agéntico para registros no se encuentra disponible en estos "
+            "momentos. Por favor ingrese la transferencia de manera manual o "
+            "intente más tarde."
+        )
 
     return _transfer_confirm_text(tx)
 

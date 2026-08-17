@@ -633,7 +633,7 @@ class TestRegistroViaChat:
             format="json",
         )
         assert resp.status_code == 200
-        assert "No pude registrar" in resp.data["text"]
+        assert "agéntico" in resp.data["text"]
         assert not Transaction.objects.filter(user=api_client.user).exists()
 
     def test_cobro_sin_cuenta_then_respuesta_completa(self, api_client) -> None:
