@@ -3,8 +3,9 @@
  *
  * - Salida (TTS): ``speechSynthesis`` nativo, disponible en todos los
  *   navegadores (incluido iOS).
- * - Entrada (STT): Web Speech API en Android/desktop; en iOS se graba con
- *   ``MediaRecorder`` y se transcribe en el backend (Whisper).
+ * - Entrada (STT): Web Speech API en Android/desktop y iOS 16.4+;
+ *   en iOS sin soporte se graba con ``MediaRecorder`` y se transcribe en el
+ *   backend (Whisper).
  *
  * Las instancias se cachean a nivel de módulo: el proveedor de síntesis
  * recarga las voces en ``voiceschanged`` y no conviene recrearlo.
@@ -61,19 +62,29 @@ export function getRecognitionProvider(): RecognitionProvider | null {
     cachedRecognition = null;
     return null;
   }
-  const provider: RecognitionProvider | null = isIOSDevice()
-    ? new MediaRecorderRecognitionProvider()
-    : new WebSpeechRecognitionProvider();
-  cachedRecognition = provider.isSupported() ? provider : null;
-  return cachedRecognition;
+  // Priorizar Web Speech API (webkitSpeechRecognition) en todas las
+  // plataformas, incluido iOS 16.4+. Solo si no está soportado, caer al
+  // fallback de MediaRecorder (iOS sin webkitSpeechRecognition).
+  const webSpeech = new WebSpeechRecognitionProvider();
+  if (webSpeech.isSupported()) {
+    cachedRecognition = webSpeech;
+    return cachedRecognition;
+  }
+  if (isIOSDevice()) {
+    cachedRecognition = new MediaRecorderRecognitionProvider();
+    return cachedRecognition;
+  }
+  cachedRecognition = null;
+  return null;
 }
 
 /**
  * Cómo captura la voz este dispositivo: "live" (Web Speech, corte automático
- * del navegador) o "recording" (iOS: grabación con corte por silencio).
- * ``null`` si no hay ningún método de entrada.
+ * del navegador) o "recording" (MediaRecorder: grabación con corte por
+ * silencio). ``null`` si no hay ningún método de entrada.
  */
 export function getRecognitionKind(): "live" | "recording" | null {
-  if (getRecognitionProvider() === null) return null;
-  return isIOSDevice() ? "recording" : "live";
+  const rec = getRecognitionProvider();
+  if (rec === null) return null;
+  return rec instanceof WebSpeechRecognitionProvider ? "live" : "recording";
 }
