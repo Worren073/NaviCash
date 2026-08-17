@@ -48,6 +48,7 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
   private finalized = false;
   private aborting = false;
   private mimeType = "audio/mp4";
+  private acCloseTimer: ReturnType<typeof setTimeout> | null = null;
   // iOS no emite transcripción en vivo: solo entrega el resultado final.
   onPartial: ((text: string) => void) | null = null;
   onResult: ((transcript: string) => void) | null = null;
@@ -185,8 +186,15 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
     if (this.finalized) return;
     this.finalized = true;
     if (this.rafId) cancelAnimationFrame(this.rafId);
+    // iOS: retrasar el cierre del AudioContext para mantener vivo el audio
+    // session mientras TTS arranca (el speak() invocado desde un useEffect
+    // necesita unos ms para ejecutarse). El stream del micrófono se libera
+    // de inmediato en release() para devolver el hardware.
     if (this.audioContext) {
-      this.audioContext.close().catch(() => undefined);
+      const ctx = this.audioContext;
+      this.acCloseTimer = setTimeout(() => {
+        ctx.close().catch(() => undefined);
+      }, 500);
       this.audioContext = null;
     }
     if (this.recorder && this.recorder.state === "recording") {
@@ -251,5 +259,9 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
     this.speaking = false;
     this.silenceStart = 0;
     this.startedAt = 0;
+    if (this.acCloseTimer) {
+      clearTimeout(this.acCloseTimer);
+      this.acCloseTimer = null;
+    }
   }
 }

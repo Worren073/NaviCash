@@ -34,6 +34,10 @@ export class WebSpeechSynthesisProvider implements SpeechProvider {
 
   speak(text: string): void {
     if (!this.isSupported() || !text) return;
+    // Re-desbloquear el audio session de iOS antes de hablar. Cuando speak()
+    // se invoca desde un useEffect (fuera de un gesto del usuario), iOS puede
+    // silenciar la emisión; el warm-up previo evita eso.
+    this.warmUp();
     const synth = window.speechSynthesis;
     synth.cancel();
     this.clearTimer();
