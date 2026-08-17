@@ -461,7 +461,7 @@ def _monto_converted_preview(
         "status": "pending_confirmation",
         "tipo": tipo,
         "monto": str(monto_raw),
-        "moneda": moneda_original,
+        "moneda": wallet_currency,
         "moneda_original": moneda_original,
         "wallet": wallet["name"],
         "concepto": concepto or ("Gasto registrado" if tipo == "pago" else "Ingreso registrado"),
