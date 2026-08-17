@@ -521,8 +521,11 @@ class GeminiAssistantProvider:
                 # Si es una tool de registro/transferencia con pending,
                 # almacenar para que services.chat lo cachee.
                 if result.get("status") == "pending_confirmation":
+                    tipo = result.get("tipo") or (
+                        "transferencia" if func_name == "create_transfer" else None
+                    )
                     self.last_pending = {
-                        "tipo": result.get("tipo"),
+                        "tipo": tipo,
                         "monto": result.get("monto"),
                         "moneda": result.get("moneda"),
                         "moneda_original": result.get("moneda_original"),
