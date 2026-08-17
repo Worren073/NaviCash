@@ -6,11 +6,11 @@ Flujo de una petición:
 3. Decidir el camino del turno (en este orden):
    a. Intento PELIGROSO (dinero ajeno, borrado, credenciales) → rechazo firme,
       sin tocar el LLM ni la base de datos.
-   b. Confirmación de una transferencia pendiente (cache por sesión) → ejecuta.
+   b. Confirmación de una acción pendiente (cache por sesión) → ejecuta
+      (transferencia, cobro o pago).
    c. Registro de cobro/pago/transferencia detectado por ``extract_action``:
       - incompleto → Navi pregunta por los datos faltantes;
-      - transferencia → pide confirmación explícita ("sí") antes de mover dinero;
-      - cobro/pago → se registra al instante y Navi muestra qué hizo.
+      - completo → pide confirmación explícita ("sí") antes de ejecutar.
    d. Inyección de prompt → rechazo determinista (o respuesta del LLM endurecido).
    e. Resto → proveedor configurado (openai) o fallback determinista.
 4. Devolver el texto de respuesta y la sesión agrupadora.
@@ -90,9 +90,9 @@ def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
     # 2. Confirmaciones pendientes (cache por sesión).
     elif is_confirmation(message) and pending:
         if pending.get("step") == "confirm":
-            # Transferencia esperando el «sí» explícito → se ejecuta.
+            # Acción esperando el «sí» explícito → se ejecuta.
             # Idempotencia (AUDIT C2): con gunicorn multi-worker dos «sí»
-            # concurrentes podrían ejecutar la transferencia dos veces.
+            # concurrentes podrían ejecutar la acción dos veces.
             # cache.add es atómico (SET NX): solo el primer worker obtiene el
             # lock de 60 s y ejecuta; los demás responden sin tocar la BD.
             lock_key = f"{pending_key}:executing"
@@ -100,7 +100,7 @@ def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
                 text = "Estoy procesando tu confirmación, un momento"
             else:
                 try:
-                    text = _execute_transfer(user, pending, session_id)
+                    text = _execute_pending(user, pending, session_id)
                 finally:
                     cache.delete(pending_key)
                     cache.delete(lock_key)
@@ -123,14 +123,18 @@ def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
             cache.set(pending_key, _proposal_to_cache(proposal), PENDING_TTL_SECONDS)
             text = _ask_for(proposal, context)
 
-    # 4/5. Respuesta normal: proveedor (LLM con SYSTEM_PROMPT endurecido) o
-    # fallback determinista. Las inyecciones de prompt caen aquí: si el LLM
+    # 4/5. Respuesta normal: proveedor (LLM con tools o SYSTEM_PROMPT endurecido)
+    # o fallback determinista. Las inyecciones de prompt caen aquí: si el LLM
     # está disponible responde endurecido; el fallback sin red las rechaza.
     if text is None:
         provider = get_provider()
         history = _load_history(user, session_id, limit=6)
         try:
             text = provider.answer(context, [*history, {"role": "user", "content": message}])
+            # Si el provider es Gemini con tools y dejó una propuesta pendiente
+            # (register/transfer via tool call), cachearla para la confirmación.
+            if hasattr(provider, "last_pending") and provider.last_pending:
+                cache.set(pending_key, provider.last_pending, PENDING_TTL_SECONDS)
         except Exception as exc:  # noqa: BLE001 — nunca dejar de responder
             logger.warning("Fallback determinista por error del proveedor: %s", exc)
             text = answer_deterministic(context, message)
@@ -264,6 +268,17 @@ def _execute_transfer(user, pending: dict, session_id: uuid.UUID) -> str:
     return _transfer_confirm_text(tx)
 
 
+def _execute_pending(user, pending: dict, session_id: uuid.UUID) -> str:
+    """Ejecuta la acción confirmada por el usuario (cobro, pago o transferencia)."""
+    tipo = pending.get("tipo")
+    if tipo == "transferencia":
+        return _execute_transfer(user, pending, session_id)
+
+    # Cobro o pago
+    proposal = _cached_to_proposal(pending)
+    return _execute_ledger(user, proposal)
+
+
 def _transfer_confirm_text(tx) -> str:
     """Resumen legible de una transferencia ejecutada."""
     monto = f"{tx.monto:,.2f} {tx.moneda}"
@@ -357,6 +372,18 @@ def _ask_transfer_confirmation(proposal: ActionProposal, context: dict) -> str:
     )
 
 
+def _ask_transaction_confirmation(proposal: ActionProposal) -> str:
+    """Pide confirmación antes de registrar un cobro o pago."""
+    tipo_label = "cobro" if proposal.tipo == "cobro" else "pago"
+    monto = f"{proposal.monto:,.2f} {proposal.moneda}"
+    wallet_txt = f" en «{proposal.wallet_name}»" if proposal.wallet_name else ""
+    concept_txt = f" · Concepto: {proposal.concepto}" if proposal.concepto else ""
+    return (
+        f"Voy a registrar un **{tipo_label}** de {monto}{wallet_txt}{concept_txt}."
+        ' Responde «sí» y lo registro (caduca en 10 minutos).'
+    )
+
+
 def _complete_or_repeat(
     user,
     context: dict,
@@ -391,7 +418,7 @@ def _handle_complete(
     proposal: ActionProposal,
     pending_key: str,
 ) -> str:
-    """Resuelve una propuesta completa: transferencia (confirmar) o cobro/pago."""
+    """Resuelve una propuesta completa: cachea y pide confirmación para TODO."""
     if proposal.tipo == "transferencia":
         if not proposal.divisa:
             cura, curb = _wallet_currencies(proposal.wallet_name, proposal.dest_wallet_name, context)
@@ -402,8 +429,10 @@ def _handle_complete(
             return _ask_divisa(proposal, context)
         cache.set(pending_key, _proposal_to_cache(proposal, step="confirm"), PENDING_TTL_SECONDS)
         return _ask_transfer_confirmation(proposal, context)
-    cache.delete(pending_key)
-    return _execute_ledger(user, proposal)
+
+    # Cobros y pagos: ahora también piden confirmación antes de ejecutar.
+    cache.set(pending_key, _proposal_to_cache(proposal, step="confirm"), PENDING_TTL_SECONDS)
+    return _ask_transaction_confirmation(proposal)
 
 
 def _fill_pending(pending: dict, context: dict, message: str) -> ActionProposal | None:

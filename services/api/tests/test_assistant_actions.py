@@ -272,19 +272,28 @@ class TestRegistroViaChat:
         )
 
     def test_pago_registrado_y_saldo_ajustado(self, api_client) -> None:
-        """«He gastado 250$...» crea la operación pagada y descuenta el saldo."""
+        """«He gastado 250$...» pide confirmación; con «sí» crea la operación y descuenta el saldo."""
         wallet = WalletFactory(
             user=api_client.user, name="Banco de Venezuela", currency="USD",
             saldo=Decimal("1000.00"),
         )
-        resp = api_client.post(
+        first = api_client.post(
             self.URL,
             {"message": "He gastado 250$ en comprar un televisor desde mi cuenta Banco de Venezuela"},
             format="json",
         )
-        assert resp.status_code == 200
-        assert "Registré" in resp.data["text"]
-        assert "250.00" in resp.data["text"]
+        assert first.status_code == 200
+        assert "sí" in first.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user, tipo="pago").exists()
+
+        second = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert second.status_code == 200
+        assert "Registré" in second.data["text"]
+        assert "250.00" in second.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="pago")
         assert tx.estado == "pagado"
@@ -296,18 +305,27 @@ class TestRegistroViaChat:
         assert wallet.saldo == Decimal("750.00")
 
     def test_cobro_registrado_y_saldo_incrementado(self, api_client) -> None:
-        """«Recibí 250$...» crea el cobro pagado y suma el saldo."""
+        """«Recibí 250$...» pide confirmación; con «sí» crea el cobro y suma el saldo."""
         wallet = WalletFactory(
             user=api_client.user, name="Efectivo USD", currency="USD",
             saldo=Decimal("100.00"),
         )
-        resp = api_client.post(
+        first = api_client.post(
             self.URL,
             {"message": "Recibí 250$ en mi cuenta Efectivo USD por una venta"},
             format="json",
         )
-        assert resp.status_code == 200
-        assert "cobro" in resp.data["text"]
+        assert first.status_code == 200
+        assert "sí" in first.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user, tipo="cobro").exists()
+
+        second = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert second.status_code == 200
+        assert "cobro" in second.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="cobro")
         assert tx.estado == "pagado"
@@ -382,9 +400,17 @@ class TestRegistroViaChat:
                  "session_id": first.data["session_id"]},
                 format="json",
             )
-        assert third.status_code == 200
-        assert "Conversión: 50.00 USD" in third.data["text"]
-        assert "61.94" in third.data["text"]
+            assert third.status_code == 200
+            assert "sí" in third.data["text"]
+
+            fourth = api_client.post(
+                self.URL,
+                {"message": "sí", "session_id": first.data["session_id"]},
+                format="json",
+            )
+        assert fourth.status_code == 200
+        assert "Conversión: 50.00 USD" in fourth.data["text"]
+        assert "61.94" in fourth.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="cobro")
         assert tx.monto == Decimal("3097.00")
@@ -417,8 +443,16 @@ class TestRegistroViaChat:
                  "session_id": first.data["session_id"]},
                 format="json",
             )
-        assert second.status_code == 200
-        assert "Conversión: 100.00 VES" in second.data["text"]
+            assert second.status_code == 200
+            assert "sí" in second.data["text"]
+
+            third = api_client.post(
+                self.URL,
+                {"message": "sí", "session_id": first.data["session_id"]},
+                format="json",
+            )
+        assert third.status_code == 200
+        assert "Conversión: 100.00 VES" in third.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="pago")
         assert tx.monto == Decimal("1.61")
@@ -427,7 +461,7 @@ class TestRegistroViaChat:
         assert wallet.saldo == Decimal("8.39")
 
     def test_gasto_sin_monto_ofrece_y_registra(self, api_client) -> None:
-        """«Acabo de comprar un café»: Navi ofrece y el siguiente turno completa."""
+        """«Acabo de comprar un café»: Navi ofrece y el siguiente turno completa y pide confirmación."""
         wallet = WalletFactory(
             user=api_client.user, name="Efectivo USD", currency="USD",
             saldo=Decimal("100.00"),
@@ -449,6 +483,15 @@ class TestRegistroViaChat:
         )
         assert second.status_code == 200
         assert "pago" in second.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+
+        third = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert third.status_code == 200
+        assert "pago" in third.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="pago")
         assert tx.monto == Decimal("15.00")
@@ -486,7 +529,7 @@ class TestRegistroViaChat:
         assert not Transaction.objects.filter(user=api_client.user).exists()
 
     def test_gasto_en_letras_desde_oferta_registra(self, api_client) -> None:
-        """«Acabo de comprar un café» → «Dos dólares en efectivo» completa."""
+        """«Acabo de comprar un café» → «Dos dólares en efectivo» completa y pide confirmación."""
         wallet = WalletFactory(
             user=api_client.user, name="Efectivo", currency="USD",
             saldo=Decimal("50.00"),
@@ -507,6 +550,15 @@ class TestRegistroViaChat:
         )
         assert second.status_code == 200
         assert "pago" in second.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+
+        third = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert third.status_code == 200
+        assert "pago" in third.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="pago")
         assert tx.monto == Decimal("2.00")
@@ -545,7 +597,16 @@ class TestRegistroViaChat:
             format="json",
         )
         assert third.status_code == 200
-        assert "1,500.00 VES" in third.data["text"]
+        assert "sí" in third.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+
+        fourth = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert fourth.status_code == 200
+        assert "1,500.00 VES" in fourth.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="pago")
         assert tx.monto == Decimal("1500.00")
@@ -579,8 +640,17 @@ class TestRegistroViaChat:
                  "session_id": first.data["session_id"]},
                 format="json",
             )
-        assert second.status_code == 200
-        assert "Conversión: 25.00 USD" in second.data["text"]
+            assert second.status_code == 200
+            assert "sí" in second.data["text"]
+            assert not Transaction.objects.filter(user=api_client.user).exists()
+
+            third = api_client.post(
+                self.URL,
+                {"message": "sí", "session_id": first.data["session_id"]},
+                format="json",
+            )
+        assert third.status_code == 200
+        assert "Conversión: 25.00 USD" in third.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="cobro")
         assert tx.monto == Decimal("18917.75")
@@ -627,17 +697,25 @@ class TestRegistroViaChat:
             user=api_client.user, name="Efectivo USD", currency="USD",
             saldo=Decimal("10.00"),
         )
-        resp = api_client.post(
+        first = api_client.post(
             self.URL,
             {"message": "gasté 500$ en la tienda desde Efectivo USD"},
             format="json",
         )
-        assert resp.status_code == 200
-        assert "agéntico" in resp.data["text"]
+        assert first.status_code == 200
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+
+        second = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert second.status_code == 200
+        assert "agéntico" in second.data["text"]
         assert not Transaction.objects.filter(user=api_client.user).exists()
 
     def test_cobro_sin_cuenta_then_respuesta_completa(self, api_client) -> None:
-        """Navi pregunta la cuenta; la siguiente respuesta completa el cobro."""
+        """Navi pregunta la cuenta; la siguiente respuesta completa el cobro y pide confirmación."""
         wallet = WalletFactory(
             user=api_client.user, name="Banesco", currency="VES",
             saldo=Decimal("1000.00"),
@@ -658,6 +736,15 @@ class TestRegistroViaChat:
         )
         assert second.status_code == 200
         assert "cobro" in second.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+
+        third = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert third.status_code == 200
+        assert "cobro" in third.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="cobro")
         assert tx.monto == Decimal("500.00")
@@ -684,7 +771,7 @@ class TestRegistroViaChat:
         assert not Transaction.objects.filter(user=api_client.user).exists()
 
     def test_cobro_sin_razon_pide_y_registra(self, api_client) -> None:
-        """Sin motivo: Navi pregunta la razón y el siguiente mensaje completa."""
+        """Sin motivo: Navi pregunta la razón y el siguiente mensaje completa y pide confirmación."""
         wallet = WalletFactory(
             user=api_client.user, name="Banco de Venezuela", currency="VES",
             saldo=Decimal("0.00"),
@@ -705,6 +792,15 @@ class TestRegistroViaChat:
         )
         assert second.status_code == 200
         assert "cobro" in second.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+
+        third = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert third.status_code == 200
+        assert "cobro" in third.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="cobro")
         assert tx.monto == Decimal("25000.00")
@@ -715,7 +811,7 @@ class TestRegistroViaChat:
         assert wallet.saldo == Decimal("25000.00")
 
     def test_pago_pide_razon_y_registra_con_ella(self, api_client) -> None:
-        """Pago sin razón: se pregunta y se registra con el motivo dado."""
+        """Pago sin razón: se pregunta y se registra con el motivo dado tras confirmación."""
         wallet = WalletFactory(
             user=api_client.user, name="Efectivo USD", currency="USD",
             saldo=Decimal("500.00"),
@@ -736,6 +832,15 @@ class TestRegistroViaChat:
         )
         assert second.status_code == 200
         assert "pago" in second.data["text"]
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+
+        third = api_client.post(
+            self.URL,
+            {"message": "sí", "session_id": first.data["session_id"]},
+            format="json",
+        )
+        assert third.status_code == 200
+        assert "pago" in third.data["text"]
 
         tx = Transaction.objects.get(user=api_client.user, tipo="pago")
         assert tx.monto == Decimal("120.00")
