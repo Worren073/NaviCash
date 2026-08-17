@@ -52,7 +52,15 @@ export class WebSpeechSynthesisProvider implements SpeechProvider {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "es-ES";
     utterance.rate = 1.05;
-    const voice = this.voices.find((v) => v.lang?.toLowerCase().startsWith("es"));
+    // Preferir español de Latinoamérica sobre España. El orden de prioridad:
+    // es-MX > es-419 > es-US > cualquier es-*. Si no hay ninguna voz en
+    // español, se usa la voz por defecto del sistema.
+    const esVoices = this.voices.filter((v) => v.lang?.toLowerCase().startsWith("es"));
+    const voice =
+      esVoices.find((v) => v.lang?.toLowerCase().startsWith("es-mx")) ??
+      esVoices.find((v) => v.lang?.toLowerCase().startsWith("es-419")) ??
+      esVoices.find((v) => v.lang?.toLowerCase().startsWith("es-us")) ??
+      esVoices[0];
     if (voice) utterance.voice = voice;
 
     const finish = () => this.emitEnd();
