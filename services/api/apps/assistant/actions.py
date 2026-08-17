@@ -355,9 +355,9 @@ def extract_action(context: dict, message: str) -> "ActionProposal | None":
 
     concepto = _clean_concept(message, wallets, monto, explicit_code, tipo)
 
-    # Razón del cobro/pago: si el mensaje no la trae clara, se pregunta
-    # ("Navi me acaban de pagar 25000 Bs…" no dice para qué).
-    if tipo in ("pago", "cobro") and not _has_reason(concepto):
+    # Razón del cobro/pago: siempre se pregunta para establecer una
+    # definición clara del movimiento, sin importar si el mensaje la trae.
+    if tipo in ("pago", "cobro"):
         missing.append("razon")
 
     proposal = ActionProposal(

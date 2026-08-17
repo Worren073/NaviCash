@@ -110,18 +110,18 @@ def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
             text = _complete_or_repeat(user, context, pending_key, pending, message)
 
     # 3. Intento de registro (cobro/pago/transferencia) y estado pendiente.
-    else:
-        proposal = extract_action(context, message)
-        if proposal is not None and proposal.complete:
-            # Registro completo nuevo: gana sobre cualquier pendiente.
-            text = _handle_complete(user, context, proposal, pending_key)
-        elif pending and pending.get("step") == "fill":
-            # El usuario respondió la pregunta anterior (cuenta/monto/moneda).
-            text = _complete_or_repeat(user, context, pending_key, pending, message)
-        elif proposal is not None:
-            # Registro incompleto: se guarda y Navi pregunta por lo faltante.
-            cache.set(pending_key, _proposal_to_cache(proposal), PENDING_TTL_SECONDS)
-            text = _ask_for(proposal, context)
+    # TEMPORAL: deshabilitado para testear acciones solo por LLM (function calling).
+    # Cuando se reactive, descomentar el bloque y eliminar esta nota.
+    #
+    # else:
+    #     proposal = extract_action(context, message)
+    #     if proposal is not None and proposal.complete:
+    #         text = _handle_complete(user, context, proposal, pending_key)
+    #     elif pending and pending.get("step") == "fill":
+    #         text = _complete_or_repeat(user, context, pending_key, pending, message)
+    #     elif proposal is not None:
+    #         cache.set(pending_key, _proposal_to_cache(proposal), PENDING_TTL_SECONDS)
+    #         text = _ask_for(proposal, context)
 
     # 4/5. Respuesta normal: proveedor (LLM con tools o SYSTEM_PROMPT endurecido)
     # o fallback determinista. Las inyecciones de prompt caen aquí: si el LLM
