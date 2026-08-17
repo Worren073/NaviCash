@@ -20,6 +20,7 @@ import type { SpeechProvider } from "./types";
 export class WebSpeechSynthesisProvider implements SpeechProvider {
   private voices: SpeechSynthesisVoice[] = [];
   private endTimer: number | null = null;
+  private unlockCtx: AudioContext | null = null;
   onEnd: (() => void) | null = null;
 
   constructor() {
@@ -34,10 +35,12 @@ export class WebSpeechSynthesisProvider implements SpeechProvider {
 
   speak(text: string): void {
     if (!this.isSupported() || !text) return;
-    // Re-desbloquear el audio session de iOS antes de hablar. Cuando speak()
-    // se invoca desde un useEffect (fuera de un gesto del usuario), iOS puede
-    // silenciar la emisión; el warm-up previo evita eso.
-    this.warmUp();
+    // Desbloquear el audio session de iOS sin tocar speechSynthesis. Cuando
+    // speak() se invoca desde un useEffect (fuera de un gesto del usuario),
+    // iOS puede silenciar la emisión; reanudar un AudioContext mantiene viva
+    // la sesión de audio. Se usa AudioContext en vez de warmUp() porque este
+    // último llama synth.cancel() con un timer que mataría el utterance real.
+    this._unlockAudio();
     const synth = window.speechSynthesis;
     synth.cancel();
     this.clearTimer();
@@ -102,5 +105,24 @@ export class WebSpeechSynthesisProvider implements SpeechProvider {
   private emitEnd(): void {
     this.clearTimer();
     this.onEnd?.();
+  }
+
+  /**
+   * Mantiene viva la sesión de audio de iOS reanudando un AudioContext.
+   * A diferencia de ``warmUp()``, NO toca ``speechSynthesis`` (sin
+   * ``cancel()`` ni utterances), por lo que es seguro llamarlo justo antes
+   * de ``speak()`` sin riesgo de matar el utterance que se va a cola.
+   */
+  private _unlockAudio(): void {
+    try {
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      this.unlockCtx = this.unlockCtx ?? new Ctor();
+      if (this.unlockCtx.state === "suspended") void this.unlockCtx.resume();
+    } catch {
+      /* best effort: desbloqueo del audio session iOS */
+    }
   }
 }
