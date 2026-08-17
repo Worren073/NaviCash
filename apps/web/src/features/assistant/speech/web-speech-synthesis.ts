@@ -116,10 +116,16 @@ export class WebSpeechSynthesisProvider implements SpeechProvider {
   }
 
   /**
-   * Mantiene viva la sesión de audio de iOS reanudando un AudioContext.
-   * A diferencia de ``warmUp()``, NO toca ``speechSynthesis`` (sin
-   * ``cancel()`` ni utterances), por lo que es seguro llamarlo justo antes
-   * de ``speak()`` sin riesgo de matar el utterance que se va a cola.
+   * Mantiene viva la sesión de audio de iOS creando y reanudando un
+   * AudioContext **nuevo**.  A diferencia de ``warmUp()``, NO toca
+   * ``speechSynthesis`` (sin ``cancel()`` ni utterances), por lo que es
+   * seguro llamarlo justo antes de ``speak()`` sin riesgo de matar el
+   * utterance que se va a cola.
+   *
+   * En iOS, ``webkitSpeechRecognition`` libera la sesión de audio al
+   * terminar.  Reanudar un AudioContext existente que ya está en estado
+   * ``"running"`` es un no-op; se necesita uno nuevo para forzar a iOS a
+   * crear una sesión de audio fresca que permita ``speechSynthesis``.
    */
   private _unlockAudio(): void {
     try {
@@ -127,8 +133,13 @@ export class WebSpeechSynthesisProvider implements SpeechProvider {
         window.AudioContext ??
         (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return;
-      this.unlockCtx = this.unlockCtx ?? new Ctor();
-      if (this.unlockCtx.state === "suspended") void this.unlockCtx.resume();
+      // Cerrar el anterior y crear uno nuevo: un context "running" no
+      // re-activa la sesión iOS con solo resume().
+      if (this.unlockCtx) {
+        this.unlockCtx.close().catch(() => undefined);
+      }
+      this.unlockCtx = new Ctor();
+      void this.unlockCtx.resume();
     } catch {
       /* best effort: desbloqueo del audio session iOS */
     }
