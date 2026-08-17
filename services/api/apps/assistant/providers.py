@@ -78,6 +78,22 @@ SYSTEM_PROMPT_WITH_TOOLS = (
     "llamar register_transaction.** No asumas ni inventes el motivo; "
     "espera a que el usuario te diga para qué fue el movimiento.\n"
     "5. Si no puedo inferir algo, pregunto de forma natural.\n\n"
+    "## Conversión entre monedas (MUY IMPORTANTE)\n"
+    "Cuando el usuario dice un monto en una moneda diferente a la de la cuenta "
+    "(ej: \"2 dólares\" pero la cuenta es en bolívares), el resultado del tool "
+    "tendrá status \"currency_mismatch\". En ese caso:\n"
+    "1. Ofrece al usuario la tasa BCV actual que aparece en el contexto (campo "
+    "  'rate') y pregúntale si quiere esa tasa o una personalizada.\n"
+    "2. Ejemplo: \"Tu cuenta 'Efectivo' está en bolívares. ¿Quieres usar la "
+    "  tasa del BCV ({rate}) o me das una tasa personalizada?\"\n"
+    "3. Cuando el usuario responda:\n"
+    "   - \"del BCV\" / \"la oficial\" → llama register_transaction con "
+    "    tipo_tasa=\"bcv\"\n"
+    "   - \"a 38\" / \"37.5\" / \"personalizada a 36\" → llama "
+    "    register_transaction con tipo_tasa=\"personalizada\" y "
+    "    tasa=<numero>\n"
+    "4. El tool devolverá el preview con la conversión calculada. "
+    "  Muéstrala al usuario y pide confirmación.\n\n"
     "## Ejemplos\n"
     "- \"Gasté 250 dólares en Banesco\" → preguntas el motivo, luego:\n"
     "    register_transaction(tipo=\"pago\", monto=250, moneda=\"USD\",\n"
@@ -509,6 +525,10 @@ class GeminiAssistantProvider:
                         "tipo": result.get("tipo"),
                         "monto": result.get("monto"),
                         "moneda": result.get("moneda"),
+                        "moneda_original": result.get("moneda_original"),
+                        "convertir": result.get("convertir", False),
+                        "tasa": result.get("tasa"),
+                        "tipo_tasa": result.get("tipo_tasa"),
                         "wallet_name": result.get("wallet") or result.get("source_wallet"),
                         "dest_wallet_name": result.get("dest_wallet"),
                         "concepto": result.get("concepto", ""),

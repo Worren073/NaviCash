@@ -21,6 +21,8 @@ import json
 import logging
 from decimal import Decimal, InvalidOperation
 
+from apps.core.currency import round_money
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -69,6 +71,25 @@ TOOLS = [
                         "description": (
                             "Descripción limpia y concisa del movimiento "
                             "(ej: 'Banesco', 'Servicio de luz', 'Trabajo')"
+                        ),
+                    },
+                    "tasa": {
+                        "type": "number",
+                        "description": (
+                            "Tasa de cambio personalizada (ej.: 36.5). "
+                            "Solo se usa cuando la moneda difiere de la "
+                            "cuenta. Si el usuario dice 'tasa del BCV', "
+                            "NO la envíes aquí; usa 'tipo_tasa' en su lugar."
+                        ),
+                    },
+                    "tipo_tasa": {
+                        "type": "string",
+                        "enum": ["bcv", "personalizada"],
+                        "description": (
+                            "'bcv' si el usuario quiere la tasa oficial del "
+                            "BCV (ya está en el contexto como 'rate'), "
+                            "'personalizada' si el usuario dio un número. "
+                            "Solo aplica cuando moneda != moneda de la cuenta."
                         ),
                     },
                 },
@@ -332,12 +353,20 @@ def _exec_afford(args: dict, context: dict) -> dict:
 
 
 def _exec_register_preview(args: dict, context: dict) -> dict:
-    """Preview de registro: valida datos y retorna resumen para confirmación."""
+    """Preview de registro: valida datos y retorna resumen para confirmación.
+
+    Si la moneda declarada difiere de la de la cuenta (ej: USD en wallet VES),
+    y el LLM NO trae tasa/tipo_tasa, retorna un resultado de
+    status ``currency_mismatch`` en vez de ``pending_confirmation`` para que el
+    LLM pregunte al usuario qué tasa usar.
+    """
     tipo = args.get("tipo")
     monto_raw = args.get("monto")
     wallet_name = (args.get("wallet") or "").strip()
     moneda = (args.get("moneda") or "").strip().upper()
     concepto = (args.get("concepto") or "").strip()
+    tasa_arg = args.get("tasa")
+    tipo_tasa = (args.get("tipo_tasa") or "").strip().lower()
 
     if not tipo or tipo not in ("cobro", "pago"):
         return {"status": "error", "message": "Tipo inválido (debe ser 'cobro' o 'pago')"}
@@ -361,9 +390,51 @@ def _exec_register_preview(args: dict, context: dict) -> dict:
         }
 
     # Usar moneda de la wallet si no se especificó
+    wallet_currency = wallet.get("currency", "USD")
     if not moneda:
-        moneda = wallet.get("currency", "USD")
+        moneda = wallet_currency
 
+    # --- Cross-currency detection ---
+    if moneda != wallet_currency:
+        if tipo_tasa == "bcv":
+            rate = _safe_decimal(context.get("rate"))
+            if rate <= 0:
+                return {
+                    "status": "error",
+                    "message": (
+                        "No hay tasa BCV disponible en el contexto. "
+                        "Indica al usuario que intente más tarde."
+                    ),
+                }
+            return _monto_converted_preview(
+                tipo, monto_raw, moneda, wallet, concepto, rate, "bcv",
+            )
+        elif tasa_arg is not None:
+            rate = _safe_decimal(tasa_arg)
+            if rate <= 0:
+                return {"status": "error", "message": "La tasa debe ser mayor a 0"}
+            return _monto_converted_preview(
+                tipo, monto_raw, moneda, wallet, concepto, rate, "personalizada",
+            )
+        else:
+            # Sin tasa: informar al LLM del mismatch para que pregunte.
+            bcv_rate = context.get("rate")
+            return {
+                "status": "currency_mismatch",
+                "monto": str(monto_raw),
+                "moneda_solicitada": moneda,
+                "moneda_cuenta": wallet_currency,
+                "wallet": wallet["name"],
+                "bcv_rate": bcv_rate,
+                "message": (
+                    f"El usuario pidió registrar {monto_raw} {moneda} "
+                    f"pero la cuenta '{wallet['name']}' está en {wallet_currency}. "
+                    f"La tasa BCV actual es {bcv_rate}. "
+                    f"Pregunta si quiere usar la tasa del BCV o una personalizada."
+                ),
+            }
+
+    # --- Same currency: proceed as before ---
     return {
         "status": "pending_confirmation",
         "tipo": tipo,
@@ -371,6 +442,38 @@ def _exec_register_preview(args: dict, context: dict) -> dict:
         "moneda": moneda,
         "wallet": wallet["name"],
         "concepto": concepto or ("Gasto registrado" if tipo == "pago" else "Ingreso registrado"),
+    }
+
+
+def _monto_converted_preview(
+    tipo, monto_raw, moneda_original, wallet, concepto, rate, tipo_tasa,
+) -> dict:
+    """Genera preview con conversión calculada (cross-currency)."""
+    wallet_currency = wallet.get("currency", "USD")
+    monto = _safe_decimal(monto_raw)
+
+    if moneda_original == "USD":
+        monto_final = round_money(monto * rate)
+    else:
+        monto_final = round_money(monto / rate)
+
+    return {
+        "status": "pending_confirmation",
+        "tipo": tipo,
+        "monto": str(monto_raw),
+        "moneda": moneda_original,
+        "moneda_original": moneda_original,
+        "wallet": wallet["name"],
+        "concepto": concepto or ("Gasto registrado" if tipo == "pago" else "Ingreso registrado"),
+        "convertir": True,
+        "tasa": str(rate),
+        "tipo_tasa": tipo_tasa,
+        "monto_convertido": str(monto_final),
+        "moneda_destino": wallet_currency,
+        "conversion_preview": (
+            f"{monto:,.2f} {moneda_original} → {monto_final:,.2f} {wallet_currency} "
+            f"(tasa {tipo_tasa}: {rate})"
+        ),
     }
 
 

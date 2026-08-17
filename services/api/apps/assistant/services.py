@@ -164,11 +164,18 @@ def _execute_ledger(user, proposal: ActionProposal) -> str:
 
     monto = proposal.monto
     conversion_txt = None
-    if proposal.convertir and proposal.moneda_original != proposal.moneda:
-        rate = get_usd_rate_for_conversion()
+    if proposal.convertir and proposal.moneda_original and proposal.moneda_original != proposal.moneda:
+        # Use custom rate if provided, otherwise fall back to official BCV.
+        if proposal.tasa and proposal.tasa > 0:
+            rate = proposal.tasa
+            rate_source = proposal.tipo_tasa or "personalizada"
+        else:
+            rate = get_usd_rate_for_conversion()
+            rate_source = "oficial"
+
         if rate <= Decimal("1"):
             return (
-                f"No tengo disponible la tasa oficial para convertir "
+                f"No tengo disponible la tasa para convertir "
                 f"{proposal.monto:,.2f} {proposal.moneda_original} a "
                 f"{proposal.moneda}. Dime el monto ya convertido "
                 f"(ej.: «{proposal.monto:,.2f} dólares» → el equivalente en bolívares)."
@@ -179,7 +186,7 @@ def _execute_ledger(user, proposal: ActionProposal) -> str:
             monto_final = round_money(proposal.monto / rate)
         conversion_txt = (
             f"Conversión: {proposal.monto:,.2f} {proposal.moneda_original} → "
-            f"{monto_final:,.2f} {proposal.moneda} (tasa oficial {rate:,.2f})"
+            f"{monto_final:,.2f} {proposal.moneda} (tasa {rate_source} {rate:,.2f})"
         )
         monto = monto_final
 
@@ -378,8 +385,25 @@ def _ask_transaction_confirmation(proposal: ActionProposal) -> str:
     monto = f"{proposal.monto:,.2f} {proposal.moneda}"
     wallet_txt = f" en «{proposal.wallet_name}»" if proposal.wallet_name else ""
     concept_txt = f" · Concepto: {proposal.concepto}" if proposal.concepto else ""
+
+    # Conversion details when cross-currency
+    conv_txt = ""
+    if proposal.convertir and proposal.tasa and proposal.moneda_original:
+        from apps.core.currency import round_money as _rm
+        if proposal.moneda_original == "USD":
+            converted = _rm(proposal.monto * proposal.tasa)
+        else:
+            converted = _rm(proposal.monto / proposal.tasa)
+        wallet_currency = proposal.moneda
+        conv_txt = (
+            f"\n📐 Conversión: {proposal.monto:,.2f} {proposal.moneda_original} → "
+            f"{converted:,.2f} {wallet_currency} "
+            f"(tasa {proposal.tipo_tasa or 'personalizada'}: {proposal.tasa})"
+        )
+        monto = f"{proposal.monto:,.2f} {proposal.moneda_original}"
+
     return (
-        f"Voy a registrar un **{tipo_label}** de {monto}{wallet_txt}{concept_txt}."
+        f"Voy a registrar un **{tipo_label}** de {monto}{wallet_txt}{concept_txt}.{conv_txt}"
         ' Responde «sí» y lo registro (caduca en 10 minutos).'
     )
 
@@ -663,6 +687,7 @@ def _proposal_to_cache(proposal: ActionProposal, step: str = "fill") -> dict:
         "dest_wallet_name": proposal.dest_wallet_name,
         "divisa": proposal.divisa,
         "tasa": str(proposal.tasa) if proposal.tasa is not None else None,
+        "tipo_tasa": proposal.tipo_tasa,
         "missing": list(proposal.missing),
         "step": step,
     }
@@ -678,6 +703,7 @@ def _cached_to_proposal(pending: dict) -> ActionProposal:
         convertir=bool(pending.get("convertir")),
         divisa=pending.get("divisa"),
         tasa=Decimal(pending["tasa"]) if pending.get("tasa") else None,
+        tipo_tasa=pending.get("tipo_tasa"),
         concepto=pending.get("concepto", ""),
         wallet_name=pending.get("wallet_name"),
         dest_wallet_name=pending.get("dest_wallet_name"),
