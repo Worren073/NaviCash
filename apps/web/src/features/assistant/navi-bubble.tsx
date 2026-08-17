@@ -18,6 +18,8 @@ interface NaviBubbleProps {
   hasUnread?: boolean;
   /** Globo del tour guiado de Navi, anclado a la burbuja (hijo del wrapper). */
   tour?: React.ReactElement<{ side?: "left" | "right" }>;
+  /** Override de className del wrapper (p.ej. z-50 para mostrar sobre overlays). */
+  wrapperClassName?: string;
 }
 
 /**
@@ -34,7 +36,7 @@ interface NaviBubbleProps {
  * perfectamente redonda (Safari tiene limitaciones con border-radius en
  * elementos position:fixed).
  */
-export function NaviBubble({ onOpen, hasUnread = false, tour }: NaviBubbleProps) {
+export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName }: NaviBubbleProps) {
   const { t } = useTranslation();
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -117,7 +119,7 @@ export function NaviBubble({ onOpen, hasUnread = false, tour }: NaviBubbleProps)
   return (
     <motion.div
       style={{ x: springX, y: springY }}
-      className={cn("fixed left-0 top-0 z-40", ready ? "" : "opacity-0")}
+      className={cn("fixed left-0 top-0 z-40", wrapperClassName, ready ? "" : "opacity-0")}
     >
       <motion.button
         type="button"

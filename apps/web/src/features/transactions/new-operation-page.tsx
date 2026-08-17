@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { NaviTourGlobe } from "@/features/assistant/navi-tour";
+import { NaviBubble } from "@/features/assistant/navi-bubble";
 import { useNaviTour } from "@/features/assistant/use-navi-tour";
 import { cn } from "@/lib/utils";
 import { formatSymbol } from "@/lib/format";
@@ -394,16 +395,22 @@ export default function NewOperationPage() {
         </div>
       </footer>
 
-      {view && (
-        <NaviTourGlobe
-          visible={showTour}
-          stepIndex={stepIndex}
-          totalSteps={totalSteps}
-          title={t(`assistant.tour.views.${view.pathKey}.${stepIndex}.title`)}
-          body={t(`assistant.tour.views.${view.pathKey}.${stepIndex}.body`)}
-          onNext={next}
-          onSkip={skip}
-          anchored={false}
+      {showTour && view && (
+        <NaviBubble
+          onOpen={() => {}}
+          wrapperClassName="!z-50"
+          tour={
+            <NaviTourGlobe
+              visible
+              stepIndex={stepIndex}
+              totalSteps={totalSteps}
+              title={t(`assistant.tour.views.${view.pathKey}.${stepIndex}.title`)}
+              body={t(`assistant.tour.views.${view.pathKey}.${stepIndex}.body`)}
+              onNext={next}
+              onSkip={skip}
+              anchored
+            />
+          }
         />
       )}
     </div>

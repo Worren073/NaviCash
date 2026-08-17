@@ -23,7 +23,6 @@ import { useNaviTour } from "@/features/assistant/use-navi-tour";
 import { unlockSpeech } from "@/features/assistant/speech";
 import { VoiceChatContext } from "@/features/assistant/voice-chat-context";
 import { useMe, useNotifications } from "@/hooks/use-queries";
-import { IOSLimitationsNotice } from "@/components/ios-limitations-notice";
 import { DeviceInfo } from "@/components/device-info";
 import { cn } from "@/lib/utils";
 
@@ -248,7 +247,6 @@ export default function AppLayout() {
       />
       <AssistantChat open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <NaviVoice open={voiceOpen} onClose={() => setVoiceOpen(false)} />
-      <IOSLimitationsNotice />
       <DeviceInfo />
       <BottomNav onVoiceOpen={() => setVoiceOpen(true)} />
     </div>
