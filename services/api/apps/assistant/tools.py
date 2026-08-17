@@ -326,6 +326,8 @@ def _exec_afford(args: dict, context: dict) -> dict:
         monto_decimal = Decimal(str(monto))
     except (InvalidOperation, ValueError):
         return {"error": "Monto inválido"}
+    if monto_decimal <= 0:
+        return {"error": "El monto debe ser mayor a 0"}
 
     wallets = context.get("wallets") or []
     total = Decimal("0")
@@ -372,8 +374,16 @@ def _exec_register_preview(args: dict, context: dict) -> dict:
         return {"status": "error", "message": "Tipo inválido (debe ser 'cobro' o 'pago')"}
     if monto_raw is None:
         return {"status": "error", "message": "Falta el monto"}
+    try:
+        monto_dec = _safe_decimal(monto_raw)
+    except Exception:
+        return {"status": "error", "message": "Monto inválido"}
+    if monto_dec <= 0:
+        return {"status": "error", "message": "El monto debe ser mayor a 0"}
     if not wallet_name:
         return {"status": "error", "message": "Falta la cuenta"}
+    if moneda and moneda not in ("USD", "VES", "EUR"):
+        return {"status": "error", "message": f"Moneda inválida: {moneda}"}
 
     # Buscar wallet en context
     wallets = context.get("wallets") or []
@@ -487,6 +497,14 @@ def _exec_transfer_preview(args: dict, context: dict) -> dict:
 
     if monto_raw is None:
         return {"status": "error", "message": "Falta el monto"}
+    try:
+        monto_dec = _safe_decimal(monto_raw)
+    except Exception:
+        return {"status": "error", "message": "Monto inválido"}
+    if monto_dec <= 0:
+        return {"status": "error", "message": "El monto debe ser mayor a 0"}
+    if moneda and moneda not in ("USD", "VES", "EUR"):
+        return {"status": "error", "message": f"Moneda inválida: {moneda}"}
     if not source_name or not dest_name:
         return {"status": "error", "message": "Faltan las cuentas de origen y destino"}
 

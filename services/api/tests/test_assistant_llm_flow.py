@@ -400,3 +400,138 @@ class TestLLMFlowPersistence:
             hist = other.get("/api/assistant/messages/history", {"session_id": session})
             assert hist.status_code == 200
             assert hist.data == []
+
+
+# ---------------------------------------------------------------------------
+# Gap 5: Doble ejecución del mismo pending
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestDoubleExecution:
+    """Confirmar el mismo pending dos veces solo ejecuta una."""
+
+    def test_confirm_twice_only_executes_once(self, api_client) -> None:
+        """Segundo 'sí' no crea segunda transaction (cache ya borrado)."""
+        wallet = WalletFactory(
+            user=api_client.user, name="Banesco", currency="VES",
+            saldo=Decimal("50000.00"),
+        )
+        mock = MockGeminiWithTools([
+            {
+                "tool": "register_transaction",
+                "args": {"tipo": "pago", "monto": 250, "wallet": "Banesco", "concepto": "Test"},
+                "text_after": "¿Confirmo?",
+            },
+        ])
+
+        with patch("apps.assistant.services.get_provider", return_value=mock):
+            first = api_client.post(
+                URL,
+                {"message": "gasté 250 bs en test"},
+                format="json",
+            )
+            assert first.status_code == 200
+            session = first.data["session_id"]
+
+            # Primera confirmación
+            second = api_client.post(
+                URL,
+                {"message": "sí", "session_id": session},
+                format="json",
+            )
+            assert second.status_code == 200
+            assert Transaction.objects.filter(user=api_client.user, tipo="pago").count() == 1
+
+            # Segunda confirmación — cache ya borrado, no-op
+            third = api_client.post(
+                URL,
+                {"message": "sí", "session_id": session},
+                format="json",
+            )
+            assert third.status_code == 200
+            assert Transaction.objects.filter(user=api_client.user, tipo="pago").count() == 1
+
+
+# ---------------------------------------------------------------------------
+# Gap 6: Persistencia del cache tras ejecución
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestCachePersistence:
+    """El pending cache se borra tras ejecución (éxito o error)."""
+
+    def test_cache_deleted_after_success(self, api_client) -> None:
+        """Cache se borra tras ejecución exitosa."""
+        from django.core.cache import cache as django_cache
+
+        wallet = WalletFactory(
+            user=api_client.user, name="Banesco", currency="VES",
+            saldo=Decimal("50000.00"),
+        )
+        mock = MockGeminiWithTools([
+            {
+                "tool": "register_transaction",
+                "args": {"tipo": "pago", "monto": 100, "wallet": "Banesco", "concepto": "Cache test"},
+                "text_after": "¿Confirmo?",
+            },
+        ])
+
+        with patch("apps.assistant.services.get_provider", return_value=mock):
+            first = api_client.post(
+                URL,
+                {"message": "gasté 100 bs en cache test"},
+                format="json",
+            )
+            session = first.data["session_id"]
+
+            # Confirmar
+            api_client.post(
+                URL,
+                {"message": "sí", "session_id": session},
+                format="json",
+            )
+
+            # Verificar cache borrado
+            from apps.assistant.services import _pending_key
+            pending_key = _pending_key(api_client.user, session)
+            assert django_cache.get(pending_key) is None
+
+    def test_cache_deleted_after_decline(self, api_client) -> None:
+        """Cache se borra cuando el usuario rechaza ('no')."""
+        from django.core.cache import cache as django_cache
+        from apps.assistant.services import _pending_key
+
+        mock = MockGeminiWithTools([
+            {
+                "tool": "register_transaction",
+                "args": {"tipo": "pago", "monto": 100, "wallet": "Banesco", "concepto": "Decline test"},
+                "text_after": "¿Confirmo?",
+            },
+        ])
+
+        # Crear wallet necesaria
+        WalletFactory(
+            user=api_client.user, name="Banesco", currency="VES",
+            saldo=Decimal("50000.00"),
+        )
+
+        with patch("apps.assistant.services.get_provider", return_value=mock):
+            first = api_client.post(
+                URL,
+                {"message": "gasté 100 bs en decline test"},
+                format="json",
+            )
+            session = first.data["session_id"]
+
+            # Rechazar
+            api_client.post(
+                URL,
+                {"message": "no", "session_id": session},
+                format="json",
+            )
+
+            # Verificar cache borrado
+            pending_key = _pending_key(api_client.user, session)
+            assert django_cache.get(pending_key) is None
