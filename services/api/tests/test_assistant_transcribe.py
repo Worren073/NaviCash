@@ -237,7 +237,7 @@ class TestGeminiTranscriber:
         """La llamada llega a models/<model>:generateContent con inline_data."""
         from httpx import MockTransport, Request, Response
 
-        from apps.assistant.providers import GeminiTranscriber
+        from apps.assistant.providers import GeminiTranscriber, _resolve_gemini_model
 
         captured: dict = {}
 
@@ -250,6 +250,7 @@ class TestGeminiTranscriber:
                 json={"candidates": [{"content": {"parts": [{"text": "Registro un pago"}]}}]},
             )
 
+        expected_model = _resolve_gemini_model()
         provider = GeminiTranscriber(
             api_key="gk-test",
             base_url="https://generativelanguage.googleapis.com/v1beta",
@@ -259,7 +260,7 @@ class TestGeminiTranscriber:
         result = provider.transcribe(b"audio-bytes", "nota.mp4")
 
         assert result == "Registro un pago"
-        assert "models/gemini-2.0-flash:generateContent" in captured["url"]
+        assert f"models/{expected_model}:generateContent" in captured["url"]
         assert captured["auth"] == "gk-test"
 
         parts = captured["payload"]["contents"][0]["parts"]
