@@ -63,7 +63,7 @@ export class WebSpeechRecognitionProvider implements RecognitionProvider {
   private startAttempts = 0;
   /** AudioContext de puente para mantener viva la sesión de audio en iOS. */
   private bridgeCtx: AudioContext | null = null;
-  private bridgeTimer: ReturnType<typeof setTimeout> | null = null;
+  private bridgeTimer: number | null = null;
   onPartial: ((text: string) => void) | null = null;
   onResult: ((transcript: string) => void) | null = null;
   onError: ((code: RecognitionErrorCode, message?: string) => void) | null = null;

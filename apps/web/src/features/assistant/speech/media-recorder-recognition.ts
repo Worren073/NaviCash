@@ -48,7 +48,7 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
   private finalized = false;
   private aborting = false;
   private mimeType = "audio/mp4";
-  private acCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  private acCloseTimer: number | null = null;
   // iOS no emite transcripción en vivo: solo entrega el resultado final.
   onPartial: ((text: string) => void) | null = null;
   onResult: ((transcript: string) => void) | null = null;
