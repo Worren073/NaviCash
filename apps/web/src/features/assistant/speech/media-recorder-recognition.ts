@@ -192,7 +192,7 @@ export class MediaRecorderRecognitionProvider implements RecognitionProvider {
     // de inmediato en release() para devolver el hardware.
     if (this.audioContext) {
       const ctx = this.audioContext;
-      this.acCloseTimer = setTimeout(() => {
+      this.acCloseTimer = window.setTimeout(() => {
         ctx.close().catch(() => undefined);
       }, 500);
       this.audioContext = null;
