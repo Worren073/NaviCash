@@ -87,6 +87,15 @@ def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
     if is_dangerous(message):
         text = answer_dangerous()
 
+    # 1.5. Rechazo de pendiente: si hay algo pendiente y el usuario dice "no",
+    # cancelar la operación y limpiar el cache.
+    elif pending and is_decline(message):
+        cache.delete(pending_key)
+        text = (
+            "Entendido, no registro nada. "
+            "Avísame si necesitas consultar tu balance o registrar algo después."
+        )
+
     # 2. Confirmaciones pendientes (cache por sesión).
     elif is_confirmation(message) and pending:
         if pending.get("step") == "confirm":
