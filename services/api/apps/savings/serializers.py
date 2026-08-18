@@ -7,7 +7,7 @@ progreso calculado).
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal
 
 from rest_framework import serializers
 

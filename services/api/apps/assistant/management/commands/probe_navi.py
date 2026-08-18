@@ -71,7 +71,6 @@ class Command(BaseCommand):
         parser.add_argument("--url", help="Base URL de la API (default http://localhost:8000).")
 
     def handle(self, *args, **options) -> None:
-        from apps.accounts.models import User
         from apps.transactions.models import Transaction
 
         # Herramienta exclusiva de desarrollo: nunca crea cuentas de prueba ni

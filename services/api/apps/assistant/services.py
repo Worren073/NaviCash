@@ -30,7 +30,6 @@ from django.core.cache import cache
 from apps.assistant.actions import (
     ActionProposal,
     answer_dangerous,
-    extract_action,
     extract_currency_code,
     is_confirmation,
     is_dangerous,
@@ -209,7 +208,7 @@ def _execute_ledger(user, proposal: ActionProposal) -> str:
             wallet=wallet,
             estado="pagado",
         )
-    except BusinessRuleError as exc:
+    except BusinessRuleError:
         return (
             "El modo agéntico para registros no se encuentra disponible en estos "
             "momentos. Por favor ingrese la transacción de manera manual o "
@@ -274,7 +273,7 @@ def _execute_transfer(user, pending: dict, session_id: uuid.UUID) -> str:
                 rate_fuente="oficial",
                 concepto=pending.get("concepto", ""),
             )
-    except BusinessRuleError as exc:
+    except BusinessRuleError:
         return (
             "El modo agéntico para registros no se encuentra disponible en estos "
             "momentos. Por favor ingrese la transferencia de manera manual o "
@@ -315,7 +314,6 @@ def _transfer_confirm_text(tx) -> str:
 def _ask_for(proposal: ActionProposal, context: dict) -> str:
     """Pide los datos que faltan para completar el registro (sin tocar la BD)."""
     verb = "recibiste" if proposal.tipo == "cobro" else "pagaste"
-    wallet_names = " · ".join(w["name"] for w in context.get("wallets") or [])
 
     msgs = []
     monto_falta = "monto" in proposal.missing and proposal.monto is None

@@ -22,7 +22,7 @@ class CurrentRateView(APIView):
     def get(self, request):
         try:
             rate = get_current_official_rate(stale_ok=True)
-        except RateProviderError as exc:
+        except RateProviderError:
             return Response(
                 {"detail": "No se pudo obtener la tasa del día.", "code": "rate_unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,

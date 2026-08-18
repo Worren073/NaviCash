@@ -17,7 +17,6 @@ la orquesta ``services.chat`` vía cache + confirmación del usuario.
 
 from __future__ import annotations
 
-import json
 import logging
 from decimal import Decimal, InvalidOperation
 

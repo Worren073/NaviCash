@@ -13,7 +13,7 @@ from rest_framework.response import Response
 
 from apps.core.pagination import DefaultPagination
 from apps.core.permissions import IsOwner
-from apps.savings.models import GoalContribution, SavingsGoal
+from apps.savings.models import SavingsGoal
 from apps.savings.serializers import (
     ContributionSerializer,
     GoalReadSerializer,

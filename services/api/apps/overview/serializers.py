@@ -7,7 +7,6 @@ modelo ni validación de entrada.
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 
 from rest_framework import serializers

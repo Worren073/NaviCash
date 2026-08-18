@@ -300,6 +300,5 @@ class Transaction(OwnedModel):
         Returns:
             ``monto`` positivo para cobros, negativo para pagos.
         """
-        from decimal import Decimal
 
         return self.monto if self.tipo == "cobro" else -self.monto
