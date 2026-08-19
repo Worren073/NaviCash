@@ -33,6 +33,16 @@ class WalletSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "currency", "tipo", "color", "saldo", "saldo_inicial", "created_at"]
         read_only_fields = ["id", "created_at"]
 
+    def validate_name(self, value: str) -> str:
+        """Evita billeteras duplicadas por nombre dentro del mismo usuario."""
+        user = self.context["request"].user
+        qs = Wallet.all_objects.filter(user=user, name__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Ya tienes una billetera con ese nombre.")
+        return value
+
     def create(self, validated_data: dict) -> Wallet:
         """Crea la billetera con el saldo inicial provisto (o 0)."""
         initial = validated_data.pop("saldo_inicial", Decimal("0.00"))

@@ -72,8 +72,11 @@ export function NewWalletDialog({
       setError(null);
     },
     onError: (err) => {
-      if (err instanceof ApiErrorClass) setError(err.message);
-      else setError(t("errors.generic"));
+      const msg = err instanceof ApiErrorClass
+        ? (err.fieldErrors?.name?.[0] ?? err.message)
+        : t("errors.generic");
+      sileo.error({ title: msg });
+      setError(msg);
     },
   });
 
@@ -251,8 +254,11 @@ export function EditWalletDialog({ wallet, usdValue }: { wallet: Wallet; usdValu
       setError(null);
     },
     onError: (err) => {
-      if (err instanceof ApiErrorClass) setError(err.message);
-      else setError(t("errors.generic"));
+      const msg = err instanceof ApiErrorClass
+        ? (err.fieldErrors?.name?.[0] ?? err.message)
+        : t("errors.generic");
+      sileo.error({ title: msg });
+      setError(msg);
     },
   });
 
