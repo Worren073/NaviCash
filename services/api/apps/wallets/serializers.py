@@ -34,9 +34,9 @@ class WalletSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
     def validate_name(self, value: str) -> str:
-        """Evita billeteras duplicadas por nombre dentro del mismo usuario."""
+        """Evita billeteras duplicadas por nombre (solo activas, no eliminadas)."""
         user = self.context["request"].user
-        qs = Wallet.all_objects.filter(user=user, name__iexact=value)
+        qs = Wallet.objects.filter(user=user, name__iexact=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
