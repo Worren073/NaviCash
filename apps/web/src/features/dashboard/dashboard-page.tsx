@@ -264,15 +264,17 @@ export default function DashboardPage() {
             {isLoading ? (
               <Skeleton className="h-7 w-24" />
             ) : (
-              <div className="text-2xl font-semibold text-on-surface">
-                {formatCompact(Number(data?.to_receive ?? 0), "USD")}
-              </div>
+              <>
+                <div className="text-2xl font-semibold text-on-surface">
+                  {formatCompact(Number(data?.to_receive ?? 0), "USD")}
+                </div>
+                <div className="text-xs text-on-surface-variant">
+                  {t("dashboard.incoming", {
+                    count: data?.count_to_receive ?? 0,
+                  })}
+                </div>
+              </>
             )}
-            <div className="text-xs text-on-surface-variant">
-              {t("dashboard.incoming", {
-                count: (data?.upcoming ?? []).filter((tx) => tx.tipo === "cobro").length,
-              })}
-            </div>
           </div>
         </Link>
 
@@ -292,15 +294,17 @@ export default function DashboardPage() {
             {isLoading ? (
               <Skeleton className="h-7 w-24" />
             ) : (
-              <div className="text-2xl font-semibold text-on-surface">
-                {formatCompact(Number(data?.to_pay ?? 0), "USD")}
-              </div>
+              <>
+                <div className="text-2xl font-semibold text-on-surface">
+                  {formatCompact(Number(data?.to_pay ?? 0), "USD")}
+                </div>
+                <div className="text-xs text-on-surface-variant">
+                  {t("dashboard.outgoing", {
+                    count: data?.count_to_pay ?? 0,
+                  })}
+                </div>
+              </>
             )}
-            <div className="text-xs text-on-surface-variant">
-              {t("dashboard.outgoing", {
-                count: (data?.upcoming ?? []).filter((tx) => tx.tipo === "pago").length,
-              })}
-            </div>
           </div>
         </Link>
         </section>

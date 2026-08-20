@@ -80,6 +80,8 @@ class OverviewSerializer(serializers.Serializer):
     )
     to_receive = serializers.DecimalField(max_digits=20, decimal_places=2)
     to_pay = serializers.DecimalField(max_digits=20, decimal_places=2)
+    count_to_receive = serializers.IntegerField()
+    count_to_pay = serializers.IntegerField()
     overdue = serializers.DecimalField(max_digits=20, decimal_places=2)
     wallets = WalletSummarySerializer(many=True)
     upcoming = TransactionBriefSerializer(many=True)

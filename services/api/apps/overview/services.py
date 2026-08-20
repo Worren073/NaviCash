@@ -70,17 +70,29 @@ def build_summary(user, today: date | None = None) -> dict:
         "wallet", "category", "contact"
     )
 
-    # Totales vencidos por cobrar/pagar en UNA sola agregación SQL (AUDIT M6):
-    # antes eran dos ``aggregate`` secuenciales sobre el mismo filtro.
-    overdue_totals = pending.filter(fecha_vencimiento__lte=today).aggregate(
+    # Totales de TODAS las operaciones pendientes (no solo retrasadas):
+    # En UNA sola agregación SQL (AUDIT M6) se calculan los totales por cobrar/pagar
+    # y sus respectivos conteos.
+    pending_totals = pending.aggregate(
         to_receive=Sum("monto_usd", filter=Q(tipo="cobro")),
         to_pay=Sum("monto_usd", filter=Q(tipo="pago")),
+        count_to_receive=Sum(1, filter=Q(tipo="cobro")),
+        count_to_pay=Sum(1, filter=Q(tipo="pago")),
     )
-    to_receive_usd = overdue_totals["to_receive"] or Decimal("0.00")
-    to_pay_usd = overdue_totals["to_pay"] or Decimal("0.00")
+    to_receive_usd = pending_totals["to_receive"] or Decimal("0.00")
+    to_pay_usd = pending_totals["to_pay"] or Decimal("0.00")
+    count_to_receive = pending_totals["count_to_receive"] or 0
+    count_to_pay = pending_totals["count_to_pay"] or 0
 
     to_receive = usd_to_currency(to_receive_usd, base, rate_value or Decimal("1"))
     to_pay = usd_to_currency(to_pay_usd, base, rate_value or Decimal("1"))
+
+    # --- Totales retrasados para el indicador de alerta --------------------
+    overdue_totals = pending.filter(fecha_vencimiento__lte=today).aggregate(
+        overdue_total=Sum("monto_usd", filter=Q(tipo__in=["cobro", "pago"]))
+    )
+    overdue_usd = overdue_totals["overdue_total"] or Decimal("0.00")
+    overdue = usd_to_currency(overdue_usd, base, rate_value or Decimal("1"))
 
     # --- Próximas operaciones ------------------------------------------------
     upcoming = list(
@@ -102,7 +114,9 @@ def build_summary(user, today: date | None = None) -> dict:
         "total_balance_ves": round_money(total_balance_ves) if total_balance_ves is not None else None,
         "to_receive": to_receive,
         "to_pay": to_pay,
-        "overdue": round_money(to_receive + to_pay),
+        "count_to_receive": count_to_receive,
+        "count_to_pay": count_to_pay,
+        "overdue": round_money(overdue),
         "wallets": wallets,
         "upcoming": upcoming,
         "recent": recent,
