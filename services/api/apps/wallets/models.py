@@ -102,7 +102,11 @@ help_text="Saldo actual; se ajusta automáticamente con los pagos y manualmente 
         ]
         constraints = [
             # Un usuario no puede tener dos billeteras con el mismo nombre.
-            models.UniqueConstraint(fields=["user", "name"], name="uniq_wallet_name_per_user"),
+            models.UniqueConstraint(
+                fields=["user", "name"],
+                name="uniq_wallet_name_per_user",
+                condition=models.Q(is_deleted=False),
+            ),
             # Respaldo a nivel de BD del invariante del dominio (C1/A10):
             # el saldo jamás puede quedar negativo, aunque una carrera de
             # escrituras escape a la validación de ``adjust_balance``.
