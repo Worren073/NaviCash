@@ -108,6 +108,8 @@ export interface Overview {
   total_balance_ves: string | null;
   to_receive: string;
   to_pay: string;
+  count_to_receive: number;
+  count_to_pay: number;
   overdue: string;
   wallets: Array<WalletSummary>;
   upcoming: Transaction[];
