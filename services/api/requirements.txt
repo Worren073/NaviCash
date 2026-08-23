@@ -12,7 +12,7 @@ httpx>=0.28,<1
 
 # Caché compartida Redis (AUDIT C2): throttle del asistente y confirmaciones
 # pendientes viven en Redis, no por proceso.
-django-redis>=5.4,<6
+django-redis>=7.0.0,<8
 redis>=5,<6
 
 # Servidor WSGI para producción (AUDIT M7): el Dockerfile arranca gunicorn
