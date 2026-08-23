@@ -69,7 +69,7 @@ class WalletViewSet(viewsets.ModelViewSet):
         """Transfiere dinero entre dos billeteras del usuario.
 
         Body: ``{"source": id, "target": id, "amount": "100.00",
-        "rate_source": "oficial|manual", "custom_rate": "860.00"}``.
+        "rate_source": "oficial|euro|manual", "custom_rate": "860.00"}``.
         Devuelve la operación de transferencia creada.
         """
         serializer = TransferSerializer(data=request.data, context={"request": request})

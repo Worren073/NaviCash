@@ -468,7 +468,7 @@ export function TransferWalletDialog({
   const [sourceId, setSourceId] = useState(defaultSource?.id ?? "");
   const [targetId, setTargetId] = useState("");
   const [monto, setMonto] = useState("");
-  const [rateSource, setRateSource] = useState<"oficial" | "manual">("oficial");
+  const [rateSource, setRateSource] = useState<"oficial" | "euro" | "manual">("oficial");
   const [customRate, setCustomRate] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -498,7 +498,21 @@ export function TransferWalletDialog({
     staleTime: 5 * 60 * 1000,
     enabled: dialogOpen,
   });
-  const officialRate = rateData?.rate ? Number(rateData.rate) : null;
+  const { data: euroRateData } = useQuery({
+    queryKey: queryKeys.ratesEuro,
+    queryFn: () => api.get<{ rate: string }>("/rates/euro"),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    enabled: dialogOpen && rateSource === "euro",
+  });
+  const officialRate =
+    rateSource === "euro"
+      ? euroRateData?.rate
+        ? Number(euroRateData.rate)
+        : null
+      : rateData?.rate
+        ? Number(rateData.rate)
+        : null;
 
   const source = (wallets ?? []).find((w) => w.id === sourceId);
   const target = (wallets ?? []).find((w) => w.id === targetId);
@@ -632,6 +646,7 @@ export function TransferWalletDialog({
                     layoutId="seg-transfer-rate"
                     options={[
                       { value: "oficial", label: t("wallet.transferRateBcv") },
+                      { value: "euro", label: t("wallet.transferRateEuro") },
                       { value: "manual", label: t("wallet.transferRateCustom") },
                     ]}
                     value={rateSource}
@@ -840,6 +855,8 @@ export default function WalletsPage() {
               }
               showRate
               rate={overview?.rate ?? null}
+              showEuroRate
+              euroRate={overview?.euro_rate ?? null}
               hideAmounts={hideBalances}
             />
             <BalanceCard

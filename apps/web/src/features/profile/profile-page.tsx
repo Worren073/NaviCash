@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import { LogoutIcon, SaveIcon, ListIcon, CheckedIcon } from "@/components/icons";
 
 import { api, ApiErrorClass, setAccessToken } from "@/lib/api";
@@ -13,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -64,6 +66,8 @@ export default function ProfilePage() {
   const [docDialogOpen, setDocDialogOpen] = useState(false);
   const [activeDoc, setActiveDoc] = useState<LegalDocument | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -92,6 +96,21 @@ export default function ProfilePage() {
 
   const logout = useMutation({
     mutationFn: () => api.post<{ detail: string }>("/auth/logout"),
+    onSuccess: () => {
+      setAccessToken(null);
+      queryClient.clear();
+      navigate("/login");
+    },
+  });
+
+  const deleteAccount = useMutation({
+    // El backend agenda la purga (15 días), revoca todas las sesiones y
+    // limpia la cookie: aquí solo cerramos la sesión local y salimos.
+    mutationFn: () =>
+      api.post<{ detail: string; deletion_scheduled_at: string }>(
+        "/auth/delete-account",
+        { password: deletePassword },
+      ),
     onSuccess: () => {
       setAccessToken(null);
       queryClient.clear();
@@ -319,6 +338,34 @@ export default function ProfilePage() {
             )}
           </section>
 
+          {/* Zona de riesgo: eliminación de cuenta */}
+          <section className="glass-panel clip-rounded-2xl space-y-3 rounded-2xl border border-error-container p-5">
+            <h3 className="flex items-center gap-2 text-lg font-semibold text-on-surface">
+              <AlertTriangle className="h-5 w-5 text-status-delayed" />
+              {t("profile.dangerZoneTitle")}
+            </h3>
+            {me.deletion_scheduled_at ? (
+              <p className="rounded-lg bg-error-container/40 px-3 py-2 text-sm text-on-error-container">
+                {t("profile.deleteScheduledBanner", {
+                  date: new Date(me.deletion_scheduled_at).toLocaleString(),
+                })}
+              </p>
+            ) : (
+              <p className="text-sm text-on-surface-variant">{t("profile.deleteWarning")}</p>
+            )}
+            <Button
+              variant="destructive"
+              className="w-full"
+              disabled={deleteOpen || Boolean(me.deletion_scheduled_at)}
+              onClick={() => {
+                setDeletePassword("");
+                setDeleteOpen(true);
+              }}
+            >
+              {t("profile.deleteTitle")}
+            </Button>
+          </section>
+
           <Button
             variant="outline"
             className="w-full text-status-delayed"
@@ -328,6 +375,55 @@ export default function ProfilePage() {
             <LogoutIcon size={16} /> {logout.isPending ? t("common.loading") : t("auth.logout")}
           </Button>
       </div>
+
+      {/* Confirmación de eliminación de cuenta */}
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!deleteAccount.isPending) setDeleteOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("profile.deleteTitle")}</DialogTitle>
+            <DialogDescription>{t("profile.deleteWarning")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="pdeletepw">{t("profile.deletePasswordLabel")}</Label>
+            <Input
+              id="pdeletepw"
+              type="password"
+              autoComplete="current-password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              disabled={deleteAccount.isPending}
+            />
+            {deleteAccount.isError && (
+              <p className="rounded-lg bg-error-container/60 px-3 py-2 text-sm text-on-error-container">
+                {deleteAccount.error instanceof ApiErrorClass
+                  ? deleteAccount.error.message
+                  : t("errors.generic")}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleteAccount.isPending}
+            >
+              {t("profile.deleteCancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteAccount.mutate()}
+              disabled={deleteAccount.isPending || deletePassword.length === 0}
+            >
+              {deleteAccount.isPending ? t("common.loading") : t("profile.deleteConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={docDialogOpen} onOpenChange={setDocDialogOpen}>
         {activeDoc && (

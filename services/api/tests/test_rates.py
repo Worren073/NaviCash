@@ -14,8 +14,11 @@ from apps.core.exceptions import BusinessRuleError
 from apps.rates.models import ExchangeRate
 from apps.rates.providers import ProviderRate, RateProviderError
 from apps.rates.service import (
+    EURO_REFRESH_LOCK_KEY,
     REFRESH_LOCK_KEY,
+    get_current_euro_rate,
     get_current_official_rate,
+    get_eur_rate_for_conversion,
     get_usd_rate_for_conversion,
 )
 from factories import ExchangeRateFactory
@@ -50,6 +53,27 @@ class TestRateEndpoint:
 
 
 @pytest.mark.django_db
+class TestEuroRateEndpoint:
+    """GET /api/rates/euro."""
+
+    URL = "/api/rates/euro"
+
+    def test_returns_current_euro_rate(self, api_client) -> None:
+        """Con el proveedor estático devuelve la tasa del euro."""
+        ExchangeRateFactory(currency="EUR", promedio=Decimal("110.00"))
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 200
+        assert resp.data["source"] == "oficial"
+        assert float(resp.data["rate"]) == 110.0
+
+    def test_refreshes_and_persists_euro_when_none(self, api_client) -> None:
+        """Sin tasa previa, consulta al provider (estático) y persiste la tasa del euro."""
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 200
+        assert ExchangeRate.objects.filter(source="oficial", currency="EUR").exists()
+
+
+@pytest.mark.django_db
 class TestRateService:
     """Servicio de tasas: caché con TTL y reutilización de la última."""
 
@@ -69,6 +93,47 @@ class TestRateService:
         """La tasa de conversión nunca es <= 0."""
         ExchangeRateFactory(promedio=Decimal("75.00"))
         assert get_usd_rate_for_conversion() == Decimal("75.00")
+
+
+@pytest.mark.django_db
+class TestEuroRateService:
+    """Servicio de tasas del euro: caché, fallback y conversión."""
+
+    def test_returns_fresh_euro_rate_from_cache(self) -> None:
+        """Una tasa EUR reciente se devuelve tal cual (sin reconsultar)."""
+        ExchangeRateFactory(currency="EUR", promedio=Decimal("911.22"))
+        rate = get_current_euro_rate(stale_ok=True)
+        assert rate.effective_rate == Decimal("911.22")
+
+    def test_does_not_mix_usd_and_eur_rows(self) -> None:
+        """La tasa USD no debe contaminar la consulta del euro y viceversa."""
+        ExchangeRateFactory(promedio=Decimal("100.00"))
+        ExchangeRateFactory(currency="EUR", promedio=Decimal("911.22"))
+        assert get_current_official_rate().effective_rate == Decimal("100.00")
+        assert get_current_euro_rate().effective_rate == Decimal("911.22")
+
+    def test_eur_rate_for_conversion_positive(self) -> None:
+        """get_eur_rate_for_conversion devuelve la tasa EUR vigente."""
+        cache.delete(EURO_REFRESH_LOCK_KEY)
+        ExchangeRateFactory(currency="EUR", promedio=Decimal("110.00"))
+        assert get_eur_rate_for_conversion() == Decimal("110.00")
+
+    def test_eur_rate_for_conversion_raises_without_rate(self) -> None:
+        """Sin tasa EUR en BD y proveedor caído -> BusinessRuleError."""
+        cache.delete(EURO_REFRESH_LOCK_KEY)
+
+        class FailingProvider:
+            def fetch_official_rate(self, currency="VES"):  # noqa: B027
+                raise RateProviderError("DolarApi caído")
+
+            def fetch_euro_rate(self, currency="VES"):  # noqa: B027
+                raise RateProviderError("DolarApi caído (euro)")
+
+        with patch("apps.rates.service.get_provider", return_value=FailingProvider()):
+            with pytest.raises(BusinessRuleError) as excinfo:
+                get_eur_rate_for_conversion()
+
+        assert "euro" in str(excinfo.value)
 
 
 @pytest.mark.django_db

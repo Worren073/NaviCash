@@ -49,6 +49,7 @@ class TestBuildContext:
         assert context["total_balance_usd"] == "50.00"
         assert context["base_currency"] == "USD"
         assert context["rate"] is not None
+        assert context["euro_rate"] is not None
         # No expone emails/credenciales en ningún nivel.
         assert "@" not in str(context).lower()
 

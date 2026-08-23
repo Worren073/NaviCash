@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from apps.core.currency import convert_to_usd, round_money
 from apps.overview.services import build_summary
-from apps.rates.service import get_current_official_rate
+from apps.rates.service import get_current_euro_rate, get_current_official_rate
 from apps.savings.models import SavingsGoal
 from apps.subscriptions.models import Subscription
 from apps.transactions.models import Transaction
@@ -39,6 +39,8 @@ def build_context(user, today: date | None = None) -> dict:
 
     rate = get_current_official_rate()
     rate_value: "Decimal | None" = rate.effective_rate if rate else None
+    euro = get_current_euro_rate()
+    euro_value: "Decimal | None" = euro.effective_rate if euro else None
 
     # Ingresos y gastos del mes actual (USD, desde montos congelados).
     # Agregación en SQL (AUDIT M6): antes se iteraba cada 'pagada' del mes.
@@ -120,6 +122,7 @@ def build_context(user, today: date | None = None) -> dict:
     return {
         "base_currency": user.base_currency,
         "rate": str(rate_value) if rate_value is not None else None,
+        "euro_rate": str(euro_value) if euro_value is not None else None,
         "total_balance_usd": str(summary["total_balance_usd"]),
         "total_balance_ves": str(summary["total_balance_ves"]) if summary["total_balance_ves"] is not None else None,
         "to_receive": str(summary["to_receive"]),

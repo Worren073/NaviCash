@@ -42,6 +42,7 @@ TRANSACTION_TYPES = [
 #: Fuente de la tasa usada en una transferencia entre monedas distintas.
 TRANSFER_RATE_SOURCES = [
     ("oficial", "Tasa oficial (BCV)"),
+    ("euro", "Tasa oficial del Euro (BCV)"),
     ("manual", "Tasa personalizada"),
 ]
 

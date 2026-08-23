@@ -74,6 +74,9 @@ class OverviewSerializer(serializers.Serializer):
     rate = serializers.DecimalField(
         max_digits=20, decimal_places=4, allow_null=True, required=False
     )
+    euro_rate = serializers.DecimalField(
+        max_digits=20, decimal_places=4, allow_null=True, required=False
+    )
     total_balance_usd = serializers.DecimalField(max_digits=20, decimal_places=2)
     total_balance_ves = serializers.DecimalField(
         max_digits=20, decimal_places=2, allow_null=True, required=False

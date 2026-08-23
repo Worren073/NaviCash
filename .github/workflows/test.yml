@@ -26,3 +26,27 @@ jobs:
 
       - name: Run tests
         run: cd services/api && python -m pytest
+
+      - name: Audit Python dependencies
+        run: |
+          pip install pip-audit
+          pip-audit -r services/api/requirements.txt
+
+  audit-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: cd apps/web && npm ci
+
+      - name: Audit npm dependencies
+        run: cd apps/web && npm audit --audit-level=high

@@ -18,7 +18,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from apps.core.currency import convert_to_usd, round_money, usd_to_currency
-from apps.rates.service import get_current_official_rate
+from apps.rates.service import get_current_euro_rate, get_current_official_rate
 from apps.transactions.models import Transaction
 from apps.wallets.models import Wallet
 
@@ -46,6 +46,8 @@ def build_summary(user, today: date | None = None) -> dict:
     base = user.base_currency
     rate = get_current_official_rate()
     rate_value: "Decimal | None" = rate.effective_rate if rate else None
+    euro_rate = get_current_euro_rate()
+    euro_rate_value: "Decimal | None" = euro_rate.effective_rate if euro_rate else None
 
     # --- Billeteras --------------------------------------------------------
     # Solo convertimos a USD las monedas para las que tenemos tasa (USD/VES);
@@ -110,6 +112,7 @@ def build_summary(user, today: date | None = None) -> dict:
     return {
         "base_currency": base,
         "rate": rate_value,
+        "euro_rate": euro_rate_value,
         "total_balance_usd": round_money(total_balance_usd),
         "total_balance_ves": round_money(total_balance_ves) if total_balance_ves is not None else None,
         "to_receive": to_receive,

@@ -23,6 +23,12 @@ SUBJECT_VERIFY = "NaviCash — Confirma tu correo"
 #: Asunto enviado al solicitar recuperación de contraseña.
 SUBJECT_RESET = "NaviCash — Restablece tu contraseña"
 
+#: Asunto enviado al agendar la eliminación de la cuenta.
+SUBJECT_DELETE_SCHEDULED = "NaviCash — Tu cuenta se eliminará en 15 días"
+
+#: Asunto enviado al cancelar una eliminación pendiente.
+SUBJECT_DELETE_CANCELLED = "NaviCash — Eliminación de cuenta cancelada"
+
 #: Endpoint de la API HTTP de Brevo.
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
@@ -128,4 +134,63 @@ def send_password_reset_email(email: str, token: str) -> bool:
         return True
     except Exception as exc:  # noqa: BLE001
         logger.error("EMAIL_RESET FAILED to=%s error=%r", email, exc)
+        raise
+
+
+def send_account_deletion_email(email: str, name: str = "", grace_days: int | None = None) -> bool:
+    """Confirma al usuario que su eliminación quedó agendada (período de gracia).
+
+    Args:
+        email: dirección del destinatario.
+        name: nombre del usuario para el saludo.
+        grace_days: días de gracia (default ``ACCOUNT_DELETION_GRACE_DAYS``).
+
+    Returns:
+        True si el envío fue aceptado.
+    """
+    days = grace_days or getattr(settings, "ACCOUNT_DELETION_GRACE_DAYS", 15)
+    body = (
+        f"Hola {name or ''},\n\n"
+        "Recibimos tu solicitud para eliminar tu cuenta de NaviCash.\n\n"
+        f"Por motivos legales y de seguridad, tus datos permanecerán en la "
+        f"base de datos durante {days} días. Si cambias de opinión, puedes "
+        "iniciar sesión en ese período y cancelar la eliminación desde tu "
+        "perfil; pasado ese tiempo, tu cuenta y toda tu información se "
+        "borrarán definitivamente y no podrán recuperarse.\n\n"
+        "Si no solicitaste esto, te recomendamos cambiar tu contraseña de "
+        "inmediato: alguien con acceso a tu cuenta pudo haberla pedido."
+    )
+    try:
+        if _brevo_configured():
+            _brevo_send(SUBJECT_DELETE_SCHEDULED, body, email)
+        else:
+            send_mail(
+                SUBJECT_DELETE_SCHEDULED, body, settings.DEFAULT_FROM_EMAIL, [email],
+                fail_silently=False,
+            )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error("EMAIL_DELETE_SCHEDULED FAILED to=%s error=%r", email, exc)
+        raise
+
+
+def send_account_deletion_cancelled_email(email: str, name: str = "") -> bool:
+    """Confirma que la eliminación pendiente fue cancelada a tiempo."""
+    body = (
+        f"Hola {name or ''},\n\n"
+        "Tu eliminación de NaviCash fue cancelada: tu cuenta sigue activa "
+        "con todos tus datos, como siempre.\n\n"
+        "Si no fuiste tú quien canceló, cambia tu contraseña de inmediato."
+    )
+    try:
+        if _brevo_configured():
+            _brevo_send(SUBJECT_DELETE_CANCELLED, body, email)
+        else:
+            send_mail(
+                SUBJECT_DELETE_CANCELLED, body, settings.DEFAULT_FROM_EMAIL, [email],
+                fail_silently=False,
+            )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error("EMAIL_DELETE_CANCELLED FAILED to=%s error=%r", email, exc)
         raise

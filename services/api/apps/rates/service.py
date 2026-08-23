@@ -107,7 +107,7 @@ def get_current_official_rate(stale_ok: bool = True) -> ExchangeRate:
     """
     ttl = getattr(settings, "RATE_TTL_MINUTES", 60)
     latest = (
-        ExchangeRate.objects.filter(source="oficial")
+        ExchangeRate.objects.filter(source="oficial", currency="VES")
         .order_by("-input_at")
         .first()
     )
@@ -143,6 +143,58 @@ def get_current_official_rate(stale_ok: bool = True) -> ExchangeRate:
     raise RateProviderError("Otro proceso está refrescando la tasa oficial; reintenta en unos segundos.")
 
 
+EURO_REFRESH_LOCK_KEY = "rates:euro:refreshing"
+
+
+def refresh_euro_rate() -> ExchangeRate:
+    """Consulta al proveedor activo y persiste la tasa del euro en la BD."""
+    provider = get_provider()
+    fetched = provider.fetch_euro_rate()
+    rate = ExchangeRate.objects.create(
+        source=fetched.source,
+        currency="EUR",
+        compra=_to_decimal(fetched.compra),
+        venta=_to_decimal(fetched.venta),
+        promedio=_to_decimal(fetched.promedio),
+        rate_date=fetched.rate_date,
+        is_stale=False,
+    )
+    return rate
+
+
+def get_current_euro_rate(stale_ok: bool = True) -> ExchangeRate:
+    """Devuelve la tasa oficial EUR actual con caché y fallback."""
+    ttl = getattr(settings, "RATE_TTL_MINUTES", 60)
+    latest = (
+        ExchangeRate.objects.filter(source="oficial", currency="EUR")
+        .order_by("-input_at")
+        .first()
+    )
+
+    if latest and _is_fresh(latest, ttl) and latest.effective_rate is not None:
+        latest.is_stale = False
+        return latest
+
+    if cache.add(EURO_REFRESH_LOCK_KEY, 1, REFRESH_LOCK_TIMEOUT):
+        try:
+            refreshed = refresh_euro_rate()
+            return refreshed
+        except RateProviderError:
+            if latest and latest.effective_rate is not None and stale_ok:
+                latest.is_stale = True
+                latest.save(update_fields=["is_stale"])
+                return latest
+            raise
+        finally:
+            cache.delete(EURO_REFRESH_LOCK_KEY)
+
+    if latest and latest.effective_rate is not None and stale_ok:
+        latest.is_stale = True
+        latest.save(update_fields=["is_stale"])
+        return latest
+    raise RateProviderError("Otro proceso está refrescando la tasa del euro; reintenta en unos segundos.")
+
+
 def get_usd_rate_for_conversion() -> Decimal:
     """Devuelve la tasa Decimal a usar en conversiones de transacciones.
 
@@ -165,3 +217,25 @@ def get_usd_rate_for_conversion() -> Decimal:
     except RateProviderError:
         pass
     raise BusinessRuleError("No pude obtener la tasa oficial del día, intenta en unos minutos")
+
+
+def get_eur_rate_for_conversion() -> Decimal:
+    """Devuelve la tasa Decimal del euro oficial para conversiones.
+
+    Espejo de ``get_usd_rate_for_conversion``: nunca devuelve valores <= 0;
+    si no hay tasa disponible lanza ``BusinessRuleError``.
+
+    Returns:
+        Decimal con unidades de VES por 1 EUR (siempre > 0).
+
+    Raises:
+        BusinessRuleError: si la tasa oficial del euro no está disponible.
+    """
+    try:
+        rate = get_current_euro_rate(stale_ok=True)
+        value = rate.effective_rate
+        if value and value > 0:
+            return value
+    except RateProviderError:
+        pass
+    raise BusinessRuleError("No pude obtener la tasa del euro del día, intenta en unos minutos")

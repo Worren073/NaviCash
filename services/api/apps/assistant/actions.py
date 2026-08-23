@@ -221,7 +221,7 @@ class ActionProposal:
     convertir: bool = False  # convertir el monto a la moneda de la cuenta
     divisa: str | None = None  # "venta" | "compra" en transferencias inter-monedas
     tasa: "Decimal | None" = None  # tasa USD manual declarada por el usuario
-    tipo_tasa: str | None = None  # "bcv" | "personalizada"
+    tipo_tasa: str | None = None  # "bcv" | "euro" | "personalizada"
     concepto: str = ""
     wallet_name: str | None = None
     dest_wallet_name: str | None = None

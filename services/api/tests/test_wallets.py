@@ -363,6 +363,47 @@ class TestWalletTransfer:
         assert ves.saldo == Decimal("0.00")
         assert us.saldo == Decimal("86.00")
 
+    def test_usd_to_ves_with_euro_rate(self, api_client) -> None:
+        """USD→VES con la tasa del euro multiplica por EUR/VES (venta)."""
+        us, ves = self._usd_and_ves(api_client)
+        resp = api_client.post(
+            self.URL,
+            {"source": str(us.id), "target": str(ves.id), "amount": "10.00",
+             "rate_source": "euro"},
+        )
+        assert resp.status_code == 201
+        us.refresh_from_db(); ves.refresh_from_db()
+        # Proveedor estático en tests: euro = 100 * 1.1 = 110 VES/EUR.
+        assert us.saldo == Decimal("90.00")
+        assert ves.saldo == Decimal("1100.00")
+        body = resp.data["transfer"]
+        assert body["tasa_fuente"] == "euro"
+        assert Decimal(body["monto_destino"]) == Decimal("1100.00")
+
+    def test_ves_to_usd_with_euro_rate(self, api_client) -> None:
+        """VES→USD con la tasa del euro divide (compra)."""
+        us, ves = self._usd_and_ves(api_client, usd_balance="0.00", ves_balance="2200.00")
+        resp = api_client.post(
+            self.URL,
+            {"source": str(ves.id), "target": str(us.id), "amount": "2200.00",
+             "rate_source": "euro"},
+        )
+        assert resp.status_code == 201
+        us.refresh_from_db(); ves.refresh_from_db()
+        assert ves.saldo == Decimal("0.00")
+        # 2200 / 110 (tasa euro estática) = 20 USD.
+        assert us.saldo == Decimal("20.00")
+
+    def test_rejects_invalid_rate_source(self, api_client) -> None:
+        """Un rate_source desconocido responde 400."""
+        us, ves = self._usd_and_ves(api_client)
+        resp = api_client.post(
+            self.URL,
+            {"source": str(us.id), "target": str(ves.id), "amount": "5.00",
+             "rate_source": "paralelo"},
+        )
+        assert resp.status_code == 400
+
     def test_rejects_insufficient_balance(self, api_client) -> None:
         """Saldo insuficiente en origen responde 400 sin tocar destino."""
         us, ves = self._usd_and_ves(api_client, usd_balance="5.00")

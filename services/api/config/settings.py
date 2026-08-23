@@ -81,6 +81,10 @@ env = environ.Env(
     # compartida (Redis en prod), así el bloqueo aplica a todos los workers.
     MAX_FAILED_LOGIN_ATTEMPTS=(int, 5),
     LOGIN_LOCKOUT_MINUTES=(int, 15),
+    # Eliminación de cuenta (derecho al olvido): días de gracia entre la
+    # solicitud y la purga definitiva. Durante la gracia el usuario puede
+    # iniciar sesión y cancelar; al vencer, el purge borra todo (RGPD art. 17).
+    ACCOUNT_DELETION_GRACE_DAYS=(int, 15),
 )
 
 # ---------------------------------------------------------------------------
@@ -184,6 +188,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.accounts.middleware.SecurityEventMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -274,6 +279,10 @@ AUTH_PASSWORD_VALIDATORS = [
 # se guardan en la caché compartida (Redis en prod), ver LoginView.
 MAX_FAILED_LOGIN_ATTEMPTS = env("MAX_FAILED_LOGIN_ATTEMPTS")
 LOGIN_LOCKOUT_MINUTES = env("LOGIN_LOCKOUT_MINUTES")
+
+# Período de gracia (en días) entre la solicitud de eliminación de cuenta y la
+# purga definitiva de sus datos. Ver apps/accounts/services.py.
+ACCOUNT_DELETION_GRACE_DAYS = env("ACCOUNT_DELETION_GRACE_DAYS")
 
 # ---------------------------------------------------------------------------
 # DRF y JWT
@@ -441,12 +450,26 @@ LOGGING = {
             "format": "{asctime} {levelname} {name} {message}",
             "style": "{",
         },
+        "json": {
+            "()": "pythonjsonlogger.json.JsonFormatter",
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+            "rename_fields": {
+                "asctime": "timestamp",
+                "levelname": "level",
+                "name": "logger",
+            },
+        },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "stream": sys.stdout,
             "formatter": "verbose",
+        },
+        "security": {
+            "class": "logging.StreamHandler",
+            "stream": sys.stdout,
+            "formatter": "json",
         },
     },
     "root": {
@@ -464,15 +487,21 @@ LOGGING = {
         # Requests HTTP: en DEBUG los 4xx/5xx se ven (WARNING); en prod solo
         # los errores 5xx (ERROR). No se registra el body de la petición.
         "django.request": {
-            "handlers": ["console"],
+            "handlers": ["console", "security"],
             "level": "DEBUG" if DEBUG else "ERROR",
             "propagate": False,
         },
-        # Apps propias (asistant, rates, accounts, ...): a DEGUG en dev para
+        # Apps propias (asistant, rates, accounts, ...): a DEBUG en dev para
         # rastrear flujos; a INFO en prod para no saturar.
         "apps": {
             "handlers": ["console"],
             "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+        # Eventos de seguridad: siempre JSON para SIEM.
+        "apps.accounts.security": {
+            "handlers": ["security"],
+            "level": "INFO",
             "propagate": False,
         },
     },

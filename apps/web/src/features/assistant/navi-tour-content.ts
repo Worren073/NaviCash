@@ -26,6 +26,9 @@ export const NAVI_TOUR_VIEWS: NaviTourView[] = [
 
 const STORAGE_PREFIX = "navi.tour.seen.";
 
+/** Evento disparado al reiniciar el tour (p. ej. "Ver tutorial de nuevo"). */
+export const NAVI_TOUR_RESET_EVENT = "navi:tour-reset";
+
 export function getNaviTourView(pathname: string): NaviTourView | null {
   const clean = pathname.replace(/\/+$/, "") || "/";
   const exact = NAVI_TOUR_VIEWS.find((v) => v.path === clean);
@@ -38,6 +41,17 @@ export function isNaviTourSeen(pathKey: string): boolean {
     return window.localStorage.getItem(STORAGE_PREFIX + pathKey) === "1";
   } catch {
     return false;
+  }
+}
+
+/** PathKeys vistos, leídos de una sola vez (para espejarlos en estado). */
+export function getSeenTourViews(): string[] {
+  try {
+    return NAVI_TOUR_VIEWS.filter(
+      (v) => window.localStorage.getItem(STORAGE_PREFIX + v.pathKey) === "1",
+    ).map((v) => v.pathKey);
+  } catch {
+    return [];
   }
 }
 
@@ -61,4 +75,5 @@ export function resetNaviTour(): void {
   } catch {
     // localStorage no disponible: no es crítico.
   }
+  window.dispatchEvent(new Event(NAVI_TOUR_RESET_EVENT));
 }

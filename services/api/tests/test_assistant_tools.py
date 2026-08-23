@@ -35,6 +35,7 @@ def _ctx(
     rate: str | None = "36.50",
     total_usd: str = "1000.00",
     total_ves: str = "0.00",
+    euro_rate: str | None = "912.00",
 ) -> dict:
     """Contexto mínimo tipo ``build_context``."""
     if wallets is None:
@@ -46,6 +47,7 @@ def _ctx(
         "wallets": wallets,
         "base_currency": "USD",
         "rate": rate,
+        "euro_rate": euro_rate,
         "total_balance_usd": total_usd,
         "total_balance_ves": total_ves,
         "recent_transactions": [
@@ -156,6 +158,50 @@ class TestExecRegisterPreview:
         assert result["tasa"] == "36.50"
         # 10 * 36.50 = 365.00
         assert Decimal(result["monto_convertido"]) == Decimal("365.00")
+
+    def test_euro_rate_conversion(self) -> None:
+        """USD en VES con tipo_tasa="euro" usa la tasa euro del contexto."""
+        ctx = _ctx(
+            wallets=[{"name": "Banesco", "currency": "VES", "saldo": "50000", "tipo": "bank"}],
+            rate="36.50",
+            euro_rate="912.00",
+        )
+        result = _exec_register_preview(
+            {"tipo": "pago", "monto": 10, "moneda": "USD", "wallet": "Banesco", "tipo_tasa": "euro"},
+            ctx,
+        )
+        assert result["status"] == "pending_confirmation"
+        assert result["convertir"] is True
+        assert result["tipo_tasa"] == "euro"
+        # Debe usar la tasa del euro (912), NO la del dólar (36.50).
+        assert result["tasa"] == "912.00"
+        assert Decimal(result["monto_convertido"]) == Decimal("9120.00")
+
+    def test_euro_rate_missing_returns_error(self) -> None:
+        """tipo_tasa="euro" sin euro_rate en contexto → error claro."""
+        ctx = _ctx(
+            wallets=[{"name": "Banesco", "currency": "VES", "saldo": "50000", "tipo": "bank"}],
+            euro_rate=None,
+        )
+        result = _exec_register_preview(
+            {"tipo": "pago", "monto": 10, "moneda": "USD", "wallet": "Banesco", "tipo_tasa": "euro"},
+            ctx,
+        )
+        assert result["status"] == "error"
+
+    def test_currency_mismatch_includes_euro_rate(self) -> None:
+        """El mismatch expone ambas tasas para que el LLM ofrezca opciones."""
+        ctx = _ctx(
+            wallets=[{"name": "Banesco", "currency": "VES", "saldo": "50000", "tipo": "bank"}],
+            rate="36.50",
+            euro_rate="912.00",
+        )
+        result = _exec_register_preview(
+            {"tipo": "pago", "monto": 2.5, "moneda": "USD", "wallet": "Banesco"}, ctx
+        )
+        assert result["status"] == "currency_mismatch"
+        assert result["bcv_rate"] == "36.50"
+        assert result["euro_rate"] == "912.00"
 
     def test_custom_rate_conversion(self) -> None:
         """USD en VES con tasa=880 → converted preview."""
@@ -504,7 +550,7 @@ class TestExecuteTool:
         props = reg["function"]["parameters"]["properties"]
         assert "tasa" in props
         assert "tipo_tasa" in props
-        assert props["tipo_tasa"]["enum"] == ["bcv", "personalizada"]
+        assert props["tipo_tasa"]["enum"] == ["bcv", "euro", "personalizada"]
 
 
 # ---------------------------------------------------------------------------

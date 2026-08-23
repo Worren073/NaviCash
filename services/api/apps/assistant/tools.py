@@ -83,10 +83,11 @@ TOOLS = [
                     },
                     "tipo_tasa": {
                         "type": "string",
-                        "enum": ["bcv", "personalizada"],
+                        "enum": ["bcv", "euro", "personalizada"],
                         "description": (
                             "'bcv' si el usuario quiere la tasa oficial del "
-                            "BCV (ya está en el contexto como 'rate'), "
+                            "BCV del dólar (contexto 'rate'), 'euro' si quiere "
+                            "la tasa oficial del euro (contexto 'euro_rate'), "
                             "'personalizada' si el usuario dio un número. "
                             "Solo aplica cuando moneda != moneda de la cuenta."
                         ),
@@ -405,8 +406,10 @@ def _exec_register_preview(args: dict, context: dict) -> dict:
 
     # --- Cross-currency detection ---
     if moneda != wallet_currency:
-        if tipo_tasa == "bcv":
-            rate = _safe_decimal(context.get("rate"))
+        if tipo_tasa in ("bcv", "euro"):
+            rate = _safe_decimal(
+                context.get("rate") if tipo_tasa == "bcv" else context.get("euro_rate")
+            )
             if rate <= 0:
                 return {
                     "status": "error",
@@ -416,7 +419,7 @@ def _exec_register_preview(args: dict, context: dict) -> dict:
                     ),
                 }
             return _monto_converted_preview(
-                tipo, monto_raw, moneda, wallet, concepto, rate, "bcv",
+                tipo, monto_raw, moneda, wallet, concepto, rate, tipo_tasa,
             )
         elif tasa_arg is not None:
             rate = _safe_decimal(tasa_arg)
@@ -428,6 +431,7 @@ def _exec_register_preview(args: dict, context: dict) -> dict:
         else:
             # Sin tasa: informar al LLM del mismatch para que pregunte.
             bcv_rate = context.get("rate")
+            euro_rate = context.get("euro_rate")
             return {
                 "status": "currency_mismatch",
                 "monto": str(monto_raw),
@@ -435,11 +439,12 @@ def _exec_register_preview(args: dict, context: dict) -> dict:
                 "moneda_cuenta": wallet_currency,
                 "wallet": wallet["name"],
                 "bcv_rate": bcv_rate,
+                "euro_rate": euro_rate,
                 "message": (
                     f"El usuario pidió registrar {monto_raw} {moneda} "
                     f"pero la cuenta '{wallet['name']}' está en {wallet_currency}. "
-                    f"La tasa BCV actual es {bcv_rate}. "
-                    f"Pregunta si quiere usar la tasa del BCV o una personalizada."
+                    f"La tasa BCV del dólar es {bcv_rate} y la del euro es {euro_rate}. "
+                    f"Pregunta si quiere usar la tasa del dólar (BCV), la del euro o una personalizada."
                 ),
             }
 

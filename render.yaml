@@ -85,7 +85,7 @@ services:
       - key: EMAIL_TIMEOUT
         value: "10"
       - key: EMAIL_VERIFICATION_REQUIRED
-        value: "False"
+        value: "True"
       - key: RATE_PROVIDER
         value: dolarapi
       - key: RATE_TTL_MINUTES

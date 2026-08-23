@@ -26,7 +26,11 @@ from apps.core.currency import (  # noqa: F401
     round_money,
 )
 from apps.core.exceptions import BusinessRuleError
-from apps.rates.service import get_current_official_rate, get_usd_rate_for_conversion
+from apps.rates.service import (
+    get_current_euro_rate,
+    get_current_official_rate,
+    get_usd_rate_for_conversion,
+)
 from apps.transactions.models import TRANSACTION_STATES, Transaction
 from apps.wallets.models import Wallet
 from apps.wallets.services import adjust_balance
@@ -167,7 +171,7 @@ def _resolve_transfer_rate(source_currency: str, dest_currency: str, rate_fuente
     Args:
         source_currency: moneda de la billetera origen.
         dest_currency: moneda de la billetera destino.
-        rate_fuente: ``"oficial"`` (BCV) o ``"manual"``.
+        rate_fuente: ``"oficial"`` (BCV USD), ``"euro"`` (BCV EUR) o ``"manual"``.
         custom_rate: tasa personalizada (solo si ``rate_fuente == "manual"``).
 
     Returns:
@@ -184,13 +188,17 @@ def _resolve_transfer_rate(source_currency: str, dest_currency: str, rate_fuente
     if {source_currency, dest_currency} == supported:
         if rate_fuente == "oficial":
             rate = get_current_official_rate().effective_rate
+        elif rate_fuente == "euro":
+            # Alternativa de compra/venta de divisas: la tasa oficial del
+            # euro (VES por 1 EUR) usada como referencia para el traspaso.
+            rate = get_current_euro_rate().effective_rate
         else:
             if custom_rate is not None and custom_rate > 0:
                 rate = custom_rate
             else:
                 raise BusinessRuleError("Debes indicar una tasa personalizada mayor a cero.")
         if not rate or rate <= 0:
-            raise BusinessRuleError("No hay una tasa oficial disponible.")
+            raise BusinessRuleError("No hay una tasa disponible.")
         return rate
 
     raise BusinessRuleError(
@@ -222,7 +230,7 @@ def create_transfer(
         source: billetera de origen.
         dest: billetera de destino.
         amount: cantidad a transferir (moneda de ``source``).
-        rate_fuente: ``"oficial"`` (BCV) o ``"manual"``.
+        rate_fuente: ``"oficial"`` (BCV USD), ``"euro"`` (BCV EUR) o ``"manual"``.
         custom_rate: tasa manual si ``rate_fuente == "manual"``.
         concepto: texto opcional del concepto.
 

@@ -42,8 +42,12 @@ class User(AbstractBaseUser, PermissionsMixin):
                   recordatorios se calculan en esta zona — ver Riesgo R8).
         reminder_days: regla global de recordatorio: avisar N días antes del
                        vencimiento (ADR-09).
-        is_onboarded: True cuando el usuario ya vio el tour guiado de Navi
-                      (tutorial de las secciones para usuarios nuevos).
+    is_onboarded: True cuando el usuario ya vio el tour guiado de Navi
+                  (tutorial de las secciones para usuarios nuevos).
+        deletion_scheduled_at: fecha de purga definitiva de la cuenta y sus
+                  datos (derecho de eliminación). Null = cuenta normal; si
+                  tiene valor, la cuenta está en período de gracia
+                  (ACCOUNT_DELETION_GRACE_DAYS días) y puede cancelar.
         is_active: False hasta que se verifique el email (ADR-06).
     """
 
@@ -93,6 +97,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         default=False,
         verbose_name="Tutorial visto",
         help_text="True cuando el usuario ya completó el tour guiado de Navi.",
+    )
+    deletion_scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Eliminación programada el",
+        help_text=(
+            "Momento en el que la cuenta y sus datos se purgan definitivamente "
+            "(derecho de eliminación). Null mientras la cuenta esté activa; "
+            "con valor, la cuenta está en período de gracia cancelable."
+        ),
     )
     is_active = models.BooleanField(
         default=False,

@@ -26,17 +26,11 @@ class RateProvider(ABC):
 
     @abstractmethod
     def fetch_official_rate(self, currency: str = "VES") -> "ProviderRate":
-        """Consulta la tasa oficial actual del USD frente a ``currency``.
+        """Consulta la tasa oficial actual del USD frente a ``currency``."""
 
-        Args:
-            currency: moneda local frente a la que cotiza el dólar.
-
-        Returns:
-            ``ProviderRate`` normalizado.
-
-        Raises:
-            RateProviderError: si la consulta falla o devuelve datos inválidos.
-        """
+    @abstractmethod
+    def fetch_euro_rate(self, currency: str = "VES") -> "ProviderRate":
+        """Consulta la tasa oficial actual del EUR frente a ``currency``."""
 
 
 class ProviderRate:
@@ -78,6 +72,7 @@ class DolarApiProvider(RateProvider):
 
     BASE_URL = "https://ve.dolarapi.com/v1/dolares/official"
     OFICIAL_URL = "https://ve.dolarapi.com/v1/dolares/oficial"
+    EURO_OFICIAL_URL = "https://ve.dolarapi.com/v1/euros/oficial"
 
     def fetch_official_rate(self, currency: str = "VES") -> ProviderRate:
         """Consulta la tasa Dólar Oficial (BCV) publicada por DolarApi.
@@ -110,6 +105,26 @@ class DolarApiProvider(RateProvider):
             rate_date=_parse_rate_date(data.get("fechaActualizacion")),
         )
 
+    def fetch_euro_rate(self, currency: str = "VES") -> ProviderRate:
+        """Consulta la tasa Euro Oficial (BCV) publicada por DolarApi."""
+        try:
+            response = httpx.get(self.EURO_OFICIAL_URL, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as exc:
+            raise RateProviderError(f"Error al contactar DolarApi (Euro): {exc}") from exc
+
+        if not data.get("promedio"):
+            raise RateProviderError("DolarApi no devolvió un promedio válido para el euro.")
+
+        return ProviderRate(
+            source="oficial",
+            compra=data.get("compra"),
+            venta=data.get("venta"),
+            promedio=data.get("promedio"),
+            rate_date=_parse_rate_date(data.get("fechaActualizacion")),
+        )
+
 
 class StaticRateProvider(RateProvider):
     """Proveedor de respaldo con tasa fija (tests / desarrollo sin red).
@@ -130,6 +145,12 @@ class StaticRateProvider(RateProvider):
         from decimal import Decimal
 
         return ProviderRate(source="oficial", promedio=Decimal(str(self.fixed_rate)))
+
+    def fetch_euro_rate(self, currency: str = "VES") -> ProviderRate:
+        """Devuelve la tasa fija de euro configurada como 'oficial'."""
+        from decimal import Decimal
+
+        return ProviderRate(source="oficial", promedio=Decimal(str(self.fixed_rate * 1.1)))
 
 
 def get_provider() -> RateProvider:

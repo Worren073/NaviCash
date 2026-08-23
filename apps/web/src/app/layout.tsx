@@ -1,8 +1,9 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { Plus } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
 import {
   FilledBellIcon,
   HomeIcon,
@@ -22,7 +23,9 @@ import { NaviTourGlobe } from "@/features/assistant/navi-tour";
 import { useNaviTour } from "@/features/assistant/use-navi-tour";
 import { unlockSpeech } from "@/features/assistant/speech";
 import { VoiceChatContext } from "@/features/assistant/voice-chat-context";
-import { useMe, useNotifications } from "@/hooks/use-queries";
+import { useMe, useNotifications, queryKeys } from "@/hooks/use-queries";
+import { api, ApiErrorClass } from "@/lib/api";
+import { sileo } from "sileo";
 import { DeviceInfo } from "@/components/device-info";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +45,54 @@ function NotificationBadge() {
     <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-delayed px-1 text-[10px] font-bold text-white">
       {unread > 9 ? "9+" : unread}
     </span>
+  );
+}
+
+/**
+ * Aviso persistente de cuenta en período de gracia de eliminación: aparece
+ * en todas las vistas, pegado bajo la barra superior, con botón para cancelar
+ * la eliminación (sin contraseña: el usuario ya está autenticado).
+ */
+function DeletionCountdownBanner({ scheduledAt }: { scheduledAt: string }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const cancel = useMutation({
+    mutationFn: () => api.post<{ detail: string }>("/auth/cancel-account-deletion"),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.me });
+      sileo.success({ title: t("profile.deletionCancelled") });
+    },
+    onError: (err) => {
+      sileo.error({
+        title:
+          err instanceof ApiErrorClass ? err.message : t("errors.generic"),
+      });
+    },
+  });
+
+  return (
+    <div className="sticky top-[calc(env(safe-area-inset-top)+3.25rem)] z-30 mt-2 flex items-center justify-between gap-3 rounded-xl border border-error-container bg-error-container/70 px-3 py-2 backdrop-blur-md">
+      <p className="flex min-w-0 items-start gap-2 text-xs font-medium leading-snug text-on-error-container sm:text-sm">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          {t("profile.deleteScheduledBanner", {
+            date: new Date(scheduledAt).toLocaleString(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            }),
+          })}
+        </span>
+      </p>
+      <button
+        type="button"
+        onClick={() => cancel.mutate()}
+        disabled={cancel.isPending}
+        className="shrink-0 rounded-full bg-on-error-container/10 px-3 py-1.5 text-xs font-semibold text-on-error-container transition-colors hover:bg-on-error-container/20 active:scale-95 disabled:opacity-60"
+      >
+        {cancel.isPending ? t("common.loading") : t("profile.cancelDeletion")}
+      </button>
+    </div>
   );
 }
 
@@ -214,6 +265,11 @@ export default function AppLayout() {
     <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)]">
       <TopBar />
       <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
+        {/* Aviso en TODAS las vistas mientras la cuenta cuenta regresiva
+            para su eliminación; el botón cancela sin salir de la pantalla. */}
+        {me?.deletion_scheduled_at && (
+          <DeletionCountdownBanner scheduledAt={me.deletion_scheduled_at} />
+        )}
         <VoiceChatContext.Provider
           value={{
             // Los botones que abren la voz (dashboard) son gestos de usuario:
@@ -231,6 +287,9 @@ export default function AppLayout() {
       </main>
       <NaviBubble
         onOpen={() => setAssistantOpen(true)}
+        // Durante el tour, la burbuja y su globo quedan sobre TopBar/BottomNav
+        // (z-50) para que ningún botón del globo quede tapado.
+        wrapperClassName={tourMounted ? "z-[60]" : undefined}
         tour={
           tourMounted && view ? (
             <NaviTourGlobe

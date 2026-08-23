@@ -12,9 +12,10 @@ El proveedor está desacoplado tras una interfaz (``RateProvider``) para poder
 cambiar de fuente sin tocar el resto del código (mitigación del Riesgo R3).
 """
 
-from apps.rates.views import CurrentRateView  # noqa: F401
+from apps.rates.views import CurrentEuroRateView, CurrentRateView  # noqa: F401
 from django.urls import path
 
 urlpatterns = [
     path("rates/current", CurrentRateView.as_view(), name="rates-current"),
+    path("rates/euro", CurrentEuroRateView.as_view(), name="rates-euro"),
 ]

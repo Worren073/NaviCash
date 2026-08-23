@@ -83,7 +83,7 @@ class TransferSerializer(serializers.Serializer):
         source: id de la billetera origen.
         target: id de la billetera destino.
         amount: monto en la moneda de ``source``.
-        rate_source: ``"oficial"`` (BCV) o ``"manual"``.
+        rate_source: ``"oficial"`` (BCV USD), ``"euro"`` (BCV EUR) o ``"manual"``.
         custom_rate: tasa manual requerida si ``rate_source == "manual"``.
     """
 
@@ -129,7 +129,7 @@ class TransferSerializer(serializers.Serializer):
             attrs.pop("custom_rate", None)
             return attrs
 
-        if attrs["rate_source"] == "oficial":
+        if attrs["rate_source"] in ("oficial", "euro"):
             attrs.pop("custom_rate", None)
         elif not attrs.get("custom_rate") or attrs["custom_rate"] <= 0:
             raise serializers.ValidationError(

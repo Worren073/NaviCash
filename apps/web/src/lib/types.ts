@@ -15,6 +15,8 @@ export interface User {
   timezone_name: string;
   reminder_days: number;
   is_onboarded: boolean;
+  /** Fecha de purga definitiva; null = cuenta normal (gracia no iniciada). */
+  deletion_scheduled_at: string | null;
 }
 
 export interface Wallet {
@@ -104,6 +106,7 @@ export interface Shortcut {
 export interface Overview {
   base_currency: Currency;
   rate: string | null;
+  euro_rate: string | null;
   total_balance_usd: string;
   total_balance_ves: string | null;
   to_receive: string;

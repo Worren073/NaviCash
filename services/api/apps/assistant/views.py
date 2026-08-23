@@ -8,6 +8,8 @@
 Ambos verifican que la sesión pertenezca al ``request.user``.
 """
 
+import uuid
+
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -80,6 +82,13 @@ class ChatHistoryView(GenericAPIView):
         if not session_id:
             return Response(
                 {"detail": "session_id es obligatorio para ver el historial."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            uuid.UUID(session_id)
+        except ValueError:
+            return Response(
+                {"detail": "session_id debe ser un UUID válido."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         rows = list(

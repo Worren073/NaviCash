@@ -62,6 +62,7 @@ class UserSerializer(serializers.ModelSerializer):
             "timezone_name",
             "reminder_days",
             "is_onboarded",
+            "deletion_scheduled_at",
             "is_active",
             "date_joined",
         ]
@@ -374,6 +375,28 @@ class ChangePasswordSerializer(serializers.Serializer):
         self.user.set_password(self.validated_data["new_password"])
         self.user.save(update_fields=["password"])
         return self.user
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    """Confirma la eliminación de la cuenta verificando la contraseña.
+
+    La contraseña es la prueba de identidad exigida antes de agendar la purga
+    (período de gracia de ``ACCOUNT_DELETION_GRACE_DAYS`` días, cancelable).
+    """
+
+    password = serializers.CharField(max_length=128, write_only=True)
+
+    def __init__(self, *args, **kwargs):
+        """Acepta el usuario autenticado vía ``user=`` (mismo patrón que
+        ``ChangePasswordSerializer``)."""
+        self.user = kwargs.pop("user", None)
+        super().__init__(*args, **kwargs)
+
+    def validate_password(self, value: str) -> str:
+        """Comprueba que la contraseña corresponda a la cuenta."""
+        if self.user is None or not self.user.check_password(value):
+            raise serializers.ValidationError("La contraseña es incorrecta.")
+        return value
 
 
 class LegalDocumentSerializer(serializers.ModelSerializer):

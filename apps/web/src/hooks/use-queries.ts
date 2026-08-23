@@ -13,6 +13,7 @@ export const queryKeys = {
   shortcuts: ["shortcuts"] as const,
   me: ["me"] as const,
   rates: ["rates"] as const,
+  ratesEuro: ["rates-euro"] as const,
   notifications: ["notifications"] as const,
   subscriptions: ["subscriptions"] as const,
 };

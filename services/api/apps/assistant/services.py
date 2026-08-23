@@ -44,7 +44,7 @@ from apps.assistant.providers import (
     get_transcriber,
 )
 from apps.core.exceptions import BusinessRuleError
-from apps.rates.service import get_usd_rate_for_conversion
+from apps.rates.service import get_eur_rate_for_conversion, get_usd_rate_for_conversion
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +177,9 @@ def _execute_ledger(user, proposal: ActionProposal) -> str:
         if proposal.tasa and proposal.tasa > 0:
             rate = proposal.tasa
             rate_source = proposal.tipo_tasa or "personalizada"
+        elif proposal.tipo_tasa == "euro":
+            rate = get_eur_rate_for_conversion()
+            rate_source = "euro"
         else:
             rate = get_usd_rate_for_conversion()
             rate_source = "oficial"

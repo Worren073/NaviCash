@@ -13,6 +13,8 @@ interface BalanceCardProps {
   tone?: "default" | "flag" | "green";
   showRate?: boolean;
   rate?: string | null;
+  showEuroRate?: boolean;
+  euroRate?: string | null;
   hideAmounts?: boolean;
 }
 
@@ -32,6 +34,8 @@ export function BalanceCard({
   tone = "default",
   showRate,
   rate,
+  showEuroRate,
+  euroRate,
   hideAmounts = false,
 }: BalanceCardProps) {
   const { t } = useTranslation();
@@ -117,6 +121,18 @@ export function BalanceCard({
                 </span>
               </div>
             </>
+          )}
+          {showEuroRate && euroRate != null && (
+            <div className="glass-panel clip-rounded-2xl flex items-center gap-2 rounded-2xl px-4 py-1.5">
+              <span className="text-xs font-bold text-primary">€</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                {hideAmounts
+                  ? HIDDEN
+                  : t("dashboard.euroRate", {
+                      rate: Number(euroRate).toFixed(2),
+                    })}
+              </span>
+            </div>
           )}
         </div>
       </BlurLoading>

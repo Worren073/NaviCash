@@ -14,6 +14,7 @@ import logging
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+sec_logger = logging.getLogger("apps.accounts.security")
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.cache import cache
 from datetime import datetime
@@ -30,11 +31,16 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.accounts.emails import send_password_reset_email
+from apps.accounts.emails import (
+    send_account_deletion_cancelled_email,
+    send_account_deletion_email,
+    send_password_reset_email,
+)
 from apps.accounts.models import LegalDocument, PasswordResetToken, User
 from apps.accounts.serializers import (
     AcceptTermsSerializer,
     ChangePasswordSerializer,
+    DeleteAccountSerializer,
     ForgotPasswordSerializer,
     LegalDocumentSerializer,
     LoginSerializer,
@@ -44,6 +50,12 @@ from apps.accounts.serializers import (
     UserUpdateSerializer,
     VerifyEmailSerializer,
 )
+from apps.accounts.services import (
+    cancel_account_deletion,
+    maybe_purge_daily,
+    schedule_account_deletion,
+)
+from apps.notifications.models import Notification
 
 
 def _record_outstanding(user: User, refresh: RefreshToken) -> None:
@@ -127,6 +139,11 @@ def _login_lock_key(user: User) -> str:
     return f"login_failed:{user.pk}"
 
 
+def _delete_lock_key(user: User) -> str:
+    """Clave de caché del contador de intentos fallidos de eliminación."""
+    return f"delete_failed:{user.pk}"
+
+
 class RegisterView(APIView):
     """Crea una cuenta nueva y envía el correo de verificación.
 
@@ -197,6 +214,11 @@ class LoginView(APIView):
         if lock_key:
             failures = cache.get(lock_key, 0)
             if failures >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
+                sec_logger.warning(
+                    "LOGIN_LOCKOUT email=%s ip=%s",
+                    email,
+                    request.META.get("REMOTE_ADDR", "?"),
+                )
                 return Response(
                     {
                         "detail": "Demasiados intentos fallidos. "
@@ -209,6 +231,11 @@ class LoginView(APIView):
             serializer = LoginSerializer(data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
         except AuthenticationFailed:
+            sec_logger.warning(
+                "LOGIN_FAILED email=%s ip=%s",
+                email,
+                request.META.get("REMOTE_ADDR", "?"),
+            )
             if lock_key:
                 failures = cache.get(lock_key, 0) + 1
                 cache.set(lock_key, failures, timeout=settings.LOGIN_LOCKOUT_MINUTES * 60)
@@ -217,6 +244,11 @@ class LoginView(APIView):
         if lock_key:
             cache.delete(lock_key)
         user = serializer.validated_data["user"]
+        sec_logger.info(
+            "LOGIN_SUCCESS user=%s ip=%s",
+            user.id,
+            request.META.get("REMOTE_ADDR", "?"),
+        )
 
         refresh = RefreshToken.for_user(user)
         _record_outstanding(user, refresh)
@@ -435,12 +467,123 @@ class ChangePasswordView(APIView):
         )
 
 
+class DeleteAccountView(APIView):
+    """Agenda la eliminación de la cuenta del usuario autenticado (art. 17).
+
+    Body: ``{ "password": "..." }`` — prueba de identidad obligatoria. Efectos:
+        1. ``deletion_scheduled_at = ahora + ACCOUNT_DELETION_GRACE_DAYS días``.
+        2. Se revocan TODAS las sesiones (refresh outstanding) y la cookie.
+        3. Correo de confirmación (best-effort: un fallo de Brevo no deshace
+           el agendado) y notificación in-app.
+    Durante la gracia el usuario puede iniciar sesión y cancelar con
+    ``POST /api/auth/cancel-account-deletion``; al vencer, la purga borra
+    cuenta y datos definitivamente.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        # Lockout propio (mismo patrón AUDIT A1 que LoginView): evitar fuerza
+        # bruta sobre la contraseña desde una sesión ya abierta.
+        lock_key = _delete_lock_key(request.user)
+        if cache.get(lock_key, 0) >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
+            sec_logger.warning("DELETE_LOCKOUT user=%s", request.user.pk)
+            return Response(
+                {
+                    "detail": "Demasiados intentos fallidos. "
+                    "Espera unos minutos e intenta de nuevo."
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        try:
+            serializer = DeleteAccountSerializer(data=request.data, user=request.user)
+            serializer.is_valid(raise_exception=True)
+        except Exception:
+            failures = cache.get(lock_key, 0) + 1
+            cache.set(lock_key, failures, timeout=settings.LOGIN_LOCKOUT_MINUTES * 60)
+            sec_logger.warning(
+                "DELETE_PASSWORD_FAILED user=%s ip=%s",
+                request.user.pk,
+                request.META.get("REMOTE_ADDR", "?"),
+            )
+            raise
+        cache.delete(lock_key)
+
+        schedule_account_deletion(request.user)
+        _revoke_refresh_family(request.user)
+
+        user = request.user
+        try:
+            send_account_deletion_email(user.email, user.name)
+        except Exception:  # noqa: BLE001 - el agendado ya ocurrió; no revertir
+            pass
+        Notification.objects.create(
+            user=user,
+            kind="system",
+            title="Eliminación de cuenta programada",
+            message=(
+                "Tu cuenta se eliminará definitivamente en "
+                f"{settings.ACCOUNT_DELETION_GRACE_DAYS} días. "
+                "Puedes cancelarlo desde tu perfil."
+            ),
+            extra={"scope": "account_deletion", "action": "scheduled"},
+        )
+
+        response = Response(
+            {
+                "detail": (
+                    "Tu cuenta se eliminará en "
+                    f"{settings.ACCOUNT_DELETION_GRACE_DAYS} días si no lo "
+                    "cancelas. Cerramos todas tus sesiones por seguridad."
+                ),
+                "deletion_scheduled_at": UserSerializer(user).data["deletion_scheduled_at"],
+            },
+            status=status.HTTP_200_OK,
+        )
+        return _clear_refresh_cookie(response)
+
+
+class CancelAccountDeletionView(APIView):
+    """Cancela una eliminación de cuenta pendiente (dentro de la gracia).
+
+    Sin body y sin contraseña: el usuario ya está autenticado con Bearer y la
+    operación solo restaura su acceso — nunca lo amplía.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if not user.deletion_scheduled_at:
+            return Response(
+                {"detail": "No hay ninguna eliminación pendiente."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cancel_account_deletion(user)
+        try:
+            send_account_deletion_cancelled_email(user.email, user.name)
+        except Exception:  # noqa: BLE001 - la cancelación ya ocurrió; no revertir
+            pass
+        return Response(
+            {
+                "detail": "Eliminación cancelada. Tu cuenta sigue activa.",
+                "user": UserSerializer(user).data,
+            }
+        )
+
+
 class MeView(APIView):
     """Devuelve el perfil del usuario autenticado (token Bearer)."""
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        # Purga perezosa (sin cron desplegado): máximo una corrida diaria por
+        # instancia; se excluye al usuario del request para no borrarlo a sí
+        # mismo en mitad de la respuesta.
+        maybe_purge_daily(exclude_user_pk=request.user.pk)
         return Response(UserSerializer(request.user).data)
 
     def patch(self, request):

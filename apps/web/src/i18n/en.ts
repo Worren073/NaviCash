@@ -44,7 +44,8 @@ export default {
     totalSavings: "Total savings",
     balances: "My balances",
     totalBs: "Total in bolivars",
-    bcvRate: "BCV: {{rate}} VES",
+    bcvRate: "USD (BCV): {{rate}} VES",
+    euroRate: "EUR (BCV): {{rate}} VES",
     vesBalance: "VES balance",
     usdBalance: "USD balance",
     usdEquivalent: "USD equivalent",
@@ -95,6 +96,7 @@ export default {
     transferAmount: "Amount to transfer",
     transferRate: "Rate",
     transferRateBcv: "BCV (official rate)",
+    transferRateEuro: "Euro (official rate)",
     transferRateCustom: "Custom",
     transferRateLabel: "Rate used for the transfer",
     transferCustomPlaceholder: "e.g. 860.00",
@@ -177,6 +179,9 @@ export default {
     resetInvalidLink: "This link is invalid or expired. Request a new one.",
     sessionExpired: "Your session expired, please log in again",
     registered: "Account created, please log in",
+    termsRequiredLogin:
+      "The terms have been updated. You must accept them to continue.",
+    termsDeclinedLogout: "If you don't accept the terms, you will be logged out.",
   },
   menu: {
     title: "Menu",
@@ -410,6 +415,17 @@ export default {
     legalNotAccepted: "Not accepted",
     legalReacceptRequired: "You must re-accept the updated terms",
     legalAcceptNow: "Accept terms and conditions",
+    dangerZoneTitle: "Danger zone",
+    deleteTitle: "Delete my account",
+    deleteWarning:
+      "All your sessions will be closed and your account will be scheduled for deletion in 15 days. For legal reasons your data will remain in our database during that period; afterwards it will be permanently erased and cannot be recovered.",
+    deletePasswordLabel: "Confirm with your password",
+    deleteConfirm: "Delete permanently",
+    deleteCancel: "Cancel",
+    deleteScheduledBanner:
+      "Your account will be permanently deleted on {{date}}. You can cancel until that date.",
+    cancelDeletion: "Cancel deletion",
+    deletionCancelled: "Deletion cancelled. Your account is active.",
   },
   errors: {
     generic: "Something went wrong. Try again.",

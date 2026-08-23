@@ -23,7 +23,7 @@ from django.utils import timezone
 
 from apps.rates.models import ExchangeRate
 from apps.rates.providers import RateProviderError
-from apps.rates.service import _is_fresh, refresh_official_rate
+from apps.rates.service import _is_fresh, refresh_euro_rate, refresh_official_rate
 
 
 class Command(BaseCommand):
@@ -57,12 +57,19 @@ class Command(BaseCommand):
         else:
             try:
                 rate = refresh_official_rate()
+                eur_rate = refresh_euro_rate()
             except RateProviderError as exc:
                 raise CommandError(f"No se pudo refrescar la tasa: {exc}") from exc
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Tasa oficial guardada: {rate.currency} {rate.effective_rate} "
+                    f"Tasa oficial USD guardada: {rate.currency} {rate.effective_rate} "
                     f"(fuente={rate.source}, fecha={rate.rate_date.isoformat()})"
+                )
+            )
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Tasa oficial EUR guardada: {eur_rate.currency} {eur_rate.effective_rate} "
+                    f"(fuente={eur_rate.source}, fecha={eur_rate.rate_date.isoformat()})"
                 )
             )
 
@@ -76,14 +83,24 @@ class Command(BaseCommand):
             )
 
     def _latest_is_fresh(self) -> bool:
-        """True si la última tasa oficial guardada aún está dentro del TTL."""
+        """True si la última tasa oficial guardada (USD y EUR) aún está dentro del TTL."""
         ttl = getattr(settings, "RATE_TTL_MINUTES", 60)
-        latest = (
-            ExchangeRate.objects.filter(source="oficial")
+        latest_usd = (
+            ExchangeRate.objects.filter(source="oficial", currency="VES")
             .order_by("-input_at")
             .first()
         )
-        return latest is not None and _is_fresh(latest, ttl)
+        latest_eur = (
+            ExchangeRate.objects.filter(source="oficial", currency="EUR")
+            .order_by("-input_at")
+            .first()
+        )
+        return (
+            latest_usd is not None
+            and _is_fresh(latest_usd, ttl)
+            and latest_eur is not None
+            and _is_fresh(latest_eur, ttl)
+        )
 
     def _purge_older_than(self, retention_days: int) -> int:
         """Borra las tasas con ``input_at`` anterior al corte y devuelve el total."""

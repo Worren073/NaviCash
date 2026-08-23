@@ -155,6 +155,8 @@ export default function DashboardPage() {
             }
             showRate
             rate={data?.rate ?? null}
+            showEuroRate
+            euroRate={data?.euro_rate ?? null}
             hideAmounts={hideBalances}
           />
           <BalanceCard
