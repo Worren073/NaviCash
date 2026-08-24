@@ -74,6 +74,9 @@ export default defineConfig(({ command, mode }) => {
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+          // Handlers de Web Push (JS plano en public/): generateSW no permite
+          // añadir listeners directamente al SW generado.
+          importScripts: ["/sw-push.js"],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/navicash-api.*\.(jpg|jpeg|png|gif|svg)$/,

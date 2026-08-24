@@ -415,6 +415,18 @@ export default {
     legalNotAccepted: "Not accepted",
     legalReacceptRequired: "You must re-accept the updated terms",
     legalAcceptNow: "Accept terms and conditions",
+    pushTitle: "Push notifications",
+    pushDesc:
+      "Get alerts for due dates, overdue operations and reached goals even when NaviCash is closed.",
+    pushEnable: "Enable notifications",
+    pushDisable: "Disable notifications",
+    pushOn: "Notifications are enabled on this device.",
+    pushOff: "Notifications are disabled on this device.",
+    pushDenied:
+      "Permission is blocked. Enable it in your browser or system settings to turn them on.",
+    pushNeedsInstall:
+      "On iPhone you must install NaviCash first: open the Share menu and choose “Add to Home Screen”.",
+    pushUnsupported: "This browser does not support push notifications.",
     dangerZoneTitle: "Danger zone",
     deleteTitle: "Delete my account",
     deleteWarning:

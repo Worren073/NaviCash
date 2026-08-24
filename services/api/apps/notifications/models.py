@@ -17,8 +17,51 @@ NOTIFICATION_KINDS = [
     ("due_soon", "Vence pronto"),
     ("overdue", "Vencida"),
     ("goal_reached", "Meta alcanzada"),
+    ("expense_nudge", "Recordatorio de registro"),
     ("system", "Sistema"),
 ]
+
+
+class PushSubscription(OwnedModel):
+    """Suscripción Web Push (endpoint + claves de cifrado) del usuario.
+
+    Campos:
+        endpoint: URL única que asigna el servicio push del navegador
+            (FCM/APNs/Mozilla); es la dirección a la que se envía el push.
+        p256dh / auth: claves públicas de cifrado ECDH que el navegador
+            entregó al suscribirse (necesarias para cifrar el payload).
+        user_agent: navegador/dispositivo declarado por el frontend, solo
+            informativo para depurar suscripciones duplicadas.
+        last_success_at: último envío aceptado; las respuestas 404/410 del
+            servicio push provocan la baja automática (ver services.py).
+    """
+
+    endpoint = models.URLField(
+        max_length=500,
+        unique=True,
+        verbose_name="Endpoint push",
+    )
+    p256dh = models.CharField(max_length=120, verbose_name="Clave p256dh")
+    auth = models.CharField(max_length=60, verbose_name="Secreto auth")
+    user_agent = models.CharField(
+        max_length=200, blank=True, default="", verbose_name="Navegador"
+    )
+    last_success_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Último envío OK"
+    )
+
+    class Meta:
+        verbose_name = "Suscripción push"
+        verbose_name_plural = "Suscripciones push"
+        ordering = ["-created_at"]
+        indexes = [
+            # Tick: iterar rápido las suscripciones de cada usuario.
+            models.Index(fields=["user"], name="push_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        """Representación corta: dueño + cola del endpoint."""
+        return f"{self.user} → …{self.endpoint[-24:]}"
 
 
 class Notification(OwnedModel):

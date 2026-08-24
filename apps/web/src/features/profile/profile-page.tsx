@@ -2,10 +2,16 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, BellRing } from "lucide-react";
 import { LogoutIcon, SaveIcon, ListIcon, CheckedIcon } from "@/components/icons";
 
 import { api, ApiErrorClass, setAccessToken } from "@/lib/api";
+import {
+  getPushState,
+  subscribeToPush,
+  unsubscribeFromPush,
+  type PushState,
+} from "@/lib/push";
 import { queryKeys } from "@/hooks/use-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +28,7 @@ import {
 import LegalAcceptanceDialog from "@/features/legal/legal-acceptance-dialog";
 import { renderLegalMarkdown } from "@/features/legal/render-legal";
 import type { User } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 interface LegalDocument {
   id: string;
@@ -40,6 +47,93 @@ interface LegalAcceptance {
   accepted_terms_version: string;
   current_terms_version: string;
   needs_reacceptance: boolean;
+}
+
+/**
+ * Tarjeta de Web Push: muestra el estado real (permiso, instalación iOS,
+ * suscripción) y activa/desactiva con gesto de usuario, requisito de iOS
+ * para poder pedir el permiso.
+ */
+function PushNotificationsCard() {
+  const { t } = useTranslation();
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getPushState()
+      .then((s) => {
+        if (alive) setState(s);
+      })
+      .catch(() => {
+        if (alive) setState("unsupported");
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const statusText =
+    state === "on"
+      ? t("profile.pushOn")
+      : state === "off"
+        ? t("profile.pushOff")
+        : state === "denied"
+          ? t("profile.pushDenied")
+          : state === "needs-install"
+            ? t("profile.pushNeedsInstall")
+            : t("profile.pushUnsupported");
+
+  const toggle = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      if (state === "on") await unsubscribeFromPush();
+      else if (state === "off") await subscribeToPush();
+      setState(await getPushState());
+    } catch (err) {
+      setError(err instanceof ApiErrorClass ? err.message : t("errors.generic"));
+      setState(await getPushState().catch(() => "unsupported" as PushState));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="glass-panel clip-rounded-2xl space-y-3 rounded-2xl p-5">
+      <h3 className="flex items-center gap-2 text-lg font-semibold text-on-surface">
+        <BellRing className="h-5 w-5 text-primary" />
+        {t("profile.pushTitle")}
+      </h3>
+      <p className="text-sm text-on-surface-variant">{t("profile.pushDesc")}</p>
+      <p
+        className={cn(
+          "rounded-lg px-3 py-2 text-sm",
+          state === "on"
+            ? "bg-success-container/40 text-on-surface"
+            : "bg-surface-container/60 text-on-surface-variant"
+        )}
+      >
+        {statusText}
+      </p>
+      {(state === "on" || state === "off") && (
+        <Button
+          variant={state === "on" ? "outline" : "default"}
+          className="w-full"
+          onClick={() => void toggle()}
+          disabled={busy || state === null}
+        >
+          {busy
+            ? t("common.loading")
+            : state === "on"
+              ? t("profile.pushDisable")
+              : t("profile.pushEnable")}
+        </Button>
+      )}
+      {error && <p className="text-sm text-status-delayed">{error}</p>}
+    </section>
+  );
 }
 
 export default function ProfilePage() {
@@ -337,6 +431,9 @@ export default function ProfilePage() {
               </div>
             )}
           </section>
+
+          {/* Notificaciones push (Web Push + VAPID) */}
+          <PushNotificationsCard />
 
           {/* Zona de riesgo: eliminación de cuenta */}
           <section className="glass-panel clip-rounded-2xl space-y-3 rounded-2xl border border-error-container p-5">

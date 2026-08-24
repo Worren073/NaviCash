@@ -1,0 +1,35 @@
+# Disparo horario del tick de Web Push.
+#
+# Render (plan free) no ofrece cron, así que GitHub Actions llama cada hora al
+# endpoint interno POST /api/internal/tick, que genera las alertas nuevas por
+# usuario y las envía vía VAPID. La deduplicación de Notification
+# (índice único user+kind+extra) hace seguro el ritmo horario: cada alerta se
+# empuja UNA sola vez aunque el workflow corra mil veces.
+#
+# Secrets requeridos en el repo (Settings → Secrets and variables → Actions):
+#   API_URL         — URL base del backend, p. ej. https://navicash-api.onrender.com
+#   INTERNAL_TOKEN  — MISMO valor que la env var INTERNAL_TOKEN del servicio en Render
+name: reminders
+
+on:
+  schedule:
+    # Minuto 7 para esquivar la congestión del :00 en los runners gratuitos.
+    - cron: "7 * * * *"
+  workflow_dispatch: # permite dispararlo a mano desde la pestaña Actions
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al tick interno de notificaciones
+        run: |
+          code=$(curl -fsS -o /tmp/tick.json -w "%{http_code}" \
+            -X POST "${{ secrets.API_URL }}/api/internal/tick" \
+            -H "X-Internal-Token: ${{ secrets.INTERNAL_TOKEN }}" \
+            --max-time 120 || true)
+          echo "tick http=$code"
+          cat /tmp/tick.json || true
+          if [ "$code" != "200" ] && [ "$code" != "409" ]; then
+            echo "::error::El tick falló (http=$code)"
+            exit 1
+          fi

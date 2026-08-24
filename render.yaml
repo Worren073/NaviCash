@@ -104,6 +104,19 @@ services:
       # generativelanguage, o Whisper si el proveedor es OpenAI/Groq.
       - key: AAI_API_KEY
         sync: false
+      # Web Push (VAPID): generar UNA vez con
+      # `python manage.py generate_vapid_keys` y pegar los valores aquí.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: "mailto:navicashvnz@gmail.com"
+      # Token compartido con el cron horario de GitHub Actions
+      # (.github/workflows/reminders.yml) para POST /api/internal/tick.
+      # Debe coincidir con el secret INTERNAL_TOKEN del repo en GitHub.
+      - key: INTERNAL_TOKEN
+        sync: false
 
   # ================== Frontend / PWA (Docker + nginx) =======================
   # Render Static Site no permite emitir headers HTTP (CSP, X-Frame-Options,

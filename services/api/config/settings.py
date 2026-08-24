@@ -85,6 +85,20 @@ env = environ.Env(
     # solicitud y la purga definitiva. Durante la gracia el usuario puede
     # iniciar sesión y cancelar; al vencer, el purge borra todo (RGPD art. 17).
     ACCOUNT_DELETION_GRACE_DAYS=(int, 15),
+    # Web Push (VAPID): claves para cifrar los pushes del navegador. Se
+    # generan UNA vez con `python manage.py generate_vapid_keys` (ver comando).
+    VAPID_PUBLIC_KEY=(str, ""),
+    VAPID_PRIVATE_KEY=(str, ""),
+    # Identificador de contacto incluido en los claims VAPID.
+    VAPID_SUBJECT=(str, "mailto:navicashvnz@gmail.com"),
+    # Token que autoriza el disparo externo (GitHub Actions cron) del
+    # endpoint POST /api/internal/tick. Vacío = tick deshabilitado (403).
+    INTERNAL_TOKEN=(str, ""),
+    # Máximo de pushes por usuario en un mismo ciclo del tick.
+    PUSH_MAX_PER_TICK=(int, 3),
+    # Hora LOCAL del usuario a partir de la cual puede salir el recordatorio
+    # diario "¿gastos sin registrar?" (solo si ese día no registró nada).
+    NUDGE_LOCAL_HOUR=(int, 19),
 )
 
 # ---------------------------------------------------------------------------
@@ -283,6 +297,14 @@ LOGIN_LOCKOUT_MINUTES = env("LOGIN_LOCKOUT_MINUTES")
 # Período de gracia (en días) entre la solicitud de eliminación de cuenta y la
 # purga definitiva de sus datos. Ver apps/accounts/services.py.
 ACCOUNT_DELETION_GRACE_DAYS = env("ACCOUNT_DELETION_GRACE_DAYS")
+
+# Web Push (VAPID) y disparo externo del tick de notificaciones.
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY")
+VAPID_SUBJECT = env("VAPID_SUBJECT")
+INTERNAL_TOKEN = env("INTERNAL_TOKEN")
+PUSH_MAX_PER_TICK = env("PUSH_MAX_PER_TICK")
+NUDGE_LOCAL_HOUR = env("NUDGE_LOCAL_HOUR")
 
 # ---------------------------------------------------------------------------
 # DRF y JWT
