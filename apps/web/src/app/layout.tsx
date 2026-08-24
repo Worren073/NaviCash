@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
@@ -40,6 +40,39 @@ const HOLD_MS = 400;
 function NotificationBadge() {
   const { data } = useNotifications();
   const unread = data?.unread_count ?? 0;
+
+  // Badge API: contador sobre el ícono de la PWA instalada (iOS 16.4+,
+  // Android Chrome). Requiere permiso de notificaciones en iOS; si falta,
+  // el navegador rechaza la promesa y se ignora en silencio.
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (count?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (
+      typeof nav.setAppBadge !== "function" ||
+      typeof nav.clearAppBadge !== "function"
+    ) {
+      return;
+    }
+    if (unread > 0) {
+      void nav.setAppBadge(Math.min(unread, 99)).catch(() => undefined);
+    } else {
+      void nav.clearAppBadge().catch(() => undefined);
+    }
+  }, [unread]);
+
+  // Al desmontar (logout) limpiar el badge a nivel de sistema.
+  useEffect(
+    () => () => {
+      const nav = navigator as Navigator & {
+        clearAppBadge?: () => Promise<void>;
+      };
+      void nav.clearAppBadge?.().catch(() => undefined);
+    },
+    []
+  );
+
   if (unread === 0) return null;
   return (
     <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-delayed px-1 text-[10px] font-bold text-white">

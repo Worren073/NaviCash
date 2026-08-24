@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BellRing,
   CheckCircle2,
@@ -59,7 +59,11 @@ export default function NewOperationPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [tipo, setTipo] = useState<"cobro" | "pago">("pago");
+  // Shortcuts del manifest llegan como /operations/new?tipo=cobro|pago.
+  const [searchParams] = useSearchParams();
+  const [tipo, setTipo] = useState<"cobro" | "pago">(
+    searchParams.get("tipo") === "cobro" ? "cobro" : "pago"
+  );
   const [currency, setCurrency] = useState<"USD" | "VES">("USD");
   const [monto, setMonto] = useState("");
   const [concepto, setConcepto] = useState("");

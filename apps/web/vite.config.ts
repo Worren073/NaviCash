@@ -40,16 +40,35 @@ export default defineConfig(({ command, mode }) => {
           categories: ["finance", "productivity"],
           icons: [
             {
-              src: "/favicon-192.svg",
+              src: "/icon-192x192.png",
               sizes: "192x192",
-              type: "image/svg+xml",
+              type: "image/png",
               purpose: "any",
             },
             {
-              src: "/favicon-512.svg",
+              src: "/icon-512x512.png",
               sizes: "512x512",
-              type: "image/svg+xml",
+              type: "image/png",
               purpose: "any",
+            },
+            {
+              // Ícono adaptativo Android (zona segura al recortar en círculo).
+              src: "/maskable-512x512.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "maskable",
+            },
+          ],
+          shortcuts: [
+            {
+              name: "Nuevo pago",
+              short_name: "Pago",
+              url: "/operations/new?tipo=pago",
+            },
+            {
+              name: "Nuevo cobro",
+              short_name: "Cobro",
+              url: "/operations/new?tipo=cobro",
             },
           ],
         },

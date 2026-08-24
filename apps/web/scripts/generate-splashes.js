@@ -18,8 +18,8 @@ const SPLASHES = [
   { name: "splash-750x1334.png", w: 750, h: 1334 },   // iPhone 6/7/8
   { name: "splash-1242x2208.png", w: 1242, h: 2208 }, // iPhone 6+/7+/8+
   { name: "splash-1125x2436.png", w: 1125, h: 2436 }, // iPhone X/XS/11 Pro
-  { name: "splash-1284x2778.png", w: 1284, h: 2778 }, // iPhone 12/13/14 Pro Max
-  { name: "splash-1588x3458.png", w: 1588, h: 3458 }, // iPhone 15 Pro Max
+  { name: "splash-1284x2778.png", w: 1284, h: 2778 }, // iPhone 12/13 Pro Max, 14 Plus
+  { name: "splash-1290x2796.png", w: 1290, h: 2796 }, // iPhone 14 Pro Max, 15/16 Pro Max
 ];
 
 function makeSplashSVG(w, h) {
