@@ -341,4 +341,9 @@ def register_transaction(
     )
     if estado == "pagado":
         mark_paid(tx)
+    try:
+        from apps.assistant.memory import learn_from_transaction
+        learn_from_transaction(user, tx)
+    except Exception:  # noqa: BLE001
+        pass
     return tx

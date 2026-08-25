@@ -427,6 +427,16 @@ export default {
     pushNeedsInstall:
       "On iPhone you must install NaviCash first: open the Share menu and choose “Add to Home Screen”.",
     pushUnsupported: "This browser does not support push notifications.",
+    navimemTitle: "What Navi remembers about you",
+    navimemDesc:
+      "Navi learns from your entries to suggest accounts and other details without asking. You can delete anything you want.",
+    navimemEmpty:
+      "No learned preferences yet. Navi will start remembering as you log transactions.",
+    navimemPlaceholder: "E.g.: I always pay electricity with Banesco",
+    navimemAdd: "Save",
+    navimemDelete: "Delete memory",
+    navimemClear: "Delete everything Navi remembers",
+    navimemClearConfirm: "Delete all preferences Navi has learned?",
     dangerZoneTitle: "Danger zone",
     deleteTitle: "Delete my account",
     deleteWarning:

@@ -119,10 +119,15 @@ def build_context(user, today: date | None = None) -> dict:
         for w in summary["wallets"]
     ]
 
+    from apps.assistant.memory import memory_context
+
+    mem = memory_context(user)
+
     return {
         "base_currency": user.base_currency,
         "rate": str(rate_value) if rate_value is not None else None,
         "euro_rate": str(euro_value) if euro_value is not None else None,
+        "memoria": mem,
         "total_balance_usd": str(summary["total_balance_usd"]),
         "total_balance_ves": str(summary["total_balance_ves"]) if summary["total_balance_ves"] is not None else None,
         "to_receive": str(summary["to_receive"]),

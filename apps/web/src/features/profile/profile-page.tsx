@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, BellRing } from "lucide-react";
+import { AlertTriangle, BellRing, BrainCircuit, Trash2 } from "lucide-react";
 import { LogoutIcon, SaveIcon, ListIcon, CheckedIcon } from "@/components/icons";
 
 import { api, ApiErrorClass, setAccessToken } from "@/lib/api";
@@ -132,6 +132,140 @@ function PushNotificationsCard() {
         </Button>
       )}
       {error && <p className="text-sm text-status-delayed">{error}</p>}
+    </section>
+  );
+}
+
+interface NaviMemory {
+  id: string;
+  clave: string;
+  valor: string;
+  fuente: "auto" | "usuario";
+  usos: number;
+  ultimo_uso: string;
+}
+
+function NaviMemoryCard() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [noteText, setNoteText] = useState("");
+
+  const { data: memories = [], isLoading } = useQuery({
+    queryKey: ["assistant", "memory"],
+    queryFn: () => api.get<NaviMemory[]>("/assistant/memory"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/assistant/memory/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["assistant", "memory"] }),
+  });
+
+  const deleteAllMutation = useMutation({
+    mutationFn: () => api.delete("/assistant/memory?all=1"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["assistant", "memory"] }),
+  });
+
+  const addMutation = useMutation({
+    mutationFn: (texto: string) => api.post("/assistant/memory", { texto }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["assistant", "memory"] });
+      setNoteText("");
+    },
+  });
+
+  const formatKey = (k: string) => {
+    if (k.startsWith("wallet_para:")) return k.replace("wallet_para:", "");
+    if (k.startsWith("personalizado:")) return k.replace("personalizado:", "");
+    if (k.startsWith("glosario:")) return k.replace("glosario:", "");
+    return k;
+  };
+
+  return (
+    <section className="glass-panel clip-rounded-2xl space-y-3 rounded-2xl p-5">
+      <h3 className="flex items-center gap-2 text-lg font-semibold text-on-surface">
+        <BrainCircuit className="h-5 w-5 text-primary" />
+        {t("profile.navimemTitle")}
+      </h3>
+      <p className="text-sm text-on-surface-variant">{t("profile.navimemDesc")}</p>
+
+      {isLoading ? (
+        <Skeleton className="h-20 w-full" />
+      ) : memories.length === 0 ? (
+        <p className="rounded-lg bg-surface-container/60 px-3 py-2 text-sm text-on-surface-variant">
+          {t("profile.navimemEmpty")}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {memories.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center justify-between gap-2 rounded-lg bg-surface-container/40 px-3 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm text-on-surface">{formatKey(m.clave)}</p>
+                <p className="truncate text-xs text-on-surface-variant">{m.valor}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-xs font-medium",
+                    m.fuente === "auto"
+                      ? "bg-primary/10 text-primary"
+                      : "bg-secondary/10 text-secondary"
+                  )}
+                >
+                  {m.usos}×
+                </span>
+                <button
+                  type="button"
+                  onClick={() => deleteMutation.mutate(m.id)}
+                  className="rounded-full p-1 text-on-surface-variant hover:bg-error-container/40 hover:text-error"
+                  aria-label={t("profile.navimemDelete")}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (noteText.trim().length >= 5) addMutation.mutate(noteText.trim());
+        }}
+        className="flex gap-2"
+      >
+        <Input
+          type="text"
+          placeholder={t("profile.navimemPlaceholder")}
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          className="flex-1"
+          maxLength={200}
+        />
+        <Button
+          type="submit"
+          variant="outline"
+          disabled={noteText.trim().length < 5 || addMutation.isPending}
+        >
+          {addMutation.isPending ? t("common.loading") : t("profile.navimemAdd")}
+        </Button>
+      </form>
+
+      {memories.length > 0 && (
+        <Button
+          variant="ghost"
+          className="w-full text-status-delayed hover:text-error"
+          onClick={() => {
+            if (window.confirm(t("profile.navimemClearConfirm"))) deleteAllMutation.mutate();
+          }}
+          disabled={deleteAllMutation.isPending}
+        >
+          {t("profile.navimemClear")}
+        </Button>
+      )}
     </section>
   );
 }
@@ -434,6 +568,9 @@ export default function ProfilePage() {
 
           {/* Notificaciones push (Web Push + VAPID) */}
           <PushNotificationsCard />
+
+          {/* Memoria del asistente Navi */}
+          <NaviMemoryCard />
 
           {/* Zona de riesgo: eliminación de cuenta */}
           <section className="glass-panel clip-rounded-2xl space-y-3 rounded-2xl border border-error-container p-5">

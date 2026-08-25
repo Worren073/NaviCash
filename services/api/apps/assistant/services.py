@@ -36,6 +36,7 @@ from apps.assistant.actions import (
     is_decline,
 )
 from apps.assistant.context import build_context
+from apps.assistant.memory import handle_forget_command, handle_remember_command, is_forget_command, is_remember_command
 from apps.assistant.intent_rules import answer_deterministic
 from apps.assistant.providers import (
     MockAssistantProvider,
@@ -81,6 +82,12 @@ def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
     pending = cache.get(pending_key)
 
     text: str | None = None
+
+    # 0. Comandos de memoria: «recuerda que…» / «olvida…».
+    if is_remember_command(message):
+        text = handle_remember_command(user, message)
+    elif is_forget_command(message):
+        text = handle_forget_command(user, message)
 
     # 1. Bloqueo total de intentos peligrosos.
     if is_dangerous(message):

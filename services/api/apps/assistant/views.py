@@ -16,14 +16,17 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
-from apps.assistant.models import ChatMessage
+from apps.assistant.models import ChatMessage, NaviMemory
 from apps.assistant.serializers import (
     ChatMessageSerializer,
     ChatRequestSerializer,
     ChatResponseSerializer,
+    NaviMemoryCreateSerializer,
+    NaviMemorySerializer,
     TranscriptionRequestSerializer,
 )
 from apps.assistant.services import chat, transcribe
+from apps.assistant.memory import forget_all, list_memories, remember
 
 #: Límite duro del historial (M4): se devuelven como máximo estos mensajes.
 HISTORY_LIMIT = 50
@@ -121,3 +124,58 @@ class TranscriptionView(GenericAPIView):
         upload = serializer.validated_data["audio"]
         result = transcribe(upload.read(), upload.name or "audio")
         return Response({"transcript": result["transcript"]}, status=status.HTTP_200_OK)
+
+
+class NaviMemoryListView(GenericAPIView):
+    """GET /api/assistant/memory → listar preferencias.
+    POST /api/assistant/memory → crear nota manual.
+    DELETE /api/assistant/memory?all=1 → borrar todas.
+    """
+
+    serializer_class = NaviMemorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request) -> Response:
+        """Devuelve las memorias del usuario autenticado."""
+        rows = list_memories(request.user)
+        serializer = self.get_serializer(rows, many=True)
+        return Response(serializer.data)
+
+    def post(self, request) -> Response:
+        """Crea una nota personalizada desde el perfil."""
+        ser = NaviMemoryCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        clave = f"personalizado:{ser.validated_data['texto'][:40].lower().strip()}"
+        memory = remember(
+            request.user, clave, ser.validated_data["texto"],
+            fuente=NaviMemory.FUENTE_USUARIO,
+        )
+        return Response(
+            NaviMemorySerializer(memory).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def delete(self, request) -> Response:
+        """Borra todas las memorias del usuario (?all=1)."""
+        if request.query_params.get("all") == "1":
+            count = forget_all(request.user)
+            return Response({"deleted": count})
+        return Response(
+            {"detail": "Usa ?all=1 para borrar todas, o DELETE /memory/<id> para una."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class NaviMemoryDetailView(GenericAPIView):
+    """DELETE /api/assistant/memory/<id> → borrar una memoria individual."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk=None) -> Response:
+        deleted, _ = NaviMemory.objects.filter(user=request.user, pk=pk).delete()
+        if not deleted:
+            return Response(
+                {"detail": "Memoria no encontrada."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)

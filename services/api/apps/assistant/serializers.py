@@ -86,9 +86,9 @@ class TranscriptionRequestSerializer(serializers.Serializer):
         """Rechaza clips demasiado grandes o con extensión no soportada.
 
         El content-type que manda el navegador es poco fiable (Safari puede
-        enviar ``application/octet-stream`` aunque el audio sea mp4), así que
-        se valida por extensión del nombre; el proveedor real (Whisper) es
-        quien juzga el contenido.
+        enviar ``application/octet-stream`` aunque el audio sea mp4), así que se
+        valida por extensión del nombre; el proveedor real (Whisper) es quien
+        juzga el contenido.
         """
         if value.size > MAX_AUDIO_BYTES:
             raise serializers.ValidationError("El audio es demasiado grande (máximo 10 MB).")
@@ -96,4 +96,25 @@ class TranscriptionRequestSerializer(serializers.Serializer):
         extension = f".{name.rsplit('.', 1)[-1]}" if "." in name else ""
         if extension not in ALLOWED_AUDIO_EXTENSIONS:
             raise serializers.ValidationError("Formato de audio no soportado.")
+        return value
+
+
+class NaviMemorySerializer(serializers.ModelSerializer):
+    """Serialización de una preferencia aprendida por Navi."""
+
+    class Meta:
+        from apps.assistant.models import NaviMemory as _NaviMemory
+        model = _NaviMemory
+        fields = ["id", "clave", "valor", "fuente", "usos", "ultimo_uso"]
+        read_only_fields = fields
+
+
+class NaviMemoryCreateSerializer(serializers.Serializer):
+    """Entrada para crear una memoria manualmente desde el Perfil."""
+
+    texto = serializers.CharField(max_length=200, min_length=5, trim_whitespace=True)
+
+    def validate_texto(self, value: str) -> str:
+        if len(value) < 5:
+            raise serializers.ValidationError("La nota es muy corta.")
         return value

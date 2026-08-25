@@ -1,8 +1,12 @@
-"""models — Mensajes de la conversación con el asistente.
+"""models — Mensajes y memoria del asistente Navi.
 
 La conversación se agrupa en sesiones (``session_id``) para poder recuperar el
 historial; solo se persisten los turnos de texto, nunca datos de contexto ni
 credenciales.
+
+``NaviMemory`` almacena preferencias aprendidas del usuario (asociaciones
+concepto↔cuenta, glosarios personales, notas explícitas) para que Navi se
+vuelva más certero con el uso.
 """
 
 from __future__ import annotations
@@ -44,3 +48,42 @@ class ChatMessage(OwnedModel):
     def __str__(self) -> str:
         """Representación: rol + recorte del contenido."""
         return f"{self.role}: {self.content[:60]}"
+
+
+class NaviMemory(OwnedModel):
+    """Preferencia aprendida de un usuario por Navi.
+
+    Clave canónica de la preferencia (ej. ``wallet_para:gasolina``,
+    ``personalizado:frase_favorita``) ligada a un valor de texto; cada uso
+    refuerza el registro.  ``fuente`` indica si se aprendió automáticamente
+    de un registro exitoso o si el usuario la pidió explícitamente.
+
+    Sobrevive al ``purge_assistant`` (que solo limpia ``ChatMessage``).
+    """
+
+    FUENTE_AUTO = "auto"
+    FUENTE_USUARIO = "usuario"
+    FUENTE_CHOICES = [
+        (FUENTE_AUTO, "Aprendido automáticamente"),
+        (FUENTE_USUARIO, "Guardado por el usuario"),
+    ]
+
+    clave = models.CharField(max_length=80, verbose_name="Clave")
+    valor = models.CharField(max_length=200, verbose_name="Valor")
+    fuente = models.CharField(max_length=8, choices=FUENTE_CHOICES, default=FUENTE_AUTO, verbose_name="Fuente")
+    usos = models.PositiveIntegerField(default=1, verbose_name="Usos")
+    ultimo_uso = models.DateTimeField(auto_now=True, verbose_name="Último uso")
+
+    class Meta:
+        verbose_name = "Memoria del asistente"
+        verbose_name_plural = "Memorias del asistente"
+        ordering = ["-usos", "-ultimo_uso"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "clave"], name="navimemory_user_clave_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["user", "usos"], name="memi_user_usos_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.clave}={self.valor} ({self.usos} usos)"
