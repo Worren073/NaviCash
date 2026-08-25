@@ -88,22 +88,32 @@ def memory_context(user, limit: int = 12) -> dict:
 
     Solo incluye asociaciones con usos ≥ 2 y notas explícitas.  El resultado
     es JSON-friendly y no supera ~200 tokens.
-    """
-    rows = (
-        NaviMemory.objects.filter(user=user)
-        .exclude(clave__startswith="personalizado:")
-        .order_by("-usos", "-ultimo_uso")[:limit]
-    )
-    associations = {}
-    for row in rows:
-        token = row.clave.split(":", 1)[-1] if ":" in row.clave else row.clave
-        associations[token] = {"wallet": row.valor, "usos": row.usos}
 
-    notes = list(
-        NaviMemory.objects.filter(user=user, clave__startswith="personalizado:")
-        .order_by("-usos")[:5]
-        .values_list("valor", flat=True)
-    )
+    Respeto al consentimiento del usuario:
+    - ``mode == "full"``: incluye asociaciones auto + notas manuales.
+    - ``mode == "manual"``: solo notas manuales (el usuario las pidió explícitamente).
+    - ``mode == "none"``: vacío (nada se inyecta).
+    """
+    associations = {}
+    notes: list[str] = []
+    mode = getattr(user, "navi_learning_mode", "none")
+
+    if mode == "full":
+        rows = (
+            NaviMemory.objects.filter(user=user)
+            .exclude(clave__startswith="personalizado:")
+            .order_by("-usos", "-ultimo_uso")[:limit]
+        )
+        for row in rows:
+            token = row.clave.split(":", 1)[-1] if ":" in row.clave else row.clave
+            associations[token] = {"wallet": row.valor, "usos": row.usos}
+
+    if mode in ("full", "manual"):
+        notes = list(
+            NaviMemory.objects.filter(user=user, clave__startswith="personalizado:")
+            .order_by("-usos")[:5]
+            .values_list("valor", flat=True)
+        )
 
     return {"asociaciones": associations, "notas": notes}
 
@@ -173,8 +183,15 @@ def learn_from_glossary(user, concepto: str, wallet_name: str | None) -> None:
 
 
 def learn_from_transaction(user, transaction) -> None:
-    """Hook post-registro: extrae señales de la transacción aprendidas."""
+    """Hook post-registro: extrae señales de la transacción aprendidas.
+
+    Solo aprende si el usuario tiene ``navi_learning_mode == "full"``.
+    En modo ``"manual"`` o ``"none"`` no almacena nada (el usuario
+    controla qué recuerda Navi desde su perfil).
+    """
     try:
+        if getattr(user, "navi_learning_mode", "none") != "full":
+            return
         if transaction.tipo == "transferencia":
             return
         learn_from_concept(
@@ -215,7 +232,16 @@ def is_forget_command(message: str) -> bool:
 
 
 def handle_remember_command(user, message: str) -> str:
-    """Procesa «recuerda que X» y guarda la nota. Devuelve respuesta."""
+    """Procesa «recuerda que X» y guarda la nota. Devuelve respuesta.
+
+    Solo funciona si ``navi_learning_mode`` es ``"full"`` o ``"manual"``.
+    Si es ``"none"`` indica al usuario que active la memoria desde su perfil.
+    """
+    if getattr(user, "navi_learning_mode", "none") == "none":
+        return (
+            "La memoria de Navi está desactivada. "
+            "Actívala desde tu perfil si quieres que recuerde cosas por ti."
+        )
     match = _REMEMBER_RE.match(message.strip())
     if not match:
         return "No entendí qué quieres que recuerde."
@@ -228,7 +254,16 @@ def handle_remember_command(user, message: str) -> str:
 
 
 def handle_forget_command(user, message: str) -> str:
-    """Procesa «olvida X» y borra la preferencia. Devuelve respuesta."""
+    """Procesa «olvida X» y borra la preferencia. Devuelve respuesta.
+
+    Solo funciona si ``navi_learning_mode`` es ``"full"`` o ``"manual"``.
+    Si es ``"none"`` indica al usuario que la memoria ya está desactivada.
+    """
+    if getattr(user, "navi_learning_mode", "none") == "none":
+        return (
+            "La memoria de Navi ya está desactivada. "
+            "Puedes configurarla desde tu perfil."
+        )
     match = _FORGET_RE.match(message.strip())
     if not match:
         return "No entendí qué quieres que olvide."

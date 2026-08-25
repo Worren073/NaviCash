@@ -2,7 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, BellRing, BrainCircuit, Trash2 } from "lucide-react";
+import { AlertTriangle, BellRing, BrainCircuit, Trash2, BookOpen, Ban } from "lucide-react";
+import { NaviLearningConsentDialog } from "@/features/navi/navi-learning-consent-dialog";
 import { LogoutIcon, SaveIcon, ListIcon, CheckedIcon } from "@/components/icons";
 
 import { api, ApiErrorClass, setAccessToken } from "@/lib/api";
@@ -145,10 +146,38 @@ interface NaviMemory {
   ultimo_uso: string;
 }
 
+type NaviLearningMode = "full" | "manual" | "none";
+
+interface NaviLearningConsent {
+  mode: NaviLearningMode;
+  consent_at: string | null;
+}
+
 function NaviMemoryCard() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [noteText, setNoteText] = useState("");
+  const [consentOpen, setConsentOpen] = useState(false);
+
+  const { data: consent } = useQuery({
+    queryKey: ["navi-learning-consent"],
+    queryFn: () => api.get<NaviLearningConsent>("/auth/navi-learning-consent"),
+  });
+
+  const consentMutation = useMutation({
+    mutationFn: (mode: NaviLearningMode) =>
+      api.post<NaviLearningConsent>("/auth/navi-learning-consent", { mode }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["navi-learning-consent"] });
+      setConsentOpen(false);
+    },
+  });
+
+  useEffect(() => {
+    if (consent && consent.consent_at === null) {
+      setConsentOpen(true);
+    }
+  }, [consent]);
 
   const { data: memories = [], isLoading } = useQuery({
     queryKey: ["assistant", "memory"],
@@ -180,6 +209,14 @@ function NaviMemoryCard() {
     return k;
   };
 
+  const modeButtonClass = (m: string) =>
+    cn(
+      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all",
+      consent?.mode === m
+        ? "bg-primary/10 text-primary font-medium border border-primary/30"
+        : "bg-surface-container/60 text-on-surface-variant hover:bg-surface-container border border-transparent",
+    );
+
   return (
     <section className="glass-panel clip-rounded-2xl space-y-3 rounded-2xl p-5">
       <h3 className="flex items-center gap-2 text-lg font-semibold text-on-surface">
@@ -187,6 +224,28 @@ function NaviMemoryCard() {
         {t("profile.navimemTitle")}
       </h3>
       <p className="text-sm text-on-surface-variant">{t("profile.navimemDesc")}</p>
+
+      {consent && consent.consent_at !== null && (
+        <div className="space-y-2">
+          <p className="text-xs text-on-surface-variant">{t("profile.naviConsentCurrent")}</p>
+          <div className="flex flex-wrap gap-2">
+            {(["full", "manual", "none"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => consentMutation.mutate(m)}
+                disabled={consentMutation.isPending}
+                className={modeButtonClass(m)}
+              >
+                {m === "full" && <BrainCircuit size={14} />}
+                {m === "manual" && <BookOpen size={14} />}
+                {m === "none" && <Ban size={14} />}
+                {m === "full" ? t("profile.naviConsentFull") : m === "manual" ? t("profile.naviConsentManual") : t("profile.naviConsentNone")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <Skeleton className="h-20 w-full" />
@@ -230,29 +289,31 @@ function NaviMemoryCard() {
         </div>
       )}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (noteText.trim().length >= 5) addMutation.mutate(noteText.trim());
-        }}
-        className="flex gap-2"
-      >
-        <Input
-          type="text"
-          placeholder={t("profile.navimemPlaceholder")}
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
-          className="flex-1"
-          maxLength={200}
-        />
-        <Button
-          type="submit"
-          variant="outline"
-          disabled={noteText.trim().length < 5 || addMutation.isPending}
+      {consent?.mode !== "none" && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (noteText.trim().length >= 5) addMutation.mutate(noteText.trim());
+          }}
+          className="flex gap-2"
         >
-          {addMutation.isPending ? t("common.loading") : t("profile.navimemAdd")}
-        </Button>
-      </form>
+          <Input
+            type="text"
+            placeholder={t("profile.navimemPlaceholder")}
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            className="flex-1"
+            maxLength={200}
+          />
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={noteText.trim().length < 5 || addMutation.isPending}
+          >
+            {addMutation.isPending ? t("common.loading") : t("profile.navimemAdd")}
+          </Button>
+        </form>
+      )}
 
       {memories.length > 0 && (
         <Button
@@ -266,6 +327,12 @@ function NaviMemoryCard() {
           {t("profile.navimemClear")}
         </Button>
       )}
+
+      <NaviLearningConsentDialog
+        open={consentOpen}
+        onOpenChange={setConsentOpen}
+        onConfirm={(mode) => consentMutation.mutate(mode)}
+      />
     </section>
   );
 }

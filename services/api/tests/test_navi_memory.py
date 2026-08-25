@@ -179,6 +179,8 @@ class TestLearnFromGlossary:
 class TestLearnFromTransaction:
     def test_hook_stores_association(self):
         user = UserFactory()
+        user.navi_learning_mode = "full"
+        user.save(update_fields=["navi_learning_mode"])
         class FakeTx:
             tipo = "pago"
             concepto = "Gasolina del lunes"
@@ -212,6 +214,8 @@ class TestLearnFromTransaction:
 class TestMemoryContext:
     def test_returns_associations_and_notes(self):
         user = UserFactory()
+        user.navi_learning_mode = "full"
+        user.save(update_fields=["navi_learning_mode"])
         remember(user, "wallet_para:luz", "Banco de Venezuela")
         remember(user, "wallet_para:luz", "Banco de Venezuela")
         remember(user, "personalizado:frase", "Mi frase favorita")
@@ -240,6 +244,8 @@ class TestCommandDetection:
 class TestHandleRemember:
     def test_saves_note(self):
         user = UserFactory()
+        user.navi_learning_mode = "full"
+        user.save(update_fields=["navi_learning_mode"])
         resp = handle_remember_command(user, "Recuerda que siempre pago luz el lunes")
         assert "recordaré" in resp.lower()
         mems = list_memories(user)
@@ -247,6 +253,8 @@ class TestHandleRemember:
 
     def test_rejects_too_short(self):
         user = UserFactory()
+        user.navi_learning_mode = "full"
+        user.save(update_fields=["navi_learning_mode"])
         resp = handle_remember_command(user, "Recuerda que sí")
         assert "corta" in resp.lower() or "más" in resp.lower()
 
@@ -255,6 +263,8 @@ class TestHandleRemember:
 class TestHandleForget:
     def test_forgets_note_via_command(self):
         user = UserFactory()
+        user.navi_learning_mode = "full"
+        user.save(update_fields=["navi_learning_mode"])
         # Primero crear con el comando real para que la clave coincida
         handle_remember_command(user, "Recuerda que mi billetera es Efectivo")
         resp = handle_forget_command(user, "Olvida mi billetera es efectivo")
@@ -262,12 +272,16 @@ class TestHandleForget:
 
     def test_forgets_wallet_association(self):
         user = UserFactory()
+        user.navi_learning_mode = "full"
+        user.save(update_fields=["navi_learning_mode"])
         remember(user, "wallet_para:cable", "Efectivo")
         resp = handle_forget_command(user, "Olvida cable")
         assert "olvidé" in resp.lower() or "olvidado" in resp.lower()
 
     def test_not_found(self):
         user = UserFactory()
+        user.navi_learning_mode = "full"
+        user.save(update_fields=["navi_learning_mode"])
         resp = handle_forget_command(user, "Olvida cosas que no existen")
         assert "no encontré" in resp.lower()
 
@@ -315,3 +329,171 @@ class TestMemoryAPI:
     def test_delete_no_param_returns_400(self, api_client):
         resp = api_client.delete("/api/assistant/memory")
         assert resp.status_code == 400
+
+
+# ── gates por modo de consentimiento ─────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestNaviLearningModeGates:
+    """Verifica que los gates de ``navi_learning_mode`` bloquean/permiten
+    aprendizaje automático y notas manuales según el nivel seleccionado."""
+
+    def _make_user(self, mode: str):
+        user = UserFactory()
+        user.navi_learning_mode = mode
+        user.save(update_fields=["navi_learning_mode"])
+        return user
+
+    # --- learn_from_transaction ---
+
+    def test_full_allows_auto_learn(self):
+        user = self._make_user("full")
+        class FakeTx:
+            tipo = "pago"
+            concepto = "Gasolina del lunes"
+            wallet = type("W", (), {"name": "Efectivo"})()
+        learn_from_transaction(user, FakeTx())
+        assert any(m.clave == "wallet_para:gasolina" for m in list_memories(user))
+
+    def test_manual_blocks_auto_learn(self):
+        user = self._make_user("manual")
+        class FakeTx:
+            tipo = "pago"
+            concepto = "Gasolina del lunes"
+            wallet = type("W", (), {"name": "Efectivo"})()
+        learn_from_transaction(user, FakeTx())
+        assert list_memories(user) == []
+
+    def test_none_blocks_auto_learn(self):
+        user = self._make_user("none")
+        class FakeTx:
+            tipo = "pago"
+            concepto = "Gasolina del lunes"
+            wallet = type("W", (), {"name": "Efectivo"})()
+        learn_from_transaction(user, FakeTx())
+        assert list_memories(user) == []
+
+    # --- handle_remember_command ---
+
+    def test_full_allows_remember(self):
+        user = self._make_user("full")
+        resp = handle_remember_command(user, "Recuerda que siempre pago luz el lunes")
+        assert "recordaré" in resp.lower()
+        assert len(list_memories(user)) == 1
+
+    def test_manual_allows_remember(self):
+        user = self._make_user("manual")
+        resp = handle_remember_command(user, "Recuerda que siempre pago luz el lunes")
+        assert "recordaré" in resp.lower()
+        assert len(list_memories(user)) == 1
+
+    def test_none_blocks_remember(self):
+        user = self._make_user("none")
+        resp = handle_remember_command(user, "Recuerda que siempre pago luz el lunes")
+        assert "desactivada" in resp.lower()
+        assert list_memories(user) == []
+
+    # --- handle_forget_command ---
+
+    def test_full_allows_forget(self):
+        user = self._make_user("full")
+        remember(user, "wallet_para:cable", "Efectivo")
+        resp = handle_forget_command(user, "Olvida cable")
+        assert "olvidé" in resp.lower() or "olvidado" in resp.lower()
+
+    def test_manual_allows_forget(self):
+        user = self._make_user("manual")
+        remember(user, "wallet_para:cable", "Efectivo")
+        resp = handle_forget_command(user, "Olvida cable")
+        assert "olvidé" in resp.lower() or "olvidado" in resp.lower()
+
+    def test_none_blocks_forget(self):
+        user = self._make_user("none")
+        remember(user, "wallet_para:cable", "Efectivo")
+        resp = handle_forget_command(user, "Olvida cable")
+        assert "desactivada" in resp.lower()
+
+    # --- memory_context ---
+
+    def test_full_returns_associations_and_notes(self):
+        user = self._make_user("full")
+        remember(user, "wallet_para:luz", "Banco de Venezuela")
+        remember(user, "wallet_para:luz", "Banco de Venezuela")
+        remember(user, "personalizado:frase", "Mi frase favorita")
+        ctx = memory_context(user)
+        assert "luz" in ctx["asociaciones"]
+        assert "Mi frase favorita" in ctx["notas"]
+
+    def test_manual_returns_only_notes(self):
+        user = self._make_user("manual")
+        remember(user, "wallet_para:luz", "Banco de Venezuela")
+        remember(user, "wallet_para:luz", "Banco de Venezuela")
+        remember(user, "personalizado:frase", "Mi frase favorita")
+        ctx = memory_context(user)
+        assert ctx["asociaciones"] == {}
+        assert "Mi frase favorita" in ctx["notas"]
+
+    def test_none_returns_empty(self):
+        user = self._make_user("none")
+        remember(user, "wallet_para:luz", "Banco de Venezuela")
+        remember(user, "wallet_para:luz", "Banco de Venezuela")
+        remember(user, "personalizado:frase", "Mi frase favorita")
+        ctx = memory_context(user)
+        assert ctx["asociaciones"] == {}
+        assert ctx["notas"] == []
+
+
+# ── endpoint consentimiento ──────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestNaviLearningConsentAPI:
+    def test_get_default(self, api_client):
+        resp = api_client.get("/api/auth/navi-learning-consent")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["mode"] == "none"
+        assert data["consent_at"] is None
+
+    def test_post_sets_mode(self, api_client):
+        resp = api_client.post(
+            "/api/auth/navi-learning-consent",
+            {"mode": "full"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["mode"] == "full"
+        assert data["consent_at"] is not None
+
+    def test_post_invalid_mode(self, api_client):
+        resp = api_client.post(
+            "/api/auth/navi-learning-consent",
+            {"mode": "invalid"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_post_manual(self, api_client):
+        resp = api_client.post(
+            "/api/auth/navi-learning-consent",
+            {"mode": "manual"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "manual"
+
+    def test_post_none(self, api_client):
+        api_client.post(
+            "/api/auth/navi-learning-consent",
+            {"mode": "full"},
+            format="json",
+        )
+        resp = api_client.post(
+            "/api/auth/navi-learning-consent",
+            {"mode": "none"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "none"

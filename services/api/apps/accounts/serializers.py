@@ -418,6 +418,31 @@ class LegalDocumentSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class NaviLearningConsentSerializer(serializers.Serializer):
+    """LEE o ACTUALIZA el modo de aprendizaje de Navi del usuario.
+
+    GET devuelve el estado actual. POST acepta ``{ "mode": "full"|"manual"|"none" }``.
+    """
+
+    MODE_CHOICES = ("full", "manual", "none")
+
+    mode = serializers.ChoiceField(choices=MODE_CHOICES, required=False)
+
+    def validate_mode(self, value: str) -> str:
+        if value not in self.MODE_CHOICES:
+            raise serializers.ValidationError(
+                "Modo inválido. Usa: full, manual o none."
+            )
+        return value
+
+    def save(self, **kwargs):
+        user = self.context["request"].user
+        user.navi_learning_mode = self.validated_data["mode"]
+        user.navi_learning_consent_at = timezone.now()
+        user.save(update_fields=["navi_learning_mode", "navi_learning_consent_at"])
+        return user
+
+
 class AcceptTermsSerializer(serializers.Serializer):
     """Registra la (re)aceptación de los Términos y Condiciones vigentes.
 

@@ -653,6 +653,43 @@ class UserLegalAcceptanceView(APIView):
         )
 
 
+class NaviLearningConsentView(APIView):
+    """Estado y control del consentimiento de aprendizaje de Navi.
+
+    GET: devuelve ``{ mode, consent_at }``.  Si ``consent_at`` es null, el
+    usuario nunca ha sido preguntado (el frontend debe mostrar el modal).
+    POST: acepta ``{ "mode": "full"|"manual"|"none" }`` y actualiza el perfil.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response(
+            {
+                "mode": user.navi_learning_mode,
+                "consent_at": user.navi_learning_consent_at,
+            }
+        )
+
+    def post(self, request):
+        from apps.accounts.serializers import NaviLearningConsentSerializer
+
+        serializer = NaviLearningConsentSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        user = request.user
+        return Response(
+            {
+                "mode": user.navi_learning_mode,
+                "consent_at": user.navi_learning_consent_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class AcceptTermsView(APIView):
     """Registra la (re)aceptación de los Términos vigentes por parte del usuario.
 

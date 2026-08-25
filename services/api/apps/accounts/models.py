@@ -93,6 +93,28 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name="Días de recordatorio",
         help_text="Regla global: avisar pagos que vencen en N días (ADR-09).",
     )
+    NAVI_LEARNING_CHOICES = [
+        ("none", "Ninguno"),
+        ("manual", "Solo manual"),
+        ("full", "Completo"),
+    ]
+
+    navi_learning_mode = models.CharField(
+        max_length=8,
+        choices=NAVI_LEARNING_CHOICES,
+        default="none",
+        verbose_name="Modo de aprendizaje de Navi",
+        help_text=(
+            "none = Navi no recuerda nada; manual = solo «recuerda que…»; "
+            "full = aprendizaje automático + manual."
+        ),
+    )
+    navi_learning_consent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Consentimiento de aprendizaje el",
+        help_text="Fecha del último cambio de preferencia de aprendizaje. Null = no preguntado aún.",
+    )
     is_onboarded = models.BooleanField(
         default=False,
         verbose_name="Tutorial visto",

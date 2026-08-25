@@ -436,6 +436,22 @@ export default {
     navimemDelete: "Borrar memoria",
     navimemClear: "Borrar todo lo que Navi recuerda",
     navimemClearConfirm: "¿Borrar todas las preferencias aprendidas por Navi?",
+    naviConsentTitle: "¿Cómo quieres que Navi recuerde?",
+    naviConsentDesc1:
+      "Navi puede aprender de tus registros para sugerirte cuentas y otros datos sin preguntar.",
+    naviConsentDesc2:
+      "Esta información se almacena exclusivamente en tu cuenta. El equipo de NaviCash nunca tiene acceso al contenido de lo que Navi aprende de ti.",
+    naviConsentDesc3:
+      "Es completamente opcional. Puedes cambiar esta configuración en cualquier momento desde tu perfil.",
+    naviConsentFull: "Aprendizaje completo",
+    naviConsentFullDesc: "Navi aprende de tus registros y recuerda lo que le digas.",
+    naviConsentManual: "Solo instrucciones",
+    naviConsentManualDesc:
+      "Navi solo recuerda lo que le digas con «recuerda que…».",
+    naviConsentNone: "No recordar nada",
+    naviConsentNoneDesc: "Navi no guarda nada sobre tus preferencias.",
+    naviConsentConfirm: "Confirmar",
+    naviConsentCurrent: "Modo actual de aprendizaje de Navi:",
     dangerZoneTitle: "Zona de riesgo",
     deleteTitle: "Eliminar mi cuenta",
     deleteWarning:

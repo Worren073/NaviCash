@@ -29,6 +29,7 @@ from apps.accounts.views import (  # noqa: F401
     LoginView,
     LogoutView,
     MeView,
+    NaviLearningConsentView,
     RefreshView,
     RegisterView,
     ResetPasswordView,
@@ -60,4 +61,10 @@ urlpatterns = [
     # Aceptación de términos del usuario
     path("auth/legal-acceptance", UserLegalAcceptanceView.as_view(), name="auth-legal-acceptance"),
     path("auth/accept-terms", AcceptTermsView.as_view(), name="auth-accept-terms"),
+    # Consentimiento de aprendizaje de Navi
+    path(
+        "auth/navi-learning-consent",
+        NaviLearningConsentView.as_view(),
+        name="auth-navi-learning-consent",
+    ),
 ]
