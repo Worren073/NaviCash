@@ -14,9 +14,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Directorio de trabajo dentro del contenedor.
 WORKDIR /app
 
-# Systemdeps mínimas (psycopg binario embebido no necesita libpq si usamos psycopg[binary]).
+# Systemdeps: curl para healthchecks, postgresql-client para pg_isready (esperar a BD).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalamos Python-deps con pip directamente (sin virtualenv dentro del contenedor).
