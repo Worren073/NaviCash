@@ -23,8 +23,9 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Copiamos el código del proyecto.
+# Copiamos el código del proyecto y el script de espera.
 COPY . .
+RUN chmod +x wait_for_db.sh
 
 # Puerto de la API.
 EXPOSE 8000
@@ -37,4 +38,4 @@ EXPOSE 8000
 # lógica aplica a la imagen base / despliegues prod tipo Render.
 # En producción: aplicamos migraciones al arrancar y servimos con gunicorn
 # (3 workers, timeout 60 s para el LLM del asistente sin matar workers).
-CMD ["sh", "-c", "if [ \"$DEBUG\" = \"1\" ]; then python manage.py runserver 0.0.0.0:8000; else python manage.py migrate --noinput && exec gunicorn config.wsgi --bind 0.0.0.0:8000 --workers 3 --timeout 60; fi"]
+CMD ["sh", "-c", "if [ \"$DEBUG\" = \"1\" ]; then python manage.py runserver 0.0.0.0:8000; else ./wait_for_db.sh && python manage.py migrate --noinput && exec gunicorn config.wsgi --bind 0.0.0.0:8000 --workers 3 --timeout 60; fi"]
