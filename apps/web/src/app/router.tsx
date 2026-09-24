@@ -15,6 +15,7 @@ const NewOperationPage = lazy(() => import("@/features/transactions/new-operatio
 const TransactionsPage = lazy(() => import("@/features/transactions/transactions-page"));
 const SavingsPage = lazy(() => import("@/features/savings/savings-page"));
 const SubscriptionsPage = lazy(() => import("@/features/subscriptions/subscriptions-page"));
+const ChecklistsPage = lazy(() => import("@/features/checklists/checklists-page"));
 const ProfilePage = lazy(() => import("@/features/profile/profile-page"));
 const LoginPage = lazy(() => import("@/features/auth/login-page"));
 const RegisterPage = lazy(() => import("@/features/auth/register-page"));
@@ -132,6 +133,7 @@ export const router = createBrowserRouter([
               { path: "/transactions", element: <TransactionsPage /> },
               { path: "/savings", element: <SavingsPage /> },
               { path: "/subscriptions", element: <SubscriptionsPage /> },
+              { path: "/checklists", element: <ChecklistsPage /> },
               { path: "/profile", element: <ProfilePage /> },
             ],
           },

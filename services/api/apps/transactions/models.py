@@ -251,6 +251,19 @@ class Transaction(OwnedModel):
                 name="transaction_vencimiento_gte_fecha",
                 violation_error_message="El vencimiento no puede ser anterior a la fecha.",
             ),
+            # Integridad de transferencias (A10): solo aplican cuando la
+            # operación es de tipo "transferencia"; los cobros/pagos usan los
+            # defaults (monto_destino=0, tasa_uso=1) y no se ven afectados.
+            models.CheckConstraint(
+                condition=~models.Q(tipo="transferencia") | models.Q(monto_destino__gt=0),
+                name="transaction_transfer_monto_destino_gt_0",
+                violation_error_message="La transferencia debe indicar un monto destino mayor a cero.",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(tipo="transferencia") | models.Q(tasa_uso__gt=0),
+                name="transaction_transfer_tasa_uso_gt_0",
+                violation_error_message="La transferencia debe indicar una tasa mayor a cero.",
+            ),
         ]
 
     def __str__(self) -> str:

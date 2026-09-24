@@ -1,7 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import type { NotificationsResponse, Overview, Subscription, User, Wallet } from "@/lib/types";
+import type {
+  Checklist,
+  NotificationsResponse,
+  Overview,
+  Subscription,
+  User,
+  Wallet,
+} from "@/lib/types";
 
 export const queryKeys = {
   overview: ["overview"] as const,
@@ -10,12 +17,12 @@ export const queryKeys = {
   contacts: ["contacts"] as const,
   transactions: ["transactions"] as const,
   savings: ["savings"] as const,
-  shortcuts: ["shortcuts"] as const,
   me: ["me"] as const,
   rates: ["rates"] as const,
   ratesEuro: ["rates-euro"] as const,
   notifications: ["notifications"] as const,
   subscriptions: ["subscriptions"] as const,
+  checklists: ["checklists"] as const,
 };
 
 export function useOverview() {
@@ -52,5 +59,13 @@ export function useSubscriptions() {
     queryKey: queryKeys.subscriptions,
     queryFn: ({ signal }) =>
       api.get<{ results: Subscription[] }>("/subscriptions", { signal }).then((d) => d.results),
+  });
+}
+
+export function useChecklists() {
+  return useQuery({
+    queryKey: queryKeys.checklists,
+    queryFn: ({ signal }) =>
+      api.get<{ results: Checklist[] }>("/checklists", { signal }).then((d) => d.results),
   });
 }

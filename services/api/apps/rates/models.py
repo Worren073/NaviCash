@@ -57,6 +57,25 @@ class ExchangeRate(models.Model):
         verbose_name_plural = "Tasas de cambio"
         ordering = ["-input_at"]
         indexes = [models.Index(fields=["source", "input_at"])]
+        constraints = [
+            # A10: las cotizaciones nunca son negativas (pueden ser nulas si la
+            # fuente no las publica, p. ej. compra/venta del BCV).
+            models.CheckConstraint(
+                condition=models.Q(compra__isnull=True) | models.Q(compra__gte=0),
+                name="exchange_rate_compra_gte_0",
+                violation_error_message="La compra no puede ser negativa.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(venta__isnull=True) | models.Q(venta__gte=0),
+                name="exchange_rate_venta_gte_0",
+                violation_error_message="La venta no puede ser negativa.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(promedio__isnull=True) | models.Q(promedio__gte=0),
+                name="exchange_rate_promedio_gte_0",
+                violation_error_message="El promedio no puede ser negativo.",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Representación: fuente, moneda y promedio."""

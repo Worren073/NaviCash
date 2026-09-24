@@ -155,3 +155,21 @@
 | **M1** API key | La clave real del LLM sigue en `.env` local (no commiteada): **pendiente de rotación por el usuario** en el proveedor | — |
 
 **Pendientes para la Iteración 2 (operativo):** C2 caché Redis (confirmaciones del asistente + rate limits compartidos), C4 soft-delete + auditoría de saldos, A4 Dockerfile web a `nginx/build`, A5 LLM/tasas fuera del request, A6 nunca tasa=1, A8-A10 N+1/índices/CheckConstraints restantes, M2 logging, M3 admin restringido, M4-M7, M9-M12 frontend, B1-B6.
+
+---
+
+## 7. Estado de implementación — Iteración 2 (frontend, calidad e integridad) ✅
+
+**Fecha:** septiembre 2026 · **Verificación global:** backend **517 passed + 23 skipped** en Postgres real (`pytest`), `makemigrations --check` **sin cambios pendientes** (las migraciones escritas a mano coinciden), migraciones aplicadas en dev, `ruff check apps/ --select F --ignore F821 --exclude "*/migrations/*"` en verde; frontend `npm run lint` y `npm run typecheck` sin errores y `npm run build` OK (con site key de Turnstile de prueba).
+
+| Hallazgo | Qué se implementó | Ubicación |
+|----------|-------------------|-----------|
+| **A10** (resto) | CheckConstraints en el motor para integridad de transferencias, suscripciones y tasas + tests de motor (rechazo con `IntegrityError`, lo válido sigue creándose): `transaction_transfer_monto_destino_gt_0`/`transaction_transfer_tasa_uso_gt_0` (condicionadas a `tipo="transferencia"`), `subscription_end_gte_start`, `ExchangeRate` compra/venta/promedio `>= 0` ó `NULL` | `models.py` de transactions/subs/rates, `migrations/0006_*`/`0002_*`, `tests/test_{transactions,subscriptions,rates}.py` |
+| **M8** | Build del frontend **fail-closed**: sin `VITE_CAPTCHA_SITE_KEY` no compila; CI inyecta la site key pública de prueba de Turnstile; la real en prod viaja solo por `.env` | `vite.config.ts`, `.github/workflows/test.yml` |
+| **M12** | CI con gates reales: `npm run lint` (eslint + typescript-eslint + exhaustive-deps), `npm run typecheck`, `npm run build`, `npm audit --audit-level=high` en frontend; `pip-audit` en backend | `apps/web/package.json`, `.github/workflows/test.yml` |
+| **B3** | Dependencias muertas del front eliminadas (`react-hook-form`, `zod`, `@hookform/resolvers` — 0 imports) y lockfile regenerado | `apps/web/package.json`, `package-lock.json` |
+| **M11** | Accesibilidad: tokens de color **texto vs fondo** (`--color-{expense,income}-text`, `paid/pending/delayed/warning-text`) usados por `badge.tsx`; bloque `prefers-reduced-motion: reduce` que desactiva animaciones, transiciones y scroll suave | `apps/web/src/index.css`, `apps/web/src/components/ui/badge.tsx` |
+| — Limpieza | Eliminados `ios-limitations-notice.tsx`, `getIOSLimitations`, `queryKeys.shortcuts`; fix de codificación (mojibake) en regex del registro | `apps/web/src/…` |
+| — Docs | `.env.example` con bloque de variables de producción (Redis, SSL, Brevo, VAPID, candados de fuerza bruta, jobs internos) para que el despliegue real sea reproducible | `.env.example` |
+
+**Pendientes para la Iteración 3 (operativo):** C2 caché Redis, C4 soft-delete + auditoría de saldos, A4 Dockerfile web de producción (nginx), A5/A6 LLM y tasas fuera del request, A8/A9 N+1 e índices restantes, M2 logging, M3 admin restringido, M4-M7, M9 (i18n), M10 code-splitting, B1/B2/B4/B6. M1 (rotación de la API key del LLM) sigue pendiente de acción del usuario en el proveedor.

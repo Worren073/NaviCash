@@ -29,7 +29,7 @@ declare global {
 function passwordRules(pw: string) {
   return {
     length: pw.length >= 8,
-    letter: /[A-Za-zÃ¡Ã©Ã­Ã³ÃºÃÃ‰ÃÃ“ÃšÃ±Ã¼]/.test(pw),
+    letter: /[A-Za-záéíóúÁÉÍÓÚñü]/.test(pw),
     number: /\d/.test(pw),
   };
 }

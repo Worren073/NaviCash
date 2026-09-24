@@ -347,12 +347,12 @@ export default function ProfilePage() {
     queryFn: () => api.get<User>("/auth/me"),
   });
 
-  const { data: legalDocs } = useQuery({
+  const { data: legalDocs, isLoading: legalDocsLoading } = useQuery({
     queryKey: ["legal", "documents"],
     queryFn: () => api.get<LegalDocument[]>("/legal"),
   });
 
-  const { data: legalAcceptance } = useQuery({
+  const { data: legalAcceptance, isLoading: legalAcceptanceLoading } = useQuery({
     queryKey: ["legal", "acceptance"],
     queryFn: () => api.get<LegalAcceptance>("/auth/legal-acceptance"),
     enabled: !!me,
@@ -545,50 +545,64 @@ export default function ProfilePage() {
               {t("profile.legalTitle")}
             </h3>
 
-            {legalDocs && (
-              <div className="space-y-3">
-                {legalDocs.map((doc) => (
-                  <article
-                    key={doc.id}
-                    className="glass-panel-elevated clip-rounded-xl rounded-xl p-4 border border-glass-border"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-semibold text-on-surface">{doc.title}</h4>
-                          <span
-                            className="px-3 py-1 text-sm rounded-full bg-primary/10 text-primary font-medium whitespace-nowrap shrink-0"
-                          >
-                            v{doc.version}
-                          </span>
-                          {legalAcceptance?.needs_reacceptance && doc.doc_type === "terms" && (
-                            <span className="flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-black whitespace-nowrap shrink-0">
-                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                              {t("profile.legalUpdateRequired")}
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 text-sm text-on-surface-variant">
-                          {t("profile.legalEffective")} {new Date(doc.effective_at ?? doc.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openDoc(doc)}
-                        className="shrink-0"
-                      >
-                        <ListIcon className="h-4 w-4 mr-1" />
-                        {t("profile.legalView")}
-                      </Button>
-                    </div>
-                  </article>
-                ))}
+            {legalDocsLoading ? (
+              <div className="space-y-3" aria-busy="true">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
               </div>
+            ) : (
+              legalDocs && (
+                <div className="space-y-3">
+                  {legalDocs.map((doc) => (
+                    <article
+                      key={doc.id}
+                      className="glass-panel-elevated clip-rounded-xl rounded-xl p-4 border border-glass-border"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="font-semibold text-on-surface">{doc.title}</h4>
+                            <span
+                              className="px-3 py-1 text-sm rounded-full bg-primary/10 text-primary font-medium whitespace-nowrap shrink-0"
+                            >
+                              v{doc.version}
+                            </span>
+                            {legalAcceptance?.needs_reacceptance && doc.doc_type === "terms" && (
+                              <span className="flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-black whitespace-nowrap shrink-0">
+                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                {t("profile.legalUpdateRequired")}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-sm text-on-surface-variant">
+                            {t("profile.legalEffective")} {new Date(doc.effective_at ?? doc.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDoc(doc)}
+                          className="shrink-0"
+                        >
+                          <ListIcon className="h-4 w-4 mr-1" />
+                          {t("profile.legalView")}
+                        </Button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )
             )}
 
-            {legalAcceptance && (
-              <div className="pt-4 border-t border-glass-border">
+            {legalAcceptanceLoading ? (
+              <div className="space-y-2 pt-2" aria-busy="true">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-4 w-3/5" />
+              </div>
+            ) : (
+              legalAcceptance && (
+                <div className="pt-4 border-t border-glass-border">
                 <h4 className="font-medium text-on-surface mb-3">{t("profile.legalAcceptanceTitle")}</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -630,7 +644,7 @@ export default function ProfilePage() {
                   )}
                 </div>
               </div>
-            )}
+            ))}
           </section>
 
           {/* Notificaciones push (Web Push + VAPID) */}

@@ -66,6 +66,15 @@ class Subscription(OwnedModel):
         verbose_name = "Mensualidad"
         verbose_name_plural = "Mensualidades"
         ordering = ["start_date"]
+        constraints = [
+            # A10: integridad a nivel de motor (la API ya valida; esto es el
+            # respaldo en BD para cualquier escritura que la salte).
+            models.CheckConstraint(
+                condition=models.Q(end_date__gte=models.F("start_date")),
+                name="subscription_end_gte_start",
+                violation_error_message="La fecha de cierre no puede ser anterior al inicio.",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Representación: nombre (período)."""

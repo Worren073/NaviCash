@@ -61,7 +61,11 @@
 
   /* Texto de estados (contraste AA sobre superficies claras, M11) */
   --color-income-text: #15803d;
+  --color-expense-text: #be123c;
+  --color-paid-text: #0f766e;
+  --color-pending-text: #be123c;
   --color-delayed-text: #be123c;
+  --color-warning-text: #92400e;
 
   /* Errores */
   --color-error: #ffb4ab;
@@ -266,4 +270,18 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* ==========================================================================
+   Accesibilidad: respeta la preferencia de movimiento reducido (M11)
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

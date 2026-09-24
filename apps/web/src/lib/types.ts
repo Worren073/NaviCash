@@ -170,3 +170,31 @@ export interface Subscription {
   can_renew: boolean;
   created_at: string;
 }
+
+export type ChecklistState = "en_curso" | "completada";
+
+export interface ChecklistItem {
+  id: string;
+  name: string;
+  precio_unitario: string | null;
+  cantidad: number;
+  is_checked: boolean;
+  subtotal: string;
+  created_at: string;
+}
+
+export interface Checklist {
+  id: string;
+  name: string;
+  currency: Currency;
+  estado: ChecklistState;
+  total_estimado: string;
+  progress_percent: string;
+  total_real: string | null;
+  wallet: string | null;
+  wallet_name: string | null;
+  transaction: string | null;
+  completed_at: string | null;
+  items: ChecklistItem[];
+  created_at: string;
+}

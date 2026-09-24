@@ -6,6 +6,7 @@ import { useNotifications, queryKeys } from "@/hooks/use-queries";
 import { api, ApiErrorClass } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { GlassPopover } from "@/components/ui/glass-popover";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { NotificationItem } from "@/lib/types";
 
 const KIND_ICON: Record<NotificationItem["kind"], typeof Info> = {
@@ -90,9 +91,11 @@ export function NotificationsPopover({
       </div>
       <div className="max-h-80 overflow-y-auto px-2 py-2">
         {isLoading ? (
-          <p className="px-3 py-8 text-center text-sm text-on-surface-variant">
-            {t("common.loading")}
-          </p>
+          <div className="space-y-3 px-1 py-1" aria-busy="true">
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </div>
         ) : items.length === 0 ? (
           <p className="px-3 py-8 text-center text-sm text-on-surface-variant">
             {t("notifications.empty")}

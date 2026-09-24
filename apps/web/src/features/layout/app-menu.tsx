@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarRange, GraduationCap, PiggyBank } from "lucide-react";
+import { CalendarRange, GraduationCap, ListChecks, PiggyBank } from "lucide-react";
 
 import { GlassPopover } from "@/components/ui/glass-popover";
 import { api } from "@/lib/api";
@@ -59,6 +59,7 @@ export function AppMenu({ open, onClose }: { open: boolean; onClose: () => void 
         </p>
         <MenuLink to="/savings" onNavigate={onClose} label={t("menu.savings")} icon={<PiggyBank className="h-5 w-5 text-emerald-500" />} />
         <MenuLink to="/subscriptions" onNavigate={onClose} label={t("menu.subscriptions")} icon={<CalendarRange className="h-5 w-5 text-primary" />} />
+        <MenuLink to="/checklists" onNavigate={onClose} label={t("menu.checklists")} icon={<ListChecks className="h-5 w-5 text-sky-500" />} />
         <button
           type="button"
           onClick={replayTour}

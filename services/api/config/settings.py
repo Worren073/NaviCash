@@ -191,6 +191,7 @@ INSTALLED_APPS = [
     "apps.overview",
     "apps.notifications",
     "apps.subscriptions",
+    "apps.checklists",
     "apps.assistant",
 ]
 

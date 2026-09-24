@@ -7,7 +7,7 @@
 Aplicación web **mobile-first · PWA** para llevar tus cobros, pagos, vencimientos, transferencias y metas de ahorro con el dólar como referencia. Escalable a React Native.
 
 ![v0.6](https://img.shields.io/badge/versi%C3%B3n-0.6.0-006a61?style=for-the-badge)
-![Backend 186 tests](https://img.shields.io/badge/backend-186%20tests%20%C2%B7%20verde-4ade80?style=for-the-badge)
+![Backend 542 tests](https://img.shields.io/badge/backend-542%20tests%20%C2%B7%20verde-4ade80?style=for-the-badge)
 ![Stack](https://img.shields.io/badge/React%2019-Django%205.2-PostgreSQL%2017-64748b?style=for-the-badge)
 ![Licencia](https://img.shields.io/badge/licencia-MIT-1e293b?style=for-the-badge)
 
@@ -22,6 +22,7 @@ Aplicación web **mobile-first · PWA** para llevar tus cobros, pagos, vencimien
 - **Metas de ahorro**: objetivo, moneda, fecha límite y **cuentas de ahorro afiliadas** (el avance suma el saldo real ahorrado).
 - **Cobros y pagos**: registro rápido, estados (pendiente / pagado / retrasado / cancelado) y marcar con un tap.
 - **Mensualidades**: seguimiento por tiempo (próxima / activa / finalizada) y renovación con registro del gasto sobre una cuenta.
+- **Listas de compras**: productos tildables con precio y cantidad (subtotal en USD/VES) que al completarse piden la cuenta del pago y descuentan el saldo de inmediato.
 - **Notificaciones in-app**: vencimientos próximos, operaciones vencidas y metas alcanzadas (deduplicadas, marcables como leídas).
 - **Perfil y sesión**: registro con verificación de email + CAPTCHA Turnstile, JWT + refresh en cookie `httpOnly`, edición de perfil.
 - **PWA instalable** con service worker y shell offline parcial.
@@ -89,7 +90,7 @@ contenedor.
 ## Comandos habituales
 
 ```bash
-# Tests del backend (186 en verde)
+# Tests del backend (542 en verde)
 docker compose -f infra/docker-compose.yml exec api python -m pytest
 
 # Migraciones / superusuario
@@ -100,8 +101,9 @@ docker compose -f infra/docker-compose.yml exec api python manage.py createsuper
 docker compose -f infra/docker-compose.yml exec api python manage.py refresh_rates
 docker compose -f infra/docker-compose.yml exec api python manage.py recalc_overdue
 
-# Frontend: typecheck + build de producción
-docker compose -f infra/docker-compose.yml exec web npx tsc -b --noEmit
+# Frontend: lint + typecheck + build de producción
+docker compose -f infra/docker-compose.yml exec web npm run lint
+docker compose -f infra/docker-compose.yml exec web npm run typecheck
 docker compose -f infra/docker-compose.yml exec web npm run build
 ```
 

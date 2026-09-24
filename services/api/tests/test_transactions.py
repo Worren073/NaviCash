@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from apps.transactions.models import Transaction
 from apps.transactions.services import mark_paid, set_state
+from apps.wallets.models import BalanceAuditLog
 from factories import ContactFactory, TransactionFactory, WalletFactory
 
 
@@ -90,6 +91,25 @@ class TestTransactionCreate:
             self._payload(wallet=str(other_wallet.id)),
         )
         assert resp.status_code in (400, 404)
+
+    def test_paid_with_insufficient_balance_leaves_no_orphan(self, api_client) -> None:
+        """Saldo insuficiente al crear "pagado": 400 y SIN fila huérfana.
+
+        Regresión del bug descubierto: la creación y el descuento se hacían en
+        pasos separados, así que si ``mark_paid`` fallaba (sobregiro) quedaba
+        una operación ``pendiente`` sin efecto de saldo. El ``transaction.atomic``
+        del serializer revierte la fila con el fallo del egreso.
+        """
+        wallet = WalletFactory(user=api_client.user, saldo=Decimal("5.00"))
+        resp = api_client.post(
+            self.URL,
+            self._payload(estado="pagado", wallet=str(wallet.id)),
+        )
+        assert resp.status_code == 400
+        assert not Transaction.objects.filter(user=api_client.user).exists()
+        assert not BalanceAuditLog.objects.filter(wallet=wallet).exists()
+        wallet.refresh_from_db()
+        assert wallet.saldo == Decimal("5.00")
 
 
 @pytest.mark.django_db
@@ -326,3 +346,38 @@ class TestCheckConstraints:
             fecha_pagado=timezone.now(),
         )
         assert tx.pk is not None
+
+    def test_transfer_without_monto_destino_rejected_by_db(self, api_client) -> None:
+        """Una transferencia con monto_destino=0 lanza IntegrityError."""
+        _check_constraints_supported()
+        with pytest.raises(IntegrityError):
+            Transaction.objects.create(
+                user=api_client.user,
+                tipo="transferencia",
+                monto=Decimal("10.00"),
+                moneda="USD",
+                monto_destino=Decimal("0.00"),
+                tasa_uso=Decimal("1"),
+            )
+
+    def test_transfer_without_tasa_uso_rejected_by_db(self, api_client) -> None:
+        """Una transferencia con tasa_uso=0 lanza IntegrityError."""
+        _check_constraints_supported()
+        with pytest.raises(IntegrityError):
+            Transaction.objects.create(
+                user=api_client.user,
+                tipo="transferencia",
+                monto=Decimal("10.00"),
+                moneda="USD",
+                monto_destino=Decimal("10.00"),
+                tasa_uso=Decimal("0"),
+            )
+
+    def test_non_transfer_allows_default_transfer_fields(self, api_client) -> None:
+        """Cobros/pagos con monto_destino=0 y tasa_uso=1 siguen siendo válidos."""
+        _check_constraints_supported()
+        tx = Transaction.objects.create(
+            user=api_client.user, tipo="cobro", monto=Decimal("10.00"), moneda="USD"
+        )
+        assert tx.monto_destino == Decimal("0")
+        assert tx.tasa_uso == Decimal("1")

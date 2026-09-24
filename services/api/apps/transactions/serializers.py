@@ -131,7 +131,14 @@ class TransactionWriteSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data: dict) -> Transaction:
-        """Crea la operación con su conversión USD congelada y estado."""
+        """Crea la operación con su conversión USD congelada y estado.
+
+        La creación y el efecto de saldo ocurren bajo la misma transacción
+        atómica: si el descuento falla (saldo insuficiente) se revierte todo y
+        no queda una operación "pendiente" huérfana sin efecto de saldo.
+        """
+        from django.db import transaction as db_transaction
+
         user = self.context["request"].user
         requested_state = validated_data.pop("estado", "pendiente")
 
@@ -139,12 +146,13 @@ class TransactionWriteSerializer(serializers.ModelSerializer):
         moneda = validated_data["moneda"]
         validated_data.update(compute_usd_equivalent(monto, moneda))
 
-        # Siempre se persiste como pendiente; el servicio ``mark_paid`` aplica
-        # el estado y el efecto de saldo de forma atómica si corresponde.
-        tx = Transaction.objects.create(user=user, estado="pendiente", **validated_data)
+        with db_transaction.atomic():
+            # Siempre se persiste como pendiente; el servicio ``mark_paid`` aplica
+            # el estado y el efecto de saldo de forma atómica si corresponde.
+            tx = Transaction.objects.create(user=user, estado="pendiente", **validated_data)
 
-        if requested_state == "pagado":
-            mark_paid(tx)
+            if requested_state == "pagado":
+                mark_paid(tx)
 
         return tx
 

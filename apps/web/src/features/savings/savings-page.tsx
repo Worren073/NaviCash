@@ -285,6 +285,7 @@ const accountsUsd = savingWallets.reduce(
   // saldo de las billeteras de ahorro. Las metas son una herramienta de
   // seguimiento, no suman dinero extra.
   const totalSavedUsd = accountsUsd;
+  const totalLoading = isLoading || walletsLoading;
 
   return (
     <div className="mt-4 space-y-6">
@@ -305,16 +306,20 @@ const accountsUsd = savingWallets.reduce(
       </div>
 
       {/* Dashboard: total ahorrado */}
-      <BlurLoading loading={isLoading || walletsLoading}>
+      <BlurLoading loading={totalLoading}>
         <div className="glass-card clip-rounded-xl relative overflow-hidden rounded-xl bg-surface-container-low p-6">
           <CardGlow color="#006a61" />
           <p className="relative mb-1 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
             {t("savings.totalSaved")}
           </p>
           <div className="relative flex items-end gap-2">
-            <span className="text-4xl font-bold tracking-tight text-on-surface">
-              {formatMoney(totalSavedUsd, "USD", { symbol: true })}
-            </span>
+            {totalLoading ? (
+              <Skeleton className="h-10 w-44" />
+            ) : (
+              <span className="text-4xl font-bold tracking-tight text-on-surface">
+                {formatMoney(totalSavedUsd, "USD", { symbol: true })}
+              </span>
+            )}
           </div>
           <div className="relative mt-4 flex gap-2">
             <span className="rounded-full bg-surface-container-high px-3 py-1 text-xs font-medium text-on-surface-variant">

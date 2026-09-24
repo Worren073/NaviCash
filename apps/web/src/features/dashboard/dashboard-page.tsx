@@ -6,6 +6,7 @@ import {
   ArrowUp,
   CalendarRange,
   ChevronRight,
+  ListChecks,
   PersonStanding,
   PiggyBank,
   Store,
@@ -208,6 +209,15 @@ export default function DashboardPage() {
           <CalendarRange className="h-5 w-5 text-primary" />
           <span className="text-sm font-semibold text-on-surface">
             {t("menu.subscriptions")}
+          </span>
+        </Link>
+        <Link
+          to="/checklists"
+          className="glass-panel clip-rounded-lg flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <ListChecks className="h-5 w-5 text-sky-500" />
+          <span className="text-sm font-semibold text-on-surface">
+            {t("menu.checklists")}
           </span>
         </Link>
         <button

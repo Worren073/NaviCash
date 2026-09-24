@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from django.db import IntegrityError, connection
 from rest_framework.test import APIClient
 
 from apps.subscriptions.models import Subscription
@@ -252,3 +253,39 @@ class TestSubscriptionRenew:
         sub.refresh_from_db()
         assert sub.end_date == date(2026, 9, 30)  # no se modificó
         assert not Transaction.objects.filter(user=api_client.user).exists()
+
+
+def _check_constraints_supported() -> None:
+    """Salta el test si el motor no ejecuta CheckConstraints."""
+    if not connection.features.supports_table_check_constraints:
+        pytest.skip(
+            "El motor no soporta CheckConstraints; la constraint solo se "
+            "aplica en motores que las ejecutan."
+        )
+
+
+@pytest.mark.django_db
+class TestSubscriptionCheckConstraints:
+    """A10: el motor rechaza períodos con cierre anterior al inicio."""
+
+    def test_end_before_start_rejected_by_db(self, api_client) -> None:
+        """end_date < start_date lanza IntegrityError en el motor."""
+        _check_constraints_supported()
+        with pytest.raises(IntegrityError):
+            Subscription.objects.create(
+                user=api_client.user,
+                name="Rara",
+                start_date=date(2026, 9, 1),
+                end_date=date(2026, 8, 1),
+            )
+
+    def test_valid_period_still_creates(self, api_client) -> None:
+        """Un período válido sigue creándose (la constraint no bloquea lo lícito)."""
+        _check_constraints_supported()
+        sub = Subscription.objects.create(
+            user=api_client.user,
+            name="Gimnasio",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 9, 30),
+        )
+        assert sub.pk is not None

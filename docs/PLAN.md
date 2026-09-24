@@ -41,13 +41,13 @@ Llevar el control de las finanzas personales desde el bolsillo: anotar **cobros*
 | 1 | Planificación | **Completada** |
 | 2 | Selección de stack | **Completada** |
 | 3 | Desarrollo (backend, APIs, BD, frontend) | **Completada (v0.6)** |
-| 4 | Testeo (visualización, seguridad, funcionalidades) | **En curso** (backend 186 tests ✓ verde; auditoría de seguridad documentada en `AUDIT.md`; pendiente E2E/visual completo) |
+| 4 | Testeo (visualización, seguridad, funcionalidades) | **En curso** (backend **542 tests** ✓ verde; auditoría de seguridad documentada en `AUDIT.md`; pendiente E2E/visual completo) |
 | 5 | Despliegue (producción, Vercel + host backend) | Pendiente |
 | 6 | Mantenimiento y actualizaciones | Pendiente |
 
 ### Estado v0.6 en una línea
-- **Backend (Django 5.2 + DRF + PostgreSQL):** apps accounts, wallets, transactions, savings, subscriptions, shortcuts, overview, notifications, rates, assistant y core; **186 tests en verde** (auth con JWT+refresh httpOnly y Turnstile, saldos y ajuste, estados, transferencias entre cuentas, metas con cuentas afiliadas, mensualidades y renovación, notificaciones, tasas BCV con caché/fallback, asistente con contexto, fallback determinista y rate limit por usuario).
-- **Frontend (React 19 + Vite + Tailwind v4 + shadcn/ui):** mobile-first PWA con login/registro/verificación, dashboard con resumen/actividad/total ahorrado, billeteras normales y de ahorro con transferencia entre cuentas, nueva operación, operaciones con estados y vista de transferencia, mensualidades con renovación, metas de ahorro con cuentas afiliadas y perfil. i18n en español, iconos animados con animación al click, navbar translúcida, skeletons con blur y transiciones entre vistas.
+- **Backend (Django 5.2 + DRF + PostgreSQL):** apps accounts, wallets, transactions, savings, subscriptions, shortcuts, overview, notifications, rates, checklists, assistant y core; **542 tests en verde** (auth con JWT+refresh httpOnly y Turnstile, saldos y ajuste, estados, transferencias entre cuentas, metas con cuentas afiliadas, mensualidades y renovación, listas de compras con pago desde cuenta, notificaciones, tasas BCV con caché/fallback, asistente con contexto, fallback determinista y rate limit por usuario).
+- **Frontend (React 19 + Vite + Tailwind v4 + shadcn/ui):** mobile-first PWA con login/registro/verificación, dashboard con resumen/actividad/total ahorrado, billeteras normales y de ahorro con transferencia entre cuentas, nueva operación, operaciones con estados y vista de transferencia, mensualidades con renovación, listas de compras con precio×cantidad y cierre con pago, metas de ahorro con cuentas afiliadas y perfil. i18n en español, iconos animados con animación al click, navbar translúcida, skeletons con blur en todas las vistas y transiciones entre vistas.
 - **Pendiente para v0.6.1/v1:** aplicar fixes de la auditoría de seguridad (`AUDIT.md`), cerrar testeo visual/E2E, desplegar en producción y verificar la marca `navicash.*`.
 
 ---

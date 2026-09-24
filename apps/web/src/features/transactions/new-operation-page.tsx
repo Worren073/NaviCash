@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
+import { Skeleton } from "@/components/ui/skeleton";
 import { NaviTourGlobe } from "@/features/assistant/navi-tour";
 import { NaviBubble } from "@/features/assistant/navi-bubble";
 import { useNaviTour } from "@/features/assistant/use-navi-tour";
@@ -145,6 +146,7 @@ export default function NewOperationPage() {
   });
 
   const visibleCats = (categories ?? []).slice(0, 6);
+  const dataReady = Boolean(wallets && categories && contacts);
 
   return (
     <div className="fixed inset-0 z-40 flex h-full w-full flex-col bg-surface/95 backdrop-blur-3xl">
@@ -212,7 +214,8 @@ export default function NewOperationPage() {
         </section>
 
         {/* Details */}
-        <section className="glass-panel clip-rounded-xl flex flex-col rounded-xl p-4">
+        {dataReady ? (
+          <section className="glass-panel clip-rounded-xl flex flex-col rounded-xl p-4">
           {/* Concept */}
           <div className="flex items-center gap-4 border-b border-glass-border py-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-container-high">
@@ -296,6 +299,17 @@ export default function NewOperationPage() {
             </select>
           </div>
         </section>
+        ) : (
+          <div
+            className="glass-panel clip-rounded-xl rounded-xl p-4"
+            aria-busy="true"
+          >
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        )}
 
         {/* Remind me */}
         <section className="glass-panel clip-rounded-xl flex flex-col rounded-xl p-4">

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
+from django.db import IntegrityError, connection
 from django.utils import timezone
 
 from apps.core.exceptions import BusinessRuleError
@@ -218,3 +219,33 @@ class TestRefreshSingleFlight:
         # Tras el refresco el candado quedó liberado (finally).
         assert cache.add(REFRESH_LOCK_KEY, 1, 30) is True
         cache.delete(REFRESH_LOCK_KEY)
+
+
+@pytest.mark.django_db
+class TestExchangeRateCheckConstraints:
+    """A10: el motor rechaza cotizaciones negativas (compra/venta/promedio)."""
+
+    def _supported(self) -> None:
+        if not connection.features.supports_table_check_constraints:
+            pytest.skip(
+                "El motor no soporta CheckConstraints; la constraint solo se "
+                "aplica en motores que las ejecutan."
+            )
+
+    def test_negative_promedio_rejected_by_db(self) -> None:
+        """Un promedio negativo lanza IntegrityError en el motor."""
+        self._supported()
+        with pytest.raises(IntegrityError):
+            ExchangeRateFactory(promedio=Decimal("-1.00"))
+
+    def test_negative_compra_rejected_by_db(self) -> None:
+        """Una compra negativa lanza IntegrityError en el motor."""
+        self._supported()
+        with pytest.raises(IntegrityError):
+            ExchangeRateFactory(compra=Decimal("-1.00"))
+
+    def test_null_values_allowed(self) -> None:
+        """Las cotizaciones pueden ser nulas (la fuente no las publica)."""
+        self._supported()
+        rate = ExchangeRateFactory(compra=None, venta=None)
+        assert rate.pk is not None

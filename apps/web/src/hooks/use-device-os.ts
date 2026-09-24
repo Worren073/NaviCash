@@ -85,14 +85,3 @@ export function getOSName(os: DeviceOS): string {
   };
   return names[os];
 }
-
-/**
- * Utility: Obtener mensaje de limitaciones para iOS
- */
-export function getIOSLimitations(): string[] {
-  return [
-    "El micrófono requiere permiso del navegador",
-    "Acceso offline limitado",
-    "Algunas características PWA pueden no funcionar completamente",
-  ];
-}

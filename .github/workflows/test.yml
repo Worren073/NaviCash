@@ -48,5 +48,19 @@ jobs:
       - name: Install dependencies
         run: cd apps/web && npm ci
 
+      - name: Lint
+        run: cd apps/web && npm run lint
+
+      - name: Typecheck
+        run: cd apps/web && npm run typecheck
+
+      - name: Build
+        run: cd apps/web && npm run build
+        # El build es fail-closed sin VITE_CAPTCHA_SITE_KEY (hallazgo M8). Se usa
+        # la clave pública de prueba de Turnstile: en producción la real llega
+        # por .env, nunca se hardcodea el SECRET key en el repo.
+        env:
+          VITE_CAPTCHA_SITE_KEY: 1x00000000000000000000AA
+
       - name: Audit npm dependencies
         run: cd apps/web && npm audit --audit-level=high
