@@ -32,6 +32,8 @@ def build_summary(user, today: date | None = None) -> dict:
     - ``total_balance_usd``: suma de saldos de billeteras en USD.
     - ``to_receive`` / ``to_pay``: totales pendientes vencidos en moneda base.
     - ``overdue``: total de operaciones retrasadas (por recibir + por pagar).
+    - ``collected_month`` / ``spent_month``: cobrado/gastado del mes actual
+      (operaciones pagadas con ``fecha_pagado`` dentro del mes).
     - ``wallets``: billeteras con saldo local y ``usd_value`` virtual.
     - ``upcoming``: próximas 5 operaciones pendientes por vencimiento.
 
@@ -96,6 +98,32 @@ def build_summary(user, today: date | None = None) -> dict:
     overdue_usd = overdue_totals["overdue_total"] or Decimal("0.00")
     overdue = usd_to_currency(overdue_usd, base, rate_value or Decimal("1"))
 
+    # --- Cobrado/gastado del mes actual --------------------------------------
+    # Suma de operaciones EFECTIVAMENTE pagadas cuya fecha de pago cae en el
+    # mes en curso (R: "cobrado este mes" / "gastado este mes"). Se hace en una
+    # sola agregación SQL reutilizando ``monto_usd`` (conversión congelada).
+    month_start = today.replace(day=1)
+    month_end = date(
+        today.year + (today.month // 12), today.month % 12 + 1, 1
+    )
+    month_totals = (
+        Transaction.objects.filter(
+            user=user,
+            estado="pagado",
+            fecha_pagado__date__gte=month_start,
+            fecha_pagado__date__lt=month_end,
+        ).aggregate(
+            collected_month=Sum("monto_usd", filter=Q(tipo="cobro")),
+            spent_month=Sum("monto_usd", filter=Q(tipo="pago")),
+        )
+    )
+    collected_month_usd = month_totals["collected_month"] or Decimal("0.00")
+    spent_month_usd = month_totals["spent_month"] or Decimal("0.00")
+    collected_month = usd_to_currency(
+        collected_month_usd, base, rate_value or Decimal("1")
+    )
+    spent_month = usd_to_currency(spent_month_usd, base, rate_value or Decimal("1"))
+
     # --- Próximas operaciones ------------------------------------------------
     upcoming = list(
         pending.filter(fecha_vencimiento__gt=today).order_by("fecha_vencimiento")[:5]
@@ -120,6 +148,8 @@ def build_summary(user, today: date | None = None) -> dict:
         "count_to_receive": count_to_receive,
         "count_to_pay": count_to_pay,
         "overdue": round_money(overdue),
+        "collected_month": round_money(collected_month),
+        "spent_month": round_money(spent_month),
         "wallets": wallets,
         "upcoming": upcoming,
         "recent": recent,

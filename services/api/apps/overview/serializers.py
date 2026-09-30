@@ -86,6 +86,8 @@ class OverviewSerializer(serializers.Serializer):
     count_to_receive = serializers.IntegerField()
     count_to_pay = serializers.IntegerField()
     overdue = serializers.DecimalField(max_digits=20, decimal_places=2)
+    collected_month = serializers.DecimalField(max_digits=20, decimal_places=2)
+    spent_month = serializers.DecimalField(max_digits=20, decimal_places=2)
     wallets = WalletSummarySerializer(many=True)
     upcoming = TransactionBriefSerializer(many=True)
     recent = RecentTransactionSerializer(many=True)

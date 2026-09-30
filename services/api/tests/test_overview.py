@@ -79,6 +79,60 @@ class TestOverview:
         upcoming = resp.data["upcoming"]
         assert len(upcoming) == 1
 
+    def test_returns_collected_and_spent_current_month(self, api_client) -> None:
+        """Cobrado/gastado del mes: solo operaciones pagadas este mes."""
+        self._seed_rate()
+        paid_at = timezone.now()
+        # Cobro pago este mes (30 USD) y pago pagado este mes (20 USD).
+        TransactionFactory(
+            user=api_client.user,
+            tipo="cobro",
+            monto=Decimal("30.00"),
+            moneda="USD",
+            monto_usd=Decimal("30.00"),
+            estado="pagado",
+            fecha=date.today() - timedelta(days=10),
+            fecha_pagado=paid_at,
+        )
+        TransactionFactory(
+            user=api_client.user,
+            tipo="pago",
+            monto=Decimal("20.00"),
+            moneda="USD",
+            monto_usd=Decimal("20.00"),
+            estado="pagado",
+            fecha=date.today() - timedelta(days=10),
+            fecha_pagado=paid_at,
+        )
+        resp = api_client.get(self.URL)
+        assert resp.data["collected_month"] == "30.00"
+        assert resp.data["spent_month"] == "20.00"
+
+    def test_month_totals_exclude_previous_month_and_unpaid(self, api_client) -> None:
+        """El total del mes excluye pagos de meses anteriores y no pagados."""
+        self._seed_rate()
+        # Pagado el mes pasado: no debe contar.
+        TransactionFactory(
+            user=api_client.user,
+            tipo="cobro",
+            monto=Decimal("90.00"),
+            moneda="USD",
+            monto_usd=Decimal("90.00"),
+            estado="pagado",
+            fecha_pagado=timezone.now() - timedelta(days=35),
+        )
+        # Pendiente (aunque tenga vencimiento este mes): no debe contar.
+        TransactionFactory(
+            user=api_client.user,
+            tipo="cobro",
+            monto=Decimal("40.00"),
+            moneda="USD",
+            monto_usd=Decimal("40.00"),
+        )
+        resp = api_client.get(self.URL)
+        assert resp.data["collected_month"] == "0.00"
+        assert resp.data["spent_month"] == "0.00"
+
     def test_requires_auth(self) -> None:
         """Sin token responde 401/403."""
         from rest_framework.test import APIClient
