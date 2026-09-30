@@ -10,6 +10,8 @@ import {
   PersonStanding,
   PiggyBank,
   Store,
+  TrendingDown,
+  TrendingUp,
   TriangleAlert,
   Wrench,
 } from "lucide-react";
@@ -26,6 +28,7 @@ import { BalanceCard } from "@/features/dashboard/balance-card";
 import { BalanceVisibilityToggle } from "@/features/dashboard/balance-visibility-toggle";
 import { formatCompact, formatMoney, formatRelativeEvent } from "@/lib/format";
 import type { Transaction } from "@/lib/types";
+import { TrendSparkline } from "@/features/dashboard/trend-sparkline";
 
 const STATE_BADGE: Record<string, "success" | "pending" | "delayed"> = {
   pagado: "success",
@@ -142,7 +145,7 @@ export default function DashboardPage() {
           </span>
           <BalanceVisibilityToggle hidden={hideBalances} onToggle={toggleBalances} />
         </div>
-        <div className="mt-3 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+        <div className="mt-3 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide md:grid md:grid-cols-3 md:gap-3 md:overflow-visible md:pb-0">
           <BalanceCard
             label={t("dashboard.totalBalance")}
             symbol="$"
@@ -192,7 +195,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Accesos rápidos */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         <Link
           to="/savings"
           className="glass-panel clip-rounded-lg flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
@@ -224,7 +227,7 @@ export default function DashboardPage() {
           type="button"
           onClick={openVoice}
           aria-label={t("assistant.voice.title")}
-          className="glass-panel clip-rounded-lg col-span-2 flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          className="glass-panel clip-rounded-lg col-span-2 flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99] md:col-span-1"
         >
           <NaviAvatar size={28} static className="shrink-0" />
           <span className="text-sm font-semibold text-on-surface">
@@ -257,12 +260,83 @@ export default function DashboardPage() {
         </section>
       </Link>
 
+      {/* Totales del mes */}
+      <BlurLoading loading={isLoading}>
+        <section className="grid grid-cols-2 gap-2 md:gap-3">
+          <Link
+            to="/transactions?tipo=cobro&estado=pagado"
+            className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:min-h-40"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-income/20">
+                <TrendingUp className="h-4 w-4 text-income-text" />
+              </div>
+              <span className="text-xs font-semibold text-on-surface-variant">
+                {t("dashboard.collectedThisMonth")}
+              </span>
+            </div>
+            <div>
+              {isLoading ? (
+                <Skeleton className="h-7 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-semibold text-on-surface">
+                    {formatCompact(Number(data?.collected_month ?? 0), "USD")}
+                  </div>
+                  <div className="text-xs text-on-surface-variant">
+                    {t("dashboard.thisMonth")}
+                  </div>
+                </>
+              )}
+            </div>
+            <TrendSparkline
+              trend="up"
+              color="var(--color-income)"
+              className="h-8 w-full"
+            />
+          </Link>
+
+          <Link
+            to="/transactions?tipo=pago&estado=pagado"
+            className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:min-h-40"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-expense/20">
+                <TrendingDown className="h-4 w-4 text-expense" />
+              </div>
+              <span className="text-xs font-semibold text-on-surface-variant">
+                {t("dashboard.spentThisMonth")}
+              </span>
+            </div>
+            <div>
+              {isLoading ? (
+                <Skeleton className="h-7 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-semibold text-on-surface">
+                    {formatCompact(Number(data?.spent_month ?? 0), "USD")}
+                  </div>
+                  <div className="text-xs text-on-surface-variant">
+                    {t("dashboard.thisMonth")}
+                  </div>
+                </>
+              )}
+            </div>
+            <TrendSparkline
+              trend="down"
+              color="var(--color-expense)"
+              className="h-8 w-full"
+            />
+          </Link>
+        </section>
+      </BlurLoading>
+
       {/* Quick Stats Bento */}
       <BlurLoading loading={isLoading}>
-        <section className="grid grid-cols-2 gap-2">
+        <section className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
         <Link
           to="/transactions?tipo=cobro&estado=pendiente"
-          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
         >
           <div className="flex items-start justify-between">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-income/20">
@@ -292,7 +366,7 @@ export default function DashboardPage() {
 
         <Link
           to="/transactions?tipo=pago&estado=pendiente"
-          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
         >
           <div className="flex items-start justify-between">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-expense/20">
@@ -319,27 +393,36 @@ export default function DashboardPage() {
             )}
           </div>
         </Link>
+
+        <Link
+          to="/transactions?estado=retrasado"
+          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-status-delayed/20">
+              <TriangleAlert className="h-4 w-4 text-delayed-text" />
+            </div>
+            <span className="rounded-full bg-status-delayed/10 px-2 py-0.5 text-xs font-semibold text-delayed-text">
+              {t("common.delayed")}
+            </span>
+          </div>
+          <div>
+            {isLoading ? (
+              <Skeleton className="h-7 w-24" />
+            ) : (
+              <>
+                <div className="text-2xl font-semibold text-on-surface">
+                  {formatCompact(Number(data?.overdue ?? 0), "USD")}
+                </div>
+                <div className="text-xs text-on-surface-variant">
+                  {t("dashboard.overdueSubtitle")}
+                </div>
+              </>
+            )}
+          </div>
+        </Link>
         </section>
       </BlurLoading>
-
-      <Link
-        to="/transactions?estado=retrasado"
-        className="glass-panel clip-rounded-lg flex flex-1 items-center justify-between rounded-lg border-error/30 p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
-      >
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-status-delayed/20">
-            <TriangleAlert className="h-3.5 w-3.5 text-delayed-text" />
-          </div>
-          <span className="text-sm text-delayed-text">{t("common.delayed")}</span>
-        </div>
-        {isLoading ? (
-          <Skeleton className="h-5 w-14" />
-        ) : (
-          <span className="text-sm font-semibold text-on-surface">
-            {formatCompact(Number(data?.overdue ?? 0), "USD")}
-          </span>
-        )}
-      </Link>
 
       {/* Upcoming / Próximos vencimientos */}
       <section>

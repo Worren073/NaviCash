@@ -114,6 +114,8 @@ export interface Overview {
   count_to_receive: number;
   count_to_pay: number;
   overdue: string;
+  collected_month: string;
+  spent_month: string;
   wallets: Array<WalletSummary>;
   upcoming: Transaction[];
   recent: Transaction[];
