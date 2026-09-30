@@ -271,6 +271,7 @@ export default function AppLayout() {
         // Durante el tour, la burbuja y su globo quedan sobre TopBar/BottomNav
         // (z-50) para que ningún botón del globo quede tapado.
         wrapperClassName={tourMounted ? "z-[60]" : undefined}
+        tourActive={tourShown}
         tour={
           tourMounted && view ? (
             <NaviTourGlobe
