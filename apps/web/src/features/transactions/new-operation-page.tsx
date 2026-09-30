@@ -170,7 +170,7 @@ export default function NewOperationPage() {
       </header>
 
       {/* Scrollable form */}
-      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-5 pb-32 pt-2">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 overflow-y-auto px-5 pb-32 pt-2">
         {/* Tipo cobro/pago */}
         <Segmented
           layoutId="seg-tipo"

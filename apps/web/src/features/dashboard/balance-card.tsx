@@ -67,7 +67,7 @@ export function BalanceCard({
             "bg-primary/30",
           ];
   return (
-    <section className="glass-panel clip-rounded-xl relative w-[92%] shrink-0 snap-center overflow-hidden rounded-xl p-6">
+    <section className="glass-panel clip-rounded-xl relative w-[92%] shrink-0 snap-center overflow-hidden rounded-xl p-6 md:w-full">
       <div
         className={`absolute inset-0 opacity-50 ${
           tone === "flag"

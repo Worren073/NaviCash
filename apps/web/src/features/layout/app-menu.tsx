@@ -34,11 +34,10 @@ function MenuLink({
   );
 }
 
-export function AppMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { t } = useTranslation();
+export function useReplayTour() {
   const queryClient = useQueryClient();
 
-  function replayTour() {
+  return () => {
     // Limpia el "visto" por ruta y vuelve a marcar el tour como pendiente para
     // que Navi lo muestre de nuevo al navegar.
     resetNaviTour();
@@ -48,8 +47,12 @@ export function AppMenu({ open, onClose }: { open: boolean; onClose: () => void 
       .catch(() => {
         // El localStorage ya se limpió; el PATCH falla no bloquea el reinicio.
       });
-    onClose();
-  }
+  };
+}
+
+export function AppMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
+  const replayTour = useReplayTour();
 
   return (
     <GlassPopover open={open} onClose={onClose} className="w-60 bg-white/90 backdrop-blur-[60px]">
@@ -62,7 +65,10 @@ export function AppMenu({ open, onClose }: { open: boolean; onClose: () => void 
         <MenuLink to="/checklists" onNavigate={onClose} label={t("menu.checklists")} icon={<ListChecks className="h-5 w-5 text-sky-500" />} />
         <button
           type="button"
-          onClick={replayTour}
+          onClick={() => {
+            replayTour();
+            onClose();
+          }}
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high"
           role="menuitem"
         >

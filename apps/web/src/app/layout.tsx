@@ -1,9 +1,9 @@
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { AlertTriangle, Plus } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
   FilledBellIcon,
   HomeIcon,
@@ -16,11 +16,14 @@ import type { AnimatedIconHandle } from "@/components/icons";
 import { AnimatedIconButton } from "@/components/ui/animated-icon-button";
 import { NotificationsPopover } from "@/features/notifications/notifications-popover";
 import { AppMenu } from "@/features/layout/app-menu";
+import { AddButton } from "@/features/layout/add-button";
+import { Sidebar } from "@/features/layout/sidebar";
 import { NaviBubble } from "@/features/assistant/navi-bubble";
 import { AssistantChat } from "@/features/assistant/assistant-chat";
 import { NaviVoice } from "@/features/assistant/navi-voice";
 import { NaviTourGlobe } from "@/features/assistant/navi-tour";
 import { useNaviTour } from "@/features/assistant/use-navi-tour";
+import { useResizeGuard } from "@/hooks/use-resize-guard";
 import { unlockSpeech } from "@/features/assistant/speech";
 import { VoiceChatContext } from "@/features/assistant/voice-chat-context";
 import { useMe, useNotifications, queryKeys } from "@/hooks/use-queries";
@@ -33,9 +36,6 @@ const NAV_ITEMS = [
   { to: "/", label: "nav.dashboard", icon: HomeIcon },
   { to: "/wallets", label: "nav.wallets", icon: WalletIcon },
 ] as const;
-
-// Mantener presionado el "+" abre la voz de Navi (hold de 400 ms).
-const HOLD_MS = 400;
 
 function NotificationBadge() {
   const { data } = useNotifications();
@@ -105,7 +105,7 @@ function DeletionCountdownBanner({ scheduledAt }: { scheduledAt: string }) {
   });
 
   return (
-    <div className="sticky top-[calc(env(safe-area-inset-top)+3.25rem)] z-30 mt-2 flex items-center justify-between gap-3 rounded-xl border border-error-container bg-error-container/70 px-3 py-2 backdrop-blur-md">
+    <div className="sticky top-[calc(env(safe-area-inset-top)+3.25rem)] z-30 mt-2 flex items-center justify-between gap-3 rounded-xl border border-error-container bg-error-container/70 px-3 py-2 backdrop-blur-md lg:top-[calc(env(safe-area-inset-top)+3.5rem)]">
       <p className="flex min-w-0 items-start gap-2 text-xs font-medium leading-snug text-on-error-container sm:text-sm">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
@@ -135,7 +135,7 @@ function TopBar() {
   const [notifOpen, setNotifOpen] = useState(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between border-b border-glass-border bg-glass-surface/60 px-5 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-2.5 shadow-sm backdrop-blur-xl">
+    <header className="fixed-glass fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between border-b border-glass-border bg-glass-surface/60 px-5 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-2.5 shadow-sm backdrop-blur-xl lg:pt-[calc(env(safe-area-inset-top)+0.5rem)] lg:pb-3">
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-on-primary shadow-sm">
           N
@@ -143,7 +143,7 @@ function TopBar() {
         <h1 className="text-xl font-bold tracking-tight text-primary">{t("app.name")}</h1>
       </div>
       <div className="flex items-center gap-1">
-        <div className="relative z-50">
+        <div className="relative z-50 lg:hidden">
           <AnimatedIconButton
             icon={ListIcon}
             label={t("menu.title")}
@@ -172,66 +172,11 @@ function TopBar() {
   );
 }
 
-function AddButton({ onVoiceOpen }: { onVoiceOpen: () => void }) {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const holdTimer = useRef<number | null>(null);
-  const held = useRef(false);
-
-  function clearHold() {
-    if (holdTimer.current !== null) {
-      window.clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-  }
-
-  function onPointerDown() {
-    held.current = false;
-    clearHold();
-    // iOS exige que el audio de voz se desbloquee dentro de un gesto: el
-    // primer toque del "+" (posible hold → voz de Navi) es ese gesto.
-    unlockSpeech();
-    // Mantener presionado → voz de Navi.
-    holdTimer.current = window.setTimeout(() => {
-      held.current = true;
-      clearHold();
-      onVoiceOpen();
-    }, HOLD_MS);
-  }
-
-  function onClick(e: React.MouseEvent) {
-    if (held.current) {
-      e.preventDefault();
-      held.current = false;
-      return;
-    }
-    navigate("/operations/new");
-  }
-
-  return (
-    <button
-      type="button"
-      aria-label={t("nav.add")}
-      title={t("nav.add")}
-      onPointerDown={onPointerDown}
-      onPointerUp={clearHold}
-      onPointerLeave={clearHold}
-      onPointerCancel={clearHold}
-      onContextMenu={(e) => e.preventDefault()}
-      onClick={onClick}
-      className="flex h-14 w-14 -translate-y-1.5 items-center justify-center rounded-full border-2 border-surface bg-primary text-white shadow-lg shadow-primary/30 transition-all hover:opacity-90 active:scale-90 select-none"
-      style={{ touchAction: "none" }}
-    >
-      <Plus className="h-7 w-7" style={{ strokeWidth: 2.5 }} />
-    </button>
-  );
-}
-
 function BottomNav({ onVoiceOpen }: { onVoiceOpen: () => void }) {
   return (
     <nav
       aria-label="Navegación principal"
-      className="clip-rounded-4xl fixed bottom-[calc(env(safe-area-inset-bottom)+0.125rem)] left-1/2 z-50 flex w-[calc(100%-2.5rem)] max-w-md -translate-x-1/2 items-center justify-around rounded-4xl border border-glass-border bg-glass-surface/60 p-2 shadow-[0_8px_32px_0_rgba(0,0,0,0.1)] backdrop-blur-2xl"
+      className="fixed-glass clip-rounded-4xl fixed bottom-[calc(env(safe-area-inset-bottom)+0.125rem)] left-1/2 z-50 flex w-[calc(100%-2.5rem)] max-w-md -translate-x-1/2 items-center justify-around rounded-4xl border border-glass-border bg-glass-surface/60 p-2 shadow-[0_8px_32px_0_rgba(0,0,0,0.1)] backdrop-blur-2xl lg:hidden"
     >
       {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
         <NavLink key={to} to={to} label={label} icon={Icon} matchEnd={to === "/"} />
@@ -287,6 +232,8 @@ export default function AppLayout() {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
 
+  useResizeGuard();
+
   // Tour guiado de Navi: solo para usuarios que aún no lo completaron.
   const { data: me } = useMe();
   const { view, stepIndex, totalSteps, visible, next, skip } = useNaviTour(location.pathname);
@@ -295,9 +242,10 @@ export default function AppLayout() {
   const tourMounted = onboarding && Boolean(view);
 
   return (
-    <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)]">
+    <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)] lg:pb-0">
       <TopBar />
-      <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
+      <Sidebar onVoiceOpen={() => setVoiceOpen(true)} />
+      <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-[calc(env(safe-area-inset-top)+3.5rem)] md:max-w-3xl lg:max-w-6xl lg:pt-[calc(env(safe-area-inset-top)+4.5rem)]">
         {/* Aviso en TODAS las vistas mientras la cuenta cuenta regresiva
             para su eliminación; el botón cancela sin salir de la pantalla. */}
         {me?.deletion_scheduled_at && (

@@ -444,7 +444,7 @@ export default function SubscriptionsPage() {
           {t("subscriptions.empty")}
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="grid gap-2 md:grid-cols-2">
           {(data ?? []).map((sub) => (
             <SubscriptionCard key={sub.id} sub={sub} />
           ))}

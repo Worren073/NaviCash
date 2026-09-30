@@ -857,7 +857,7 @@ export default function ChecklistsPage() {
           {t("checklists.empty")}
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="grid gap-2 md:grid-cols-2">
           {(data ?? []).map((list) => (
             <ChecklistCard key={list.id} list={list} rate={rate} />
           ))}

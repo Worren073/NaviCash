@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 /* ==========================================================================
    NaviCash — Design tokens "Liquid Glass" (light-first)
@@ -270,6 +271,28 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* ==========================================================================
+   Guard de resize: mientras se arrastra el borde de la ventana se congelan
+   transiciones/animaciones y las barras fijas pierden el backdrop-filter
+   (que re-rasteriza en cada frame y causa parpadeo/seams). Al soltar vuelve
+   todo el glass. La clase se gestiona desde useResizeGuard().
+   ========================================================================== */
+html.is-resizing,
+html.is-resizing *,
+html.is-resizing *::before,
+html.is-resizing *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0 !important;
+}
+
+html.is-resizing .fixed-glass {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background-color: rgba(255, 255, 255, 0.94);
 }
 
 /* ==========================================================================

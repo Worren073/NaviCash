@@ -345,13 +345,15 @@ const accountsUsd = savingWallets.reduce(
             {t("savings.noAccounts")}
           </p>
         ) : (
-          savingWallets.map((wallet) => (
-            <EditWalletDialog
-              key={wallet.id}
-              wallet={wallet}
-              usdValue={usdValues.get(wallet.id) ?? wallet.saldo}
-            />
-          ))
+          <div className="grid gap-2 md:grid-cols-2">
+            {savingWallets.map((wallet) => (
+              <EditWalletDialog
+                key={wallet.id}
+                wallet={wallet}
+                usdValue={usdValues.get(wallet.id) ?? wallet.saldo}
+              />
+            ))}
+          </div>
         )}
         <NewWalletDialog defaultTipo="saving" lockTipo />
       </section>
@@ -371,7 +373,7 @@ const accountsUsd = savingWallets.reduce(
               {t("savings.empty")}
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="grid gap-2 md:grid-cols-2">
               {(data ?? []).map((goal) => (
                 <GoalCard key={goal.id} goal={goal} savingWallets={savingWallets} />
               ))}

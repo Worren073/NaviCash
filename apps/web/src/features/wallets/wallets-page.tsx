@@ -841,7 +841,7 @@ export default function WalletsPage() {
             </span>
             <BalanceVisibilityToggle hidden={hideBalances} onToggle={toggleBalances} />
           </div>
-          <div className="mt-3 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide md:grid md:grid-cols-3 md:gap-3 md:overflow-visible md:pb-0">
             <BalanceCard
               label={t("dashboard.totalBalance")}
               symbol="$"
@@ -933,23 +933,27 @@ export default function WalletsPage() {
             ) : (
               <>
                 {vesWallets.length > 0 && (
-                  <div className="space-y-2">
+                  <div>
                     <h4 className="mt-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
                       <span className="h-px flex-1 bg-glass-border" />
                       {t("wallet.vesAccounts")}
                       <span className="h-px flex-1 bg-glass-border" />
                     </h4>
-                    {vesWallets.map(renderWallet)}
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                      {vesWallets.map(renderWallet)}
+                    </div>
                   </div>
                 )}
                 {usdWallets.length > 0 && (
-                  <div className="space-y-2">
+                  <div>
                     <h4 className="mt-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
                       <span className="h-px flex-1 bg-glass-border" />
                       {t("wallet.usdAccounts")}
                       <span className="h-px flex-1 bg-glass-border" />
                     </h4>
-                    {usdWallets.map(renderWallet)}
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                      {usdWallets.map(renderWallet)}
+                    </div>
                   </div>
                 )}
               </>
@@ -970,7 +974,9 @@ export default function WalletsPage() {
                 {t("wallet.noSaving")}
               </p>
             ) : (
-              savingWallets.map(renderWallet)
+              <div className="grid gap-2 md:grid-cols-2">
+                {savingWallets.map(renderWallet)}
+              </div>
             )}
             <NewWalletDialog defaultTipo="saving" lockTipo />
           </section>
