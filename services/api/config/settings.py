@@ -37,6 +37,10 @@ env = environ.Env(
     POSTGRES_PASSWORD=(str, ""),
     POSTGRES_HOST=(str, "localhost"),
     POSTGRES_PORT=(str, "5432"),
+    # URL completa de la BD en producción (Render la resuelve con fromDatabase
+    # al sincronizar el Blueprint). Si está definida GANA sobre los campos
+    # POSTGRES_* por separado, que siguen usándose en el compose local.
+    DATABASE_URL=(str, ""),
     # sslmode de la conexión PG: "prefer" en dev sin SSL; producción define
     # DJANGO_DB_SSLMODE (p. ej. "require") desde su entorno (AUDIT M7).
     DJANGO_DB_SSLMODE=(str, "prefer"),
@@ -128,12 +132,17 @@ if not DEBUG:
             "puede ser la clave de desarrollo. Genera una nueva, p. ej. con "
             "'python -c \"import secrets; print(secrets.token_urlsafe(64))\"'."
         )
-    _db_password = env("POSTGRES_PASSWORD")
-    if not _db_password or _db_password == _DEV_DB_PASSWORD:
-        raise ImproperlyConfigured(
-            "POSTGRES_PASSWORD es obligatoria en producción (DEBUG=False) y no "
-            "puede ser la contraseña de desarrollo 'navicash-dev-password'."
-        )
+    # AUDIT A2 (BD): con DATABASE_URL (producción Render), la contraseña viaja
+    # dentro de la URL y no hay POSTGRES_PASSWORD que exigir. Sin ella, el modo
+    # por-campos (dev/compose) exige una contraseña real, nunca la de desarrollo.
+    if not env("DATABASE_URL"):
+        _db_password = env("POSTGRES_PASSWORD")
+        if not _db_password or _db_password == _DEV_DB_PASSWORD:
+            raise ImproperlyConfigured(
+                "POSTGRES_PASSWORD es obligatoria en producción (DEBUG=False) y no "
+                "puede ser la contraseña de desarrollo 'navicash-dev-password'. "
+                "Alternativa recomendada: definir DATABASE_URL (URL completa)."
+            )
     # AUDIT C2/M7: sin Redis no hay caché compartida (throttle del asistente
     # por-worker y confirmaciones volatiles), y el default de dev apunta a un
     # host del compose local: en prod debe venir una REDIS_URL real (p. ej.
@@ -230,8 +239,24 @@ WSGI_APPLICATION = "config.wsgi.application"
 # ---------------------------------------------------------------------------
 # Base de datos (PostgreSQL)
 # ---------------------------------------------------------------------------
-DATABASES = {
-    "default": {
+# Producción (Render) define DATABASE_URL: el Blueprint la resuelve con
+# fromDatabase (URL interna postgres://USER:PASS@INTERNAL_HOST/DB). Desarrollo
+# (docker-compose) usa los campos POSTGRES_* por separado. Si hay URL, gana.
+_database_url = env("DATABASE_URL")
+
+if _database_url:
+    # django-environ parsea la URL; los parámetros de query (p. ej.
+    # ?sslmode=require en la URL externa) se vuelcan en OPTIONS.
+    _db_config = env.db("DATABASE_URL")
+    # AUDIT M7: timeout corto y sslmode explícito. No pisamos un sslmode que
+    # ya traiga la URL; si no lo trae, aplicamos DJANGO_DB_SSLMODE ("prefer"
+    # en la red privada de Render, "require" en conexiones externas).
+    _db_options = {**_db_config.get("OPTIONS", {}), "connect_timeout": 5}
+    if "sslmode" not in _db_options:
+        _db_options["sslmode"] = env("DJANGO_DB_SSLMODE")
+    _db_config["OPTIONS"] = _db_options
+else:
+    _db_config = {
         "ENGINE": env("DJANGO_DB_ENGINE"),
         "NAME": env("POSTGRES_DB"),
         "USER": env("POSTGRES_USER"),
@@ -242,12 +267,17 @@ DATABASES = {
         # una conexión muerta tras un restart del PG) y timeout de conexión
         # corto + sslmode explícito (default "prefer": el compose local no
         # tiene SSL; producción fuerza "require" por env).
-        "CONN_MAX_AGE": 60,
-        "CONN_HEALTH_CHECKS": True,
         "OPTIONS": {
             "connect_timeout": 5,
             "sslmode": env("DJANGO_DB_SSLMODE"),
         },
+    }
+
+DATABASES = {
+    "default": {
+        **_db_config,
+        "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 

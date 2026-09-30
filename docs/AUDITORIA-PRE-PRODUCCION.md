@@ -37,7 +37,7 @@
 - **Acción:** `AnonRateThrottle`/scoped (`login 5/min`, `register 3/h`); en prod exigir `TURNSTILE_SECRET_KEY` (fail-closed con `DEBUG=False`); `VITE_CAPTCHA_SITE_KEY` obligatoria en build + `.env.example`.
 
 ### A2 — Configuración fail-open: DEBUG/secr etos con valores conocidos
-- `config/settings.py:22-23,29,46-49`: `DEBUG=True` por defecto, `DJANGO_SECRET_KEY="dev-secret-key…"`, `POSTGRES_PASSWORD` de desarrollo.
+- `config/settings.py:25-46,112-163`: `DEBUG` sin default (ausente → prod), `DJANGO_SECRET_KEY="dev-secret-key…"`, `POSTGRES_PASSWORD` de desarrollo; fail-fast A2. Conexión a BD vía `DATABASE_URL` (Render, gana sobre campos) o campos `POSTGRES_*` (dev).
 - **Acción:** fail-fast: si `DEBUG=False` y la clave es la conocida/vacía → `ImproperlyConfigured`; `DEBUG` sin default; test que falle si `DEBUG and not settings.TEST`.
 
 ### A3 — Sin HTTPS/HSTS/hardening de cookies detrás de proxy
@@ -144,7 +144,7 @@
 
 | Hallazgo | Qué se implementó | Ubicación |
 |----------|-------------------|-----------|
-| **A2** fail-fast | `DEBUG` sin default (ausente → prod), `DJANGO_SECRET_KEY`/`POSTGRES_PASSWORD` sin default dev + `ImproperlyConfigured` en prod; `test_settings.py` fuerza `DEBUG=1` | `config/settings.py:22-31,76-98`, `config/test_settings.py:10-14`, `infra/docker-compose.yml:43-55` |
+| **A2** fail-fast | `DEBUG` sin default (ausente → prod), `DJANGO_SECRET_KEY`/`POSTGRES_PASSWORD` sin default dev + `ImproperlyConfigured` en prod (chequeo de `POSTGRES_PASSWORD` se omite si hay `DATABASE_URL`, que la lleva embebida); `test_settings.py` fuerza `DEBUG=1` | `config/settings.py:25-46,128-163`, `config/test_settings.py:12-16`, `infra/docker-compose.yml:43-55` |
 | **A3** hardening HTTPS | `SECURE_PROXY_SSL_HEADER`, `SECURE_SSL_REDIRECT`, HSTS 1 año, `SESSION/CSRF_COOKIE_SECURE` solo prod | `config/settings.py:236-248` |
 | **A1** throttling+Turnstile | Rates globales (`login 5/min`, `register 3/h`, `email_verify 10/h`, `assistant 30/h`); scopes en login/register/verify/refresh; captcha fail-closed (`captcha.py:16-47`); build frontend exige `VITE_CAPTCHA_SITE_KEY` (`vite.config.ts:12-13`) | `config/settings.py:178-192`, `apps/accounts/views.py:89,119,147,212`, `apps/web/vite.config.ts` |
 | **C3/A7** refresh+logout | `check_blacklist()` + `is_active` + reuse-detection; `blacklist()` al rotar; logout revoca la familia de OutstandingToken | `apps/accounts/views.py:67-74,137-207` |
