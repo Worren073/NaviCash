@@ -37,12 +37,21 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
         Filtros por query param: ``estado`` (incluye el derivado "retrasado"),
         ``tipo``, ``moneda``, ``wallet``.
+
+        El scope (``scope=personal`` por defecto / ``scope=business``) aísla
+        los dos mundos: las operaciones personales nunca ven las del negocio y
+        viceversa (una operación con ``wallet`` NULL siempre cae en personal).
         """
         qs = (
             Transaction.objects.filter(user=self.request.user)
             .select_related("wallet", "category", "contact", "dest_wallet")
             .order_by("-fecha", "-created_at")
         )
+
+        if self.request.query_params.get("scope") == "business":
+            qs = qs.filter(wallet__business__isnull=False)
+        else:
+            qs = qs.filter(wallet__business__isnull=True)
 
         # Filtros "materializados" (campo directo).
         for field in ("tipo", "moneda", "wallet"):

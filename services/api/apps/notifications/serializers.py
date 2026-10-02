@@ -12,7 +12,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Notification
-        fields = ["id", "kind", "title", "message", "extra", "read", "created_at"]
+        fields = ["id", "kind", "scope", "title", "message", "extra", "read", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 

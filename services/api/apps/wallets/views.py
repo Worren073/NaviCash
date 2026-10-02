@@ -32,8 +32,17 @@ class WalletViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwner]
 
     def get_queryset(self):
-        """Devuelve únicamente las billeteras del usuario autenticado."""
-        return Wallet.objects.filter(user=self.request.user)
+        """Billeteras del usuario, acotadas por el scope de la consulta.
+
+        Query param ``scope``:
+        - ``personal`` (por defecto): solo billeteras personales
+          (``business IS NULL``). El módulo de negocio jamás se expone aquí.
+        - ``business``: solo la billetera del negocio del usuario.
+        """
+        qs = Wallet.objects.filter(user=self.request.user)
+        if self.request.query_params.get("scope") == "business":
+            return qs.filter(business__isnull=False)
+        return qs.filter(business__isnull=True)
 
     @action(detail=True, methods=["post"])
     def adjust(self, request, pk=None):

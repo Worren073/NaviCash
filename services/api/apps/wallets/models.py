@@ -23,6 +23,7 @@ WALLET_TYPES = [
     ("bank", "Banco"),
     ("saving", "Ahorro"),
     ("other", "Otro"),
+    ("business", "Negocio"),
 ]
 
 
@@ -80,6 +81,18 @@ help_text="Saldo actual; se ajusta automáticamente con los pagos y manualmente 
         verbose_name="Color",
         help_text="Color identificador (hex) que armoniza con el glass.",
     )
+    # Billetera de un negocio (módulo Business). null para billeteras
+    # personales; los scopes "personal"/"business" de la API filtran por este
+    # campo para que ambos mundos jamás se mezclen.
+    business = models.OneToOneField(
+        "business.Business",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="wallet",
+        verbose_name="Negocio",
+        help_text="Negocio al que pertenece la billetera (si es de negocio).",
+    )
     is_deleted = models.BooleanField(
         default=False,
         db_index=True,
@@ -99,6 +112,8 @@ help_text="Saldo actual; se ajusta automáticamente con los pagos y manualmente 
             # A9: listado del usuario (el manager filtra por is_deleted).
             models.Index(fields=["user", "is_deleted"]),
             models.Index(fields=["user", "created_at"]),
+            # Los scopes personal/business filtran por este campo muy a menudo.
+            models.Index(fields=["business"]),
         ]
         constraints = [
             # Un usuario no puede tener dos billeteras con el mismo nombre.

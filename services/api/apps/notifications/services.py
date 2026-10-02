@@ -64,14 +64,16 @@ def _candidates(user, today: date) -> list[dict]:
     # 1) Operaciones pendientes con vencimiento próximo o ya vencidas.
     pending = Transaction.objects.filter(
         user=user, estado="pendiente", fecha_vencimiento__isnull=False
-    )
+    ).select_related("wallet__business")
     for tx in pending:
         due = tx.fecha_vencimiento
         label = tx.concepto or tx.get_tipo_display()
+        scope = "business" if tx.wallet and tx.wallet.business_id else "personal"
         if due < today:
             items.append(
                 {
                     "kind": "overdue",
+                    "scope": scope,
                     "extra": {"transaction_id": str(tx.id)},
                     "title": f"«{label}» venció",
                     "message": f"Venció el {due.isoformat()} sin registrarse como pagado.",
@@ -81,18 +83,20 @@ def _candidates(user, today: date) -> list[dict]:
             items.append(
                 {
                     "kind": "due_soon",
+                    "scope": scope,
                     "extra": {"transaction_id": str(tx.id)},
                     "title": f"«{label}» vence pronto",
                     "message": f"Vence el {due.isoformat()}.",
                 }
             )
 
-    # 2) Metas de ahorro alcanzadas.
+    # 2) Metas de ahorro alcanzadas (siempre personales en el MVP).
     for goal in SavingsGoal.objects.filter(user=user):
         if goal.total_contributed >= goal.target_amount:
             items.append(
                 {
                     "kind": "goal_reached",
+                    "scope": "personal",
                     "extra": {"goal_id": str(goal.id)},
                     "title": f"¡Meta «{goal.name}» alcanzada!",
                     "message": (
@@ -118,35 +122,64 @@ def _notify_missing(user, candidates: list[dict]) -> list[Notification]:
         por conflicto, lo que solo implicaría un push menos, nunca duplicado).
     """
     kinds = {c["kind"] for c in candidates}
+    scopes = {c["scope"] for c in candidates}
     existing = {
-        (kind, json.dumps(extra, sort_keys=True))
-        for kind, extra in Notification.objects.filter(user=user, kind__in=kinds)
-        .values_list("kind", "extra")
+        (scope, kind, json.dumps(extra, sort_keys=True))
+        for scope, kind, extra in Notification.objects.filter(
+            user=user, kind__in=kinds, scope__in=scopes
+        )
+        .values_list("scope", "kind", "extra")
     }
     missing = [
-        Notification(user=user, kind=c["kind"], title=c["title"], message=c["message"], extra=c["extra"])
+        Notification(
+            user=user,
+            kind=c["kind"],
+            scope=c["scope"],
+            title=c["title"],
+            message=c["message"],
+            extra=c["extra"],
+        )
         for c in candidates
-        if (c["kind"], json.dumps(c["extra"], sort_keys=True)) not in existing
+        if (c["scope"], c["kind"], json.dumps(c["extra"], sort_keys=True)) not in existing
     ]
     Notification.objects.bulk_create(missing, ignore_conflicts=True)
     return missing
 
 
-def refresh_notifications(user, today: date | None = None) -> list[Notification]:
-    """Evalúa el dominio y crea las alertas pendientes del usuario.
+#: Máximo de notificaciones no leídas que se conservan visibles por ámbito.
+MAX_TRAY_NOTIFICATIONS = 6
+
+
+def refresh_notifications(
+    user, scope: str = "personal", today: date | None = None
+) -> list[Notification]:
+    """Evalúa el dominio y crea las alertas pendientes del usuario para un ámbito.
 
     Args:
         user: usuario autenticado.
+        scope: ámbito de notificación ("personal" o "business").
         today: fecha de referencia (inyectable en tests; por defecto hoy).
 
     Returns:
-        Lista de las 30 notificaciones más recientes del usuario.
+        Lista de hasta ``MAX_TRAY_NOTIFICATIONS`` notificaciones no leídas
+        del ámbito solicitado, tras recortar las más antiguas si exceden el límite.
     """
     today = today or date.today()
-    _notify_missing(user, _candidates(user, today))
+    candidates = [c for c in _candidates(user, today) if c["scope"] == scope]
+    _notify_missing(user, candidates)
+
+    unread_qs = Notification.objects.filter(
+        user=user, scope=scope, read=False
+    ).order_by("-created_at")
+    unread_ids = list(unread_qs.values_list("pk", flat=True))
+    if len(unread_ids) > MAX_TRAY_NOTIFICATIONS:
+        to_archive = unread_ids[MAX_TRAY_NOTIFICATIONS:]
+        Notification.objects.filter(pk__in=to_archive).update(read=True)
 
     return list(
-        Notification.objects.filter(user=user).order_by("-created_at")[:30]
+        Notification.objects.filter(
+            user=user, scope=scope, read=False
+        ).order_by("-created_at")[:MAX_TRAY_NOTIFICATIONS]
     )
 
 
@@ -193,6 +226,7 @@ def nudge_candidate(user, now_local: datetime) -> list[dict]:
     return [
         {
             "kind": "expense_nudge",
+            "scope": "personal",
             "extra": {"date": today_local.isoformat()},
             "title": "¿Gastos sin registrar?",
             "message": "Haz realizado algún gasto que deba registrar? Anótalo en NaviCash.",
@@ -253,7 +287,8 @@ def deliver_pushes(user, items: list[Notification]) -> int:
             "title": item.title,
             "body": item.message,
             "kind": item.kind,
-            "url": "/",
+            "scope": item.scope,
+            "url": "/business" if item.scope == "business" else "/",
         }
         for sub in subs:
             if send_web_push(sub, payload):

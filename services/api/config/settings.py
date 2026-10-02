@@ -202,6 +202,8 @@ INSTALLED_APPS = [
     "apps.subscriptions",
     "apps.checklists",
     "apps.assistant",
+    "apps.business",
+    "apps.crm",
 ]
 
 MIDDLEWARE = [

@@ -53,8 +53,9 @@ def build_summary(user, today: date | None = None) -> dict:
 
     # --- Billeteras --------------------------------------------------------
     # Solo convertimos a USD las monedas para las que tenemos tasa (USD/VES);
-    # EUR queda reportado en su moneda sin valor USD.
-    wallets = list(Wallet.objects.filter(user=user).all())
+    # EUR queda reportado en su moneda sin valor USD. Las billeteras de
+    # negocio se excluyen: el resumen personal vive en su propio mundo.
+    wallets = list(Wallet.objects.filter(user=user, business__isnull=True).all())
     total_balance_usd = Decimal("0.00")
     total_balance_ves: "Decimal | None" = Decimal("0.00") if rate_value else None
     for w in wallets:
@@ -70,7 +71,9 @@ def build_summary(user, today: date | None = None) -> dict:
                 total_balance_ves += round_money(w.saldo * rate_value)
 
     # --- Operaciones pendientes --------------------------------------------
-    pending = Transaction.objects.filter(user=user, estado="pendiente").select_related(
+    pending = Transaction.objects.filter(
+        user=user, estado="pendiente", wallet__business__isnull=True
+    ).select_related(
         "wallet", "category", "contact"
     )
 
@@ -112,6 +115,7 @@ def build_summary(user, today: date | None = None) -> dict:
             estado="pagado",
             fecha_pagado__date__gte=month_start,
             fecha_pagado__date__lt=month_end,
+            wallet__business__isnull=True,
         ).aggregate(
             collected_month=Sum("monto_usd", filter=Q(tipo="cobro")),
             spent_month=Sum("monto_usd", filter=Q(tipo="pago")),
@@ -132,7 +136,7 @@ def build_summary(user, today: date | None = None) -> dict:
     # --- Actividad reciente --------------------------------------------------
     # Últimos cobros/pagos realmente ejecutados, para la sección del dashboard.
     recent = list(
-        Transaction.objects.filter(user=user, estado="pagado")
+        Transaction.objects.filter(user=user, estado="pagado", wallet__business__isnull=True)
         .select_related("wallet", "dest_wallet", "contact")
         .order_by("-fecha_pagado", "-fecha")[:6]
     )

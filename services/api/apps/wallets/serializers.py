@@ -43,6 +43,19 @@ class WalletSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Ya tienes una billetera con ese nombre.")
         return value
 
+    def validate_tipo(self, value: str) -> str:
+        """La billetera de negocio solo nace por el módulo Business.
+
+        No puede crearse/editarse desde el CRUD genérico de billeteras: eso
+        garantiza que toda wallet ``tipo=="business"`` tenga su ``Business``
+        asociado (invariante de los scopes personal/business).
+        """
+        if value == "business":
+            raise serializers.ValidationError(
+                "La cuenta de negocio se crea desde el módulo de negocio."
+            )
+        return value
+
     def create(self, validated_data: dict) -> Wallet:
         """Crea la billetera con el saldo inicial provisto (o 0)."""
         initial = validated_data.pop("saldo_inicial", Decimal("0.00"))

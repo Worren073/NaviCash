@@ -1,8 +1,9 @@
 """views — Endpoints de ``notifications``.
 
-- ``GET /api/notifications``: regenera las alertas según el estado actual y
-  devuelve las recientes con el conteo de no leídas.
-- ``POST /api/notifications/read-all``: marca todas como leídas.
+- ``GET /api/notifications?scope=personal|business``: regenera las alertas del
+  ámbito solicitado según el estado actual y devuelve las no leídas (máx. 6)
+  con el conteo de no leídas.
+- ``POST /api/notifications/read-all?scope=``: marca como leídas las del ámbito.
 - ``POST /api/notifications/<id>/read``: marca una como leída.
 - Web Push: ``GET /api/push/vapid-key``, ``POST/DELETE /api/push/subscriptions``
   y el disparo externo ``POST /api/internal/tick`` (token compartido, lo llama
@@ -30,23 +31,45 @@ from apps.notifications.serializers import (
 )
 from apps.notifications.services import refresh_notifications, tick
 
+_VALID_SCOPES = {"personal", "business"}
+
 
 class NotificationViewSet(ViewSet):
     """Alertas del usuario autenticado."""
 
     permission_classes = [IsAuthenticated]
 
+    def _get_scope(self, request):
+        """Extrae y valida el parámetro ``scope`` (default personal)."""
+        scope = request.query_params.get("scope", "personal")
+        if scope not in _VALID_SCOPES:
+            return None, Response(
+                {"detail": f"scope inválido. Opciones: {', '.join(sorted(_VALID_SCOPES))}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return scope, None
+
     def list(self, request):
-        """GET: regenera y devuelve notificaciones + contador de no leídas."""
-        items = refresh_notifications(request.user)
+        """GET: regenera y devuelve notificaciones del ámbito + contador."""
+        scope, error = self._get_scope(request)
+        if error:
+            return error
+        items = refresh_notifications(request.user, scope=scope)
         data = NotificationSerializer(items, many=True).data
-        unread = Notification.objects.filter(user=request.user, read=False).count()
+        unread = Notification.objects.filter(
+            user=request.user, scope=scope, read=False
+        ).count()
         return Response({"results": data, "unread_count": unread})
 
     @action(detail=False, methods=["post"], url_path="read-all")
     def read_all(self, request):
-        """Marca todas las notificaciones del usuario como leídas."""
-        Notification.objects.filter(user=request.user, read=False).update(read=True)
+        """Marca como leídas las notificaciones del ámbito indicado."""
+        scope, error = self._get_scope(request)
+        if error:
+            return error
+        Notification.objects.filter(
+            user=request.user, scope=scope, read=False
+        ).update(read=True)
         return Response({"detail": "Notificaciones marcadas como leídas."})
 
     @action(detail=True, methods=["post"], url_path="read")

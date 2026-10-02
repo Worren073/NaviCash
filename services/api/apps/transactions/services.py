@@ -248,6 +248,21 @@ def create_transfer(
     if not is_valid_amount(amount):
         raise BusinessRuleError("El monto a transferir debe ser mayor a 0.01.")
 
+    # Los mundos personal y de negocio están aislados por diseño (capital
+    # externo, sin mezcla): una transferencia no puede saltarse la frontera.
+    # Se consulta desde Wallet (que posee el campo ``business``) para saber
+    # si alguna de las dos billeteras está ligada a un negocio.
+    is_business = set(
+        Wallet.objects.filter(
+            pk__in=[source.pk, dest.pk], business__isnull=False
+        ).values_list("pk", flat=True)
+    )
+    if source.id in is_business or dest.id in is_business:
+        if not (source.id in is_business and dest.id in is_business):
+            raise BusinessRuleError(
+                "Las cuentas de negocio y personales no pueden transferirse entre sí."
+            )
+
     rate = _resolve_transfer_rate(source.currency, dest.currency, rate_fuente, custom_rate)
 
     if rate is None:

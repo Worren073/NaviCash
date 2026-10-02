@@ -1,12 +1,16 @@
-"""tests — Notificaciones: generación, deduplicación y estado leída."""
+"""tests — Notificaciones: generación, deduplicación, ámbito y retención."""
 
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 
-from apps.notifications.models import Notification
+from apps.business.services import create_business
+from apps.notifications.models import Notification, PushSubscription
+from apps.notifications.services import deliver_pushes
 from factories import GoalContributionFactory, SavingsGoalFactory, TransactionFactory, UserFactory
 
 
@@ -113,7 +117,7 @@ class TestNotifications:
                 fecha=date.today() - timedelta(days=5),
                 fecha_vencimiento=date.today() - timedelta(days=1),
             )
-        with django_assert_num_queries(5):
+        with django_assert_num_queries(6):
             refresh_notifications(api_client.user)
         assert (
             Notification.objects.filter(user=api_client.user, kind="overdue").count()
@@ -158,3 +162,104 @@ class TestNotifications:
             Notification.objects.filter(user=api_client.user).values_list("extra__ref", flat=True)
         )
         assert sorted(remaining) == ["reciente", "sin-leer"]
+
+    def test_business_scope_isolated(self, api_client) -> None:
+        """Las notificaciones de negocio se consultan por scope=business y no
+        aparecen en el scope personal."""
+        business = create_business(
+            api_client.user, name="Cafetería", currency="USD", initial_capital=Decimal("0")
+        )
+        TransactionFactory(
+            user=api_client.user,
+            wallet=business.wallet,
+            fecha_vencimiento=date.today() + timedelta(days=1),
+        )
+        # Negocio: debe aparecer.
+        resp = api_client.get(f"{self.URL}?scope=business")
+        assert resp.status_code == 200
+        assert resp.data["unread_count"] == 1
+        assert len(resp.data["results"]) == 1
+        assert resp.data["results"][0]["scope"] == "business"
+        assert resp.data["results"][0]["kind"] == "due_soon"
+        # Personal: no debe aparecer.
+        resp_personal = api_client.get(self.URL)
+        assert resp_personal.data["unread_count"] == 0
+        assert resp_personal.data["results"] == []
+
+    def test_read_all_scoped(self, api_client) -> None:
+        """read-all solo marca como leídas las del scope indicado."""
+        TransactionFactory(
+            user=api_client.user, fecha_vencimiento=date.today() + timedelta(days=1)
+        )
+        business = create_business(
+            api_client.user, name="Cafetería", currency="USD", initial_capital=Decimal("0")
+        )
+        TransactionFactory(
+            user=api_client.user,
+            wallet=business.wallet,
+            fecha_vencimiento=date.today() + timedelta(days=1),
+        )
+        api_client.get(self.URL)
+        api_client.get(f"{self.URL}?scope=business")
+
+        api_client.post(f"{self.URL}/read-all?scope=business")
+        assert not Notification.objects.filter(
+            user=api_client.user, scope="business", read=False
+        ).exists()
+        assert Notification.objects.filter(
+            user=api_client.user, scope="personal", read=False
+        ).exists()
+
+    def test_tray_retention_six(self, api_client) -> None:
+        """La bandeja retiene máximo 6 notificaciones no leídas por scope."""
+        for days in range(7):
+            TransactionFactory(
+                user=api_client.user,
+                fecha_vencimiento=date.today() + timedelta(days=1),
+                concepto=f"Op {days}",
+            )
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 6
+        assert resp.data["unread_count"] == 6
+        assert Notification.objects.filter(
+            user=api_client.user, scope="personal", read=False
+        ).count() == 6
+
+    def test_push_payload_scope_and_url(self, api_client) -> None:
+        """El payload de push incluye scope y url según el ámbito."""
+        PushSubscription.objects.create(
+            user=api_client.user,
+            endpoint="https://example.com/push/1",
+            p256dh="x" * 80,
+            auth="y" * 40,
+        )
+        personal = Notification.objects.create(
+            user=api_client.user,
+            kind="due_soon",
+            scope="personal",
+            title="Personal",
+            message="m",
+            extra={"transaction_id": "1"},
+        )
+        business = Notification.objects.create(
+            user=api_client.user,
+            kind="overdue",
+            scope="business",
+            title="Negocio",
+            message="m",
+            extra={"transaction_id": "2"},
+        )
+        payloads: list[dict] = []
+
+        def fake_send(_sub, payload: dict) -> bool:
+            payloads.append(payload)
+            return True
+
+        with patch("apps.notifications.services.send_web_push", fake_send):
+            deliver_pushes(api_client.user, [personal, business])
+
+        assert len(payloads) == 2
+        by_scope = {p["scope"]: p["url"] for p in payloads}
+        assert by_scope["personal"] == "/"
+        assert by_scope["business"] == "/business"
