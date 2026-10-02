@@ -1,8 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BellRing, CalendarClock, Check, Info, Target } from "lucide-react";
+import { BellRing, CalendarClock, Eraser, Info, Target } from "lucide-react";
+import { sileo } from "sileo";
 
 import { useNotifications, queryKeys } from "@/hooks/use-queries";
+import { useNavView } from "@/features/navigation/nav-view";
 import { api, ApiErrorClass } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { GlassPopover } from "@/components/ui/glass-popover";
@@ -54,12 +56,15 @@ export function NotificationsPopover({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data, isLoading } = useNotifications();
+  const { view } = useNavView();
+  const scope = view === "business" ? "business" : "personal";
+  const { data, isLoading } = useNotifications(scope);
 
-  const markAll = useMutation({
-    mutationFn: () => api.post<{ detail: string }>("/notifications/read-all"),
+  const clearTray = useMutation({
+    mutationFn: () => api.post<{ detail: string }>(`/notifications/read-all?scope=${scope}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      void queryClient.invalidateQueries({ queryKey: [...queryKeys.notifications, scope] });
+      sileo.success({ title: t("notifications.cleared") });
     },
     onError: (err) => {
       if (err instanceof ApiErrorClass) void err;
@@ -81,11 +86,11 @@ export function NotificationsPopover({
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs"
-            onClick={() => markAll.mutate()}
-            disabled={markAll.isPending}
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => clearTray.mutate()}
+            disabled={clearTray.isPending}
           >
-            <Check className="h-3.5 w-3.5" /> {t("notifications.markAll")}
+            <Eraser className="h-3.5 w-3.5" /> {t("notifications.clearTray")}
           </Button>
         )}
       </div>
@@ -101,7 +106,7 @@ export function NotificationsPopover({
             {t("notifications.empty")}
           </p>
         ) : (
-          items.slice(0, 12).map((item) => <NotificationRow key={item.id} item={item} />)
+          items.slice(0, 6).map((item) => <NotificationRow key={item.id} item={item} />)
         )}
       </div>
     </GlassPopover>

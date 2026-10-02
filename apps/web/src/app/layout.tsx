@@ -1,18 +1,15 @@
-import { Link, Outlet, useLocation } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
+import type { ComponentType } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
   FilledBellIcon,
-  HomeIcon,
   ListIcon,
-  SendHorizontalIcon,
   UserIcon,
-  WalletIcon,
 } from "@/components/icons";
-import type { AnimatedIconHandle } from "@/components/icons";
 import { AnimatedIconButton } from "@/components/ui/animated-icon-button";
 import { NotificationsPopover } from "@/features/notifications/notifications-popover";
 import { AppMenu } from "@/features/layout/app-menu";
@@ -27,18 +24,18 @@ import { useResizeGuard } from "@/hooks/use-resize-guard";
 import { unlockSpeech } from "@/features/assistant/speech";
 import { VoiceChatContext } from "@/features/assistant/voice-chat-context";
 import { useMe, useNotifications, queryKeys } from "@/hooks/use-queries";
+import { useNavView } from "@/features/navigation/nav-view";
+import { BOTTOM_NAV } from "@/features/navigation/nav-config";
+import { Segmented } from "@/components/ui/segmented";
 import { api, ApiErrorClass } from "@/lib/api";
 import { sileo } from "sileo";
 import { DeviceInfo } from "@/components/device-info";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
-  { to: "/", label: "nav.dashboard", icon: HomeIcon },
-  { to: "/wallets", label: "nav.wallets", icon: WalletIcon },
-] as const;
-
 function NotificationBadge() {
-  const { data } = useNotifications();
+  const { view } = useNavView();
+  const scope = view === "business" ? "business" : "personal";
+  const { data } = useNotifications(scope);
   const unread = data?.unread_count ?? 0;
 
   // Badge API: contador sobre el ícono de la PWA instalada (iOS 16.4+,
@@ -131,8 +128,10 @@ function DeletionCountdownBanner({ scheduledAt }: { scheduledAt: string }) {
 
 function TopBar() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const { view, changeView } = useNavView();
 
   return (
     <header className="fixed-glass fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between border-b border-glass-border bg-glass-surface/60 px-5 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-2.5 shadow-sm backdrop-blur-xl lg:pt-[calc(env(safe-area-inset-top)+0.5rem)] lg:pb-3">
@@ -141,6 +140,21 @@ function TopBar() {
           N
         </div>
         <h1 className="text-xl font-bold tracking-tight text-primary">{t("app.name")}</h1>
+      </div>
+      {/* Conmutador de vista Personales ⇄ Negocio (tablet y desktop). */}
+      <div className="hidden md:block">
+        <div className="w-44">
+          <Segmented
+            layoutId="seg-nav-view"
+            size="sm"
+            options={[
+              { value: "personal", label: t("nav.personal") },
+              { value: "business", label: t("nav.business") },
+            ]}
+            value={view}
+            onChange={changeView}
+          />
+        </div>
       </div>
       <div className="flex items-center gap-1">
         <div className="relative z-50 lg:hidden">
@@ -167,23 +181,35 @@ function TopBar() {
           </AnimatedIconButton>
           <NotificationsPopover open={notifOpen} onClose={() => setNotifOpen(false)} />
         </div>
+        <AnimatedIconButton
+          icon={UserIcon}
+          label={t("nav.profile")}
+          onClick={() => navigate("/profile")}
+        />
       </div>
     </header>
   );
 }
 
 function BottomNav({ onVoiceOpen }: { onVoiceOpen: () => void }) {
+  const { view } = useNavView();
+  const items = BOTTOM_NAV[view];
+  const mid = Math.ceil(items.length / 2);
+  const left = items.slice(0, mid);
+  const right = items.slice(mid);
+
   return (
     <nav
       aria-label="Navegación principal"
       className="fixed-glass clip-rounded-4xl fixed bottom-[calc(env(safe-area-inset-bottom)+0.125rem)] left-1/2 z-50 flex w-[calc(100%-2.5rem)] max-w-md -translate-x-1/2 items-center justify-around rounded-4xl border border-glass-border bg-glass-surface/60 p-2 shadow-[0_8px_32px_0_rgba(0,0,0,0.1)] backdrop-blur-2xl lg:hidden"
     >
-      {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-        <NavLink key={to} to={to} label={label} icon={Icon} matchEnd={to === "/"} />
+      {left.map(({ to, label, icon, matchEnd }) => (
+        <NavLink key={to} to={to} label={label} icon={icon} matchEnd={matchEnd} />
       ))}
       <AddButton onVoiceOpen={onVoiceOpen} />
-      <NavLink to="/transactions" label="nav.transactions" icon={SendHorizontalIcon} />
-      <NavLink to="/profile" label="nav.profile" icon={UserIcon} />
+      {right.map(({ to, label, icon, matchEnd }) => (
+        <NavLink key={to} to={to} label={label} icon={icon} matchEnd={matchEnd} />
+      ))}
     </nav>
   );
 }
@@ -196,19 +222,17 @@ function NavLink({
 }: {
   to: string;
   label: string;
-  icon: typeof HomeIcon;
+  icon: ComponentType<{ className?: string; size?: number }>;
   matchEnd?: boolean;
 }) {
   const { t } = useTranslation();
   const location = useLocation();
-  const ref = useRef<AnimatedIconHandle>(null);
   const active = matchEnd ? location.pathname === to : location.pathname.startsWith(to);
   return (
     <Link
       to={to}
       aria-label={t(label)}
       title={t(label)}
-      onClick={() => ref.current?.startAnimation()}
       className={cn(
         "relative flex h-12 w-12 items-center justify-center rounded-full",
         active ? "text-on-primary" : "text-on-surface-variant"
@@ -221,7 +245,7 @@ function NavLink({
           transition={{ type: "spring", stiffness: 500, damping: 40 }}
         />
       )}
-      <Icon ref={ref} size={24} className="relative z-10" />
+      <Icon size={24} className="relative z-10" />
     </Link>
   );
 }

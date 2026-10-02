@@ -1,10 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { api } from "@/lib/api";
+import { api, ApiErrorClass } from "@/lib/api";
 import type {
+  Business,
+  BusinessContact,
+  BusinessSummary,
   Checklist,
   NotificationsResponse,
   Overview,
+  Paginated,
   Subscription,
   User,
   Wallet,
@@ -23,6 +27,9 @@ export const queryKeys = {
   notifications: ["notifications"] as const,
   subscriptions: ["subscriptions"] as const,
   checklists: ["checklists"] as const,
+  business: ["business"] as const,
+  businessSummary: ["business-summary"] as const,
+  businessContacts: ["business-contacts"] as const,
 };
 
 export function useOverview() {
@@ -47,10 +54,11 @@ export function useWallets() {
   });
 }
 
-export function useNotifications() {
+export function useNotifications(scope: "personal" | "business" = "personal") {
   return useQuery({
-    queryKey: queryKeys.notifications,
-    queryFn: ({ signal }) => api.get<NotificationsResponse>("/notifications", { signal }),
+    queryKey: [...queryKeys.notifications, scope],
+    queryFn: ({ signal }) =>
+      api.get<NotificationsResponse>(`/notifications?scope=${scope}`, { signal }),
   });
 }
 
@@ -67,5 +75,41 @@ export function useChecklists() {
     queryKey: queryKeys.checklists,
     queryFn: ({ signal }) =>
       api.get<{ results: Checklist[] }>("/checklists", { signal }).then((d) => d.results),
+  });
+}
+
+/** Perfil del negocio del usuario; ``null`` si aún no lo ha creado (404). */
+export function useBusiness() {
+  return useQuery({
+    queryKey: queryKeys.business,
+    queryFn: async ({ signal }) => {
+      try {
+        return await api.get<Business>("/business", { signal });
+      } catch (err) {
+        if (err instanceof ApiErrorClass && err.status === 404) return null;
+        throw err;
+      }
+    },
+  });
+}
+
+export function useBusinessSummary() {
+  return useQuery({
+    queryKey: queryKeys.businessSummary,
+    queryFn: ({ signal }) => api.get<BusinessSummary>("/business/summary", { signal }),
+  });
+}
+
+export function useBusinessContacts(search?: string, type?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.businessContacts, { search, type }],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (type) params.set("type", type);
+      return api.get<Paginated<BusinessContact>>(`/business/contacts?${params.toString()}`, {
+        signal,
+      });
+    },
   });
 }

@@ -7,6 +7,7 @@ import { CheckedIcon, XIcon } from "@/components/icons";
 
 import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys } from "@/hooks/use-queries";
+import { useNavView } from "@/features/navigation/nav-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -143,6 +144,7 @@ function TxCard({ tx }: { tx: Transaction }) {
 
 export default function TransactionsPage() {
   const { t } = useTranslation();
+  const { view } = useNavView();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tipoFilter, setTipoFilter] = useState<TxType | "">(
     () => (searchParams.get("tipo") as TxType | "") ?? ""
@@ -173,12 +175,13 @@ export default function TransactionsPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: [
       ...queryKeys.transactions,
-      { tipo: tipoFilter, estado: estadoFilter, fecha: fechaFilter, page },
+      { scope: view, tipo: tipoFilter, estado: estadoFilter, fecha: fechaFilter, page },
     ],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set("page_size", "5");
       params.set("page", String(page));
+      if (view === "business") params.set("scope", "business");
       if (tipoFilter) params.set("tipo", tipoFilter);
       if (estadoFilter) params.set("estado", estadoFilter);
       if (fechaFilter) params.set("fecha", fechaFilter);

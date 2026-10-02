@@ -4,22 +4,15 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import type { ComponentType } from "react";
-import {
-  CalendarRange,
-  GraduationCap,
-  ListChecks,
-  PiggyBank,
-} from "lucide-react";
+import { GraduationCap } from "lucide-react";
 
 import {
-  HomeIcon,
   LogoutIcon,
-  SendHorizontalIcon,
-  UserIcon,
-  WalletIcon,
 } from "@/components/icons";
 import { AddButton } from "@/features/layout/add-button";
 import { useReplayTour } from "@/features/layout/app-menu";
+import { useNavView } from "@/features/navigation/nav-view";
+import { PRIMARY_NAV, SECONDARY_NAV } from "@/features/navigation/nav-config";
 import { api, setAccessToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -32,19 +25,6 @@ const ANIM_CLS = "transition-all duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1
 const PILL_EXPANDED = { left: 0, top: 0, width: 232, height: 40 } as const;
 const PILL_RADIUS = 20; // alto h-10 (40px) / 2 → extremos totalmente redondeados (cápsula)
 const PILL_COLLAPSED = { left: 4, top: 2, width: 36, height: 36 } as const;
-
-const PRIMARY_NAV = [
-  { to: "/", label: "nav.dashboard", icon: HomeIcon, matchEnd: true },
-  { to: "/wallets", label: "nav.wallets", icon: WalletIcon },
-  { to: "/transactions", label: "nav.transactions", icon: SendHorizontalIcon },
-  { to: "/profile", label: "nav.profile", icon: UserIcon },
-] as const;
-
-const SECONDARY_NAV = [
-  { to: "/savings", label: "menu.savings", icon: PiggyBank },
-  { to: "/subscriptions", label: "menu.subscriptions", icon: CalendarRange },
-  { to: "/checklists", label: "menu.checklists", icon: ListChecks },
-] as const;
 
 function SidebarLink({
   to,
@@ -161,6 +141,7 @@ function LogoutButton({ expanded }: { expanded: boolean }) {
 
 export function Sidebar({ onVoiceOpen }: { onVoiceOpen: () => void }) {
   const { t } = useTranslation();
+  const { view } = useNavView();
   const [expanded, setExpanded] = useState(false);
   const closeTimer = useRef<number | null>(null);
 
@@ -206,7 +187,7 @@ export function Sidebar({ onVoiceOpen }: { onVoiceOpen: () => void }) {
       )}
     >
       <nav className="flex flex-col gap-1">
-        {PRIMARY_NAV.map((item) => (
+        {PRIMARY_NAV[view].map((item) => (
           <SidebarLink key={item.to} {...item} expanded={expanded} />
         ))}
         <div
@@ -232,24 +213,28 @@ export function Sidebar({ onVoiceOpen }: { onVoiceOpen: () => void }) {
           </span>
         </div>
       </nav>
-      <div className="mt-4 border-t border-glass-border pt-3">
-        <p
-          className={cn(
-            "overflow-hidden whitespace-nowrap px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant",
-            ANIM_CLS,
-            expanded ? "translate-x-0 opacity-100" : "-translate-x-3 opacity-0"
-          )}
-        >
-          {t("menu.title")}
-        </p>
-        <nav className="flex flex-col gap-1">
-          {SECONDARY_NAV.map((item) => (
-            <SidebarLink key={item.to} {...item} expanded={expanded} />
-          ))}
-          <ReplayTourButton expanded={expanded} />
-        </nav>
-      </div>
+      {SECONDARY_NAV[view].length > 0 && (
+        <div className="mt-4 border-t border-glass-border pt-3">
+          <p
+            className={cn(
+              "overflow-hidden whitespace-nowrap px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant",
+              ANIM_CLS,
+              expanded ? "translate-x-0 opacity-100" : "-translate-x-3 opacity-0"
+            )}
+          >
+            {t("menu.title")}
+          </p>
+          <nav className="flex flex-col gap-1">
+            {SECONDARY_NAV[view].map((item) => (
+              <SidebarLink key={item.to} {...item} expanded={expanded} />
+            ))}
+          </nav>
+        </div>
+      )}
       <div className="mt-auto border-t border-glass-border pt-2">
+        <ReplayTourButton expanded={expanded} />
+      </div>
+      <div className="border-t border-glass-border pt-2">
         <LogoutButton expanded={expanded} />
       </div>
     </aside>

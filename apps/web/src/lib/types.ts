@@ -24,9 +24,45 @@ export interface Wallet {
   name: string;
   currency: Currency;
   saldo: string;
-  tipo: "cash" | "bank" | "saving" | "other";
+  tipo: "cash" | "bank" | "saving" | "other" | "business";
   color: string;
   created_at: string;
+}
+
+export interface Business {
+  id: string;
+  name: string;
+  currency: Currency;
+  wallet_id: string;
+  saldo: string;
+  created_at: string;
+}
+
+export interface BusinessSummary {
+  saldo: string;
+  currency: Currency;
+  ingresos_mes: string;
+  egresos_mes: string;
+  recent: Transaction[];
+}
+
+export interface BusinessContact {
+  id: string;
+  business: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  tax_id: string;
+  type: "cliente" | "proveedor" | "ambos";
+  customer_type: "minorista" | "mayorista" | "";
+  payment_terms_days: number;
+  credit_limit: string | null;
+  currency: Currency;
+  notes: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Category {
@@ -144,6 +180,7 @@ export interface Paginated<T> {
 export interface NotificationItem {
   id: string;
   kind: "due_soon" | "overdue" | "goal_reached" | "system";
+  scope: "personal" | "business";
   title: string;
   message: string;
   extra: Record<string, unknown>;

@@ -3,6 +3,7 @@ import { Navigate, Outlet, createBrowserRouter, useNavigate } from "react-router
 import { useQueryClient } from "@tanstack/react-query";
 
 import AppLayout from "@/app/layout";
+import { NavViewProvider } from "@/features/navigation/nav-view";
 import { api, getAccessToken, onSessionExpired, setAccessToken, BASE_URL } from "@/lib/api";
 import { Splash } from "@/components/ui/blur-loading";
 import { queryKeys } from "@/hooks/use-queries";
@@ -17,6 +18,8 @@ const SavingsPage = lazy(() => import("@/features/savings/savings-page"));
 const SubscriptionsPage = lazy(() => import("@/features/subscriptions/subscriptions-page"));
 const ChecklistsPage = lazy(() => import("@/features/checklists/checklists-page"));
 const ProfilePage = lazy(() => import("@/features/profile/profile-page"));
+const BusinessPage = lazy(() => import("@/features/business/business-page"));
+const BusinessContactsPage = lazy(() => import("@/features/business/business-contacts-page"));
 const LoginPage = lazy(() => import("@/features/auth/login-page"));
 const RegisterPage = lazy(() => import("@/features/auth/register-page"));
 const VerifyPage = lazy(() => import("@/features/auth/verify-page"));
@@ -125,19 +128,28 @@ export const router = createBrowserRouter([
       {
         element: <RequireAuth />,
         children: [
+          // La vista activa (Personales ⇄ Negocio) vive en este providers y
+          // alimenta layout, menú y datos por scope de las rutas compartidas.
           {
-            element: <AppLayout />,
+            element: <NavViewProvider />,
             children: [
-              { path: "/", element: <DashboardPage /> },
-              { path: "/wallets", element: <WalletsPage /> },
-              { path: "/transactions", element: <TransactionsPage /> },
-              { path: "/savings", element: <SavingsPage /> },
-              { path: "/subscriptions", element: <SubscriptionsPage /> },
-              { path: "/checklists", element: <ChecklistsPage /> },
-              { path: "/profile", element: <ProfilePage /> },
+              {
+                element: <AppLayout />,
+                children: [
+                  { path: "/", element: <DashboardPage /> },
+                  { path: "/wallets", element: <WalletsPage /> },
+                  { path: "/transactions", element: <TransactionsPage /> },
+                  { path: "/savings", element: <SavingsPage /> },
+                  { path: "/subscriptions", element: <SubscriptionsPage /> },
+                  { path: "/checklists", element: <ChecklistsPage /> },
+                  { path: "/profile", element: <ProfilePage /> },
+                  { path: "/business", element: <BusinessPage /> },
+                  { path: "/business/contacts", element: <BusinessContactsPage /> },
+                ],
+              },
+              { path: "/operations/new", element: <NewOperationPage /> },
             ],
           },
-          { path: "/operations/new", element: <NewOperationPage /> },
         ],
       },
       { path: "*", element: <Navigate to="/" replace /> },

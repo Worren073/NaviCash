@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BellRing,
@@ -13,6 +13,7 @@ import {
 
 import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys, useMe } from "@/hooks/use-queries";
+import { useNavView } from "@/features/navigation/nav-view";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,8 @@ export default function NewOperationPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { view: navView } = useNavView();
+  const isBusiness = navView === "business";
 
   // Shortcuts del manifest llegan como /operations/new?tipo=cobro|pago.
   const [searchParams] = useSearchParams();
@@ -93,8 +96,11 @@ export default function NewOperationPage() {
       api.get<Paginated<Contact>>("/contacts").then((d) => d.results),
   });
   const { data: wallets } = useQuery({
-    queryKey: queryKeys.wallets,
-    queryFn: () => api.get<Paginated<Wallet>>("/wallets").then((d) => d.results),
+    queryKey: [...queryKeys.wallets, { scope: navView }],
+    queryFn: () =>
+      api
+        .get<Paginated<Wallet>>(isBusiness ? "/wallets?scope=business" : "/wallets")
+        .then((d) => d.results),
   });
   const { data: rateData } = useQuery({
     queryKey: queryKeys.rates,
@@ -103,6 +109,16 @@ export default function NewOperationPage() {
     staleTime: 5 * 60 * 1000,
   });
   const rate = rateData?.rate ? Number(rateData.rate) : null;
+
+  // En la vista de negocio la operación solo puede usar la cuenta del negocio:
+  // se preselecciona (es la única devuelta por scope=business) y su moneda
+  // queda fija para que el alta nunca choque con la regla del servidor.
+  useEffect(() => {
+    if (!isBusiness || !wallets || wallets.length === 0) return;
+    const bizWallet = wallets[0];
+    setWallet((current) => (current && wallets.some((w) => w.id === current) ? current : bizWallet.id));
+    setCurrency(bizWallet.currency);
+  }, [isBusiness, wallets]);
 
   const changeCurrency = (c: Currency) => {
     if (c === currency) return;
@@ -137,7 +153,10 @@ export default function NewOperationPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
       void queryClient.invalidateQueries({ queryKey: queryKeys.overview });
-      navigate("/");
+      if (isBusiness) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.businessSummary });
+      }
+      navigate(isBusiness ? "/business" : "/");
     },
     onError: (err) => {
       if (err instanceof ApiErrorClass) setError(err.message);
@@ -186,13 +205,19 @@ export default function NewOperationPage() {
         <section className="glass-panel-elevated clip-rounded-4xl relative flex min-h-[180px] flex-col items-center justify-center gap-7 overflow-hidden rounded-[2rem] px-6 py-10">
           <div className="pointer-events-none absolute top-1/2 left-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
           <div className="relative z-10 w-full max-w-[260px]">
-            <Segmented
-              layoutId="seg-currency"
-              size="lg"
-              options={CURRENCIES.map((c) => ({ value: c.value, label: c.label }))}
-              value={currency}
-              onChange={changeCurrency}
-            />
+            {isBusiness ? (
+              <span className="block rounded-full border border-glass-border bg-surface-container-high px-3 py-2 text-center text-sm font-semibold text-on-surface-variant">
+                {currency}
+              </span>
+            ) : (
+              <Segmented
+                layoutId="seg-currency"
+                size="lg"
+                options={CURRENCIES.map((c) => ({ value: c.value, label: c.label }))}
+                value={currency}
+                onChange={changeCurrency}
+              />
+            )}
           </div>
           <div className="relative z-10 flex w-full items-baseline justify-center gap-2">
             <span className="text-4xl font-bold tracking-tight text-primary">
@@ -239,9 +264,10 @@ export default function NewOperationPage() {
               value={wallet}
               onChange={(e) => changeWallet(e.target.value)}
               aria-label={t("addOperation.wallet")}
-              className="w-full bg-transparent text-base text-on-surface outline-none"
+              disabled={isBusiness}
+              className="w-full bg-transparent text-base text-on-surface outline-none disabled:opacity-60"
             >
-              <option value="">{t("addOperation.wallet")}</option>
+              <option value="">{isBusiness ? t("business.dashboard.saldo") : t("addOperation.wallet")}</option>
               {(wallets ?? []).map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.name} · {w.currency}
