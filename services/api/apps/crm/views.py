@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal, DecimalException
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -270,18 +270,23 @@ class ProductViewSet(viewsets.ModelViewSet):
                 {"detail": "Indica un motivo para el ajuste.", "code": "validation_error"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        new_stock = product.stock_quantity + delta
-        if new_stock < 0:
-            return Response(
-                {
-                    "detail": f"El stock no puede quedar negativo (hay {product.stock_quantity}).",
-                    "code": "validation_error",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+        # El cambio de stock y su registro caen en la misma transacción y la
+        # fila del producto queda bloqueada: dos ajustes simultáneos nunca se
+        # pisan (mismo esquema que _withdraw_stock en services).
+        with transaction.atomic():
+            product = Product.objects.select_for_update().get(pk=product.pk)
+            new_stock = product.stock_quantity + delta
+            if new_stock < 0:
+                return Response(
+                    {
+                        "detail": f"El stock no puede quedar negativo (hay {product.stock_quantity}).",
+                        "code": "validation_error",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            product.stock_quantity = new_stock
+            product.save(update_fields=["stock_quantity", "updated_at"])
+            StockAdjustment.objects.create(
+                user=request.user, product=product, delta=delta, reason=reason
             )
-        product.stock_quantity = new_stock
-        product.save(update_fields=["stock_quantity", "updated_at"])
-        StockAdjustment.objects.create(
-            user=request.user, product=product, delta=delta, reason=reason
-        )
         return Response(self.get_serializer(product).data)
