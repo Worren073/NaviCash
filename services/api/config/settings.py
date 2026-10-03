@@ -368,6 +368,10 @@ REST_FRAMEWORK = {
         "login": "5/min",
         "register": "3/hour",
         "email_verify": "10/hour",
+        # Refresh de sesión: scope propio para no compartir presupuesto con
+        # login (el frontend reintenta un par de veces ante rotaciones
+        # concurrentes de la cookie — pestañas/PWA + ecosistema móvil).
+        "refresh": env("REFRESH_THROTTLE_RATE", default="60/min"),
         "assistant": env("ASSISTANT_THROTTLE_RATE", default="30/hour"),
         # Transcripción de voz: cada clip es una llamada paga al proveedor.
         "transcribe": env("TRANSCRIBE_THROTTLE_RATE", default="20/hour"),

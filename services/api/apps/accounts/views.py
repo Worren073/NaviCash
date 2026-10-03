@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 sec_logger = logging.getLogger("apps.accounts.security")
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.cache import cache
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 from django.utils import timezone
@@ -262,6 +262,14 @@ class LoginView(APIView):
         return _set_refresh_cookie(response, refresh)
 
 
+#: Ventana de "reuso benigno": dos refrescos concurrentes (pestañas, PWA +
+#: Safari, reintento tras rotación) pueden usar la MISMA cookie por unos
+#: segundos antes de que el navegador procese la nueva `Set-Cookie`. Dentro
+#: de esta ventana el reuso se rechaza con 401 SIN revocar la familia (no
+#: derriba al usuario legítimo); fuera de ella sí se revoca (robo real).
+REUSE_GRACE_SECONDS = 120
+
+
 class RefreshView(APIView):
     """Renueva el access token usando el refresh de la cookie.
 
@@ -272,7 +280,7 @@ class RefreshView(APIView):
 
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "login"
+    throttle_scope = "refresh"
 
     def post(self, request):
         if not _origin_is_allowed(request):
@@ -307,15 +315,29 @@ class RefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        # Reuse-detection (C3): un refresh ya rotado está blacklisted. El
+        # Reuse-detection (C3): un refresh ya rotado está blacklisted. Un
         # atacante pudo conservar copias anteriores de la familia: se revoca
-        # TODA la familia para neutralizarlas de golpe. La comprobación es
-        # explícita aquí porque el constructor de ``RefreshToken`` (verify=True)
-        # ya lanza ``TokenError`` al ver un token blacklisted, antes de que el
-        # flujo pudiera entrar en este bloque.
-        if BlacklistedToken.objects.filter(token__jti=refresh["jti"]).exists():
-            logger.warning("REFRESH_REUSE_DETECTED user=%s", user.id)
-            _revoke_refresh_family(user)
+        # TODA la familia para neutralizarlas de golpe. EXCEPCIÓN: si el reuso
+        # ocurre justo después de la rotación (dos refrescos concurrentes del
+        # mismo usuario legítimo, pestañas o reintento), NO se revoca: el
+        # cliente reintentará con la cookie nueva y seguirá su sesión.
+        bl = (
+            BlacklistedToken.objects.select_related("token")
+            .filter(token__jti=refresh["jti"])
+            .first()
+        )
+        if bl is not None:
+            within_grace = (
+                timezone.now() - bl.blacklisted_at
+            ) <= timedelta(seconds=REUSE_GRACE_SECONDS)
+            if within_grace:
+                logger.warning(
+                    "REFRESH_REUSE_BENIGN user=%s (dentro de la ventana de rotacion)",
+                    user.id,
+                )
+            else:
+                logger.warning("REFRESH_REUSE_DETECTED user=%s", user.id)
+                _revoke_refresh_family(user)
             return Response(
                 {"detail": "Sesión inválida o expirada."},
                 status=status.HTTP_401_UNAUTHORIZED,

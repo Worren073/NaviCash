@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import AppLayout from "@/app/layout";
 import { NavViewProvider } from "@/features/navigation/nav-view";
-import { api, getAccessToken, onSessionExpired, setAccessToken, BASE_URL } from "@/lib/api";
+import { api, getAccessToken, onSessionExpired, refreshSession, setAccessToken } from "@/lib/api";
 import { Splash } from "@/components/ui/blur-loading";
 import { queryKeys } from "@/hooks/use-queries";
 import type { User } from "@/lib/types";
@@ -23,6 +23,7 @@ const BusinessContactsPage = lazy(() => import("@/features/business/business-con
 const InvoicesPage = lazy(() => import("@/features/business/invoices-page"));
 const InvoiceNewPage = lazy(() => import("@/features/business/invoice-new-page"));
 const InvoiceDetailPage = lazy(() => import("@/features/business/invoice-detail-page"));
+const InventoryPage = lazy(() => import("@/features/business/inventory-page"));
 const CollectionPage = lazy(() => import("@/features/business/collection-page"));
 const LoginPage = lazy(() => import("@/features/auth/login-page"));
 const RegisterPage = lazy(() => import("@/features/auth/register-page"));
@@ -48,17 +49,14 @@ function RequireAuth() {
     (async () => {
       try {
         // Sin access en memoria: intentar refrescar usando la cookie.
-        const refreshResp = await fetch(`${BASE_URL}/auth/refresh`, {
-          method: "POST",
-          credentials: "include",
-        });
-        const refreshData = await refreshResp.json().catch(() => null);
-        if (!refreshResp.ok || !refreshData?.access) {
+        // Se usa el MISMO single-flight que el cliente HTTP (refreshSession):
+        // nunca dos refrescos simultáneos con la misma cookie (rotación).
+        const ok = await refreshSession();
+        if (!ok) {
           if (!cancelled) setOk(false);
           return;
         }
-        // Refresh exitoso: guardar el nuevo access y validar con /me.
-        setAccessToken(refreshData.access);
+        // Access ya guardado por refreshSession: validar con /me.
         const me = await api.get<User>("/auth/me");
         // Pre-cargar el perfil para que el layout (y el tour de Navi) lo lean
         // de react-query sin una petición extra.
@@ -152,6 +150,7 @@ export const router = createBrowserRouter([
                   { path: "/business/invoices", element: <InvoicesPage /> },
                   { path: "/business/invoices/new", element: <InvoiceNewPage /> },
                   { path: "/business/invoices/:id", element: <InvoiceDetailPage /> },
+                  { path: "/business/inventory", element: <InventoryPage /> },
                   { path: "/business/collection", element: <CollectionPage /> },
                 ],
               },

@@ -80,16 +80,37 @@ async function tryRefresh(): Promise<boolean> {
         setAccessToken(data.access);
         return true;
       }
-      setAccessToken(null);
+      // NO se limpia el access en memoria: un refresh fallido puede ser una
+      // rotación concurrente de la cookie (otra pestaña/PWA); si lo borráramos,
+      // las siguientes peticiones irían SIN cabecera y el logout global nunca
+      // se dispararía (bucle silencioso de 401). Se deja y se reintenta.
       return false;
     } catch {
-      setAccessToken(null);
       return false;
     } finally {
       refreshPromise = null;
     }
   })();
   return refreshPromise;
+}
+
+const REFRESH_RETRY_DELAY_MS = 750;
+
+/**
+ * Renueva la sesión con un único vuelo en memoria (single-flight, A11).
+ * Todas las rutas de la app (RequireAuth y el reintento de requests 401)
+ * pasan por aquí para nunca usar la misma cookie de refresh dos veces a la
+ * vez. Si el primer intento falla, se deja un pequeño margen y se reintenta
+ * una vez (el navegador pudo no haber procesado la nueva cookie de una
+ * rotación concurrente en otra pestaña).
+ */
+export async function refreshSession(): Promise<boolean> {
+  let ok = await tryRefresh();
+  if (!ok) {
+    await new Promise((r) => setTimeout(r, REFRESH_RETRY_DELAY_MS));
+    ok = await tryRefresh();
+  }
+  return ok;
 }
 
 function normalizeError(status: number, payload: unknown): ApiError {
@@ -139,11 +160,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   let resp = await doFetch();
 
-  // Access expirado: reintentar una vez tras refrescar. Si el refresh falla
-  // en una petición autenticada, la sesión murió: notificar al listener (A11).
+  // Access expirado: reintentar tras refrescar. Si el refresh falla incluso
+  // tras el reintento de una petición autenticada, la sesión murió: notificar
+  // al listener (A11) para hacer logout limpio.
   if (resp.status === 401 && !skipAuth) {
     const hadAuth = Boolean(accessToken);
-    const ok = await tryRefresh();
+    const ok = await refreshSession();
     if (ok) {
       resp = await doFetch();
     } else if (hadAuth) {

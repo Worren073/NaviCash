@@ -433,8 +433,15 @@ class TestAuthFlow:
         assert ok.status_code == 200
         assert cache.get(_login_lock_key(user)) is None
 
-    def test_refresh_reuse_revokes_whole_family(self) -> None:
-        """Reutilizar un refresh ya rotado revoca TODA la familia (C3)."""
+    def test_refresh_reuse_benign_keeps_session(self) -> None:
+        """Reuso inmediato (rotación concurrente legítima): 401 SIN revocar la
+        familia; la cookie nueva sigue siendo válida (C3 + ventana de gracia).
+
+        Dos pestañas/PWA pueden consumir la misma cookie por unos segundos
+        antes de procesar la nueva ``Set-Cookie``: ese reuso no es un robo y
+        no debe derribar la sesión del usuario (el frontend reintenta y entra
+        con la cookie nueva).
+        """
         from rest_framework.test import APIClient
         from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
@@ -445,14 +452,44 @@ class TestAuthFlow:
         )
         assert login.status_code == 200
         old_refresh = login.cookies["refresh_token"]
-        # Segundo dispositivo: otro refresh outstanding de la misma cuenta.
-        from rest_framework_simplejwt.tokens import RefreshToken
-
-        RefreshToken.for_user(user)
-
         client.cookies["refresh_token"] = old_refresh
         assert client.post("/api/auth/refresh").status_code == 200
-        # Reuso del token rotado: 401 y además la familia quedó revocada.
+        # Reuso del token rotado dentro de la ventana: 401 (la cookie vieja no
+        # sirve) pero la familia sigue viva: la cookie nueva aún refresca.
+        client.cookies["refresh_token"] = old_refresh
+        assert client.post("/api/auth/refresh").status_code == 401
+        assert OutstandingToken.objects.filter(
+            user=user, expires_at__gt=timezone.now()
+        ).exists()
+
+    def test_refresh_reuse_after_grace_revokes_whole_family(self) -> None:
+        """Un reuso con un token rotado hace más de la ventana de gracia
+        revoca TODA la familia (C3): era un token robado y conservado."""
+        from datetime import timedelta
+
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.token_blacklist.models import (
+            BlacklistedToken,
+            OutstandingToken,
+        )
+
+        from apps.accounts.views import REUSE_GRACE_SECONDS
+
+        user = UserFactory(email="familia-reuso-tardia@example.com")
+        client = APIClient()
+        login = client.post(
+            self.LOGIN_URL,
+            {"email": "familia-reuso-tardia@example.com", "password": "test-password-123"},
+        )
+        assert login.status_code == 200
+        old_refresh = login.cookies["refresh_token"]
+        client.cookies["refresh_token"] = old_refresh
+        assert client.post("/api/auth/refresh").status_code == 200
+        # Envejecer la blacklist: simula un reuso tardío de un token robado.
+        # (El token rotado es exactamente el único blacklisted de la cuenta.)
+        BlacklistedToken.objects.filter(token__user=user).update(
+            blacklisted_at=timezone.now() - timedelta(seconds=REUSE_GRACE_SECONDS + 1)
+        )
         client.cookies["refresh_token"] = old_refresh
         assert client.post("/api/auth/refresh").status_code == 401
         assert not OutstandingToken.objects.filter(
