@@ -6,6 +6,7 @@ import type {
   BusinessContact,
   BusinessSummary,
   Checklist,
+  Invoice,
   NotificationsResponse,
   Overview,
   Paginated,
@@ -30,6 +31,7 @@ export const queryKeys = {
   business: ["business"] as const,
   businessSummary: ["business-summary"] as const,
   businessContacts: ["business-contacts"] as const,
+  invoices: ["invoices"] as const,
 };
 
 export function useOverview() {
@@ -111,5 +113,27 @@ export function useBusinessContacts(search?: string, type?: string) {
         signal,
       });
     },
+  });
+}
+
+export function useInvoices(search?: string, status?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.invoices, { search, status }],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (status) params.set("status", status);
+      return api.get<Paginated<Invoice>>(`/business/invoices?${params.toString()}`, {
+        signal,
+      });
+    },
+  });
+}
+
+export function useInvoice(id: string | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.invoices, id],
+    enabled: Boolean(id),
+    queryFn: ({ signal }) => api.get<Invoice>(`/business/invoices/${id}`, { signal }),
   });
 }

@@ -20,6 +20,9 @@ const ChecklistsPage = lazy(() => import("@/features/checklists/checklists-page"
 const ProfilePage = lazy(() => import("@/features/profile/profile-page"));
 const BusinessPage = lazy(() => import("@/features/business/business-page"));
 const BusinessContactsPage = lazy(() => import("@/features/business/business-contacts-page"));
+const InvoicesPage = lazy(() => import("@/features/business/invoices-page"));
+const InvoiceNewPage = lazy(() => import("@/features/business/invoice-new-page"));
+const InvoiceDetailPage = lazy(() => import("@/features/business/invoice-detail-page"));
 const LoginPage = lazy(() => import("@/features/auth/login-page"));
 const RegisterPage = lazy(() => import("@/features/auth/register-page"));
 const VerifyPage = lazy(() => import("@/features/auth/verify-page"));
@@ -145,6 +148,9 @@ export const router = createBrowserRouter([
                   { path: "/profile", element: <ProfilePage /> },
                   { path: "/business", element: <BusinessPage /> },
                   { path: "/business/contacts", element: <BusinessContactsPage /> },
+                  { path: "/business/invoices", element: <InvoicesPage /> },
+                  { path: "/business/invoices/new", element: <InvoiceNewPage /> },
+                  { path: "/business/invoices/:id", element: <InvoiceDetailPage /> },
                 ],
               },
               { path: "/operations/new", element: <NewOperationPage /> },

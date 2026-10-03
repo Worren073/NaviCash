@@ -65,6 +65,62 @@ export interface BusinessContact {
   updated_at: string;
 }
 
+export type InvoiceStatus =
+  | "borrador"
+  | "enviada"
+  | "parcial"
+  | "pagada"
+  | "vencida"
+  | "anulada";
+
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  quantity: string;
+  unit_price: string;
+  discount: string;
+  total: string;
+}
+
+export interface InvoicePayment {
+  id: string;
+  transaction_id: string | null;
+  amount: string;
+  paid_at: string;
+  note: string;
+}
+
+export interface Invoice {
+  id: string;
+  business: string;
+  contact: BusinessContact;
+  number: string;
+  issue_date: string;
+  due_date: string;
+  status: InvoiceStatus;
+  subtotal: string;
+  tax_amount: string;
+  total: string;
+  amount_paid: string;
+  balance_due: string;
+  currency: Currency;
+  notes: string;
+  items: InvoiceItem[];
+  payments: InvoicePayment[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvoiceDraft {
+  contact: string;
+  items: { description: string; quantity: string; unit_price: string; discount?: string }[];
+  issue_date?: string;
+  due_date?: string;
+  tax_amount?: string;
+  paid_amount?: string;
+  notes?: string;
+}
+
 export interface Category {
   id: string;
   name: string;

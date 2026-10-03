@@ -5,13 +5,14 @@ import {
   ChevronRight,
   PersonStanding,
   Plus,
+  ReceiptText,
   Store,
   TrendingDown,
   TrendingUp,
   Wrench,
 } from "lucide-react";
 
-import { useBusinessSummary } from "@/hooks/use-queries";
+import { useBusinessSummary, useInvoices } from "@/hooks/use-queries";
 import { useHideBalances } from "@/hooks/use-hide-balances";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -78,6 +79,12 @@ export function BusinessDashboard() {
   const { t } = useTranslation();
   const { data, isLoading, isError } = useBusinessSummary();
   const { hidden: hideBalances } = useHideBalances();
+  const invoices = useInvoices();
+
+  const receivable = (invoices.data?.results ?? [])
+    .filter((inv) => ["enviada", "parcial", "vencida"].includes(inv.status))
+    .reduce((sum, inv) => sum + Number(inv.balance_due), 0);
+  const walletCurrency = data?.currency ?? "USD";
 
   return (
     <div className="space-y-8">
@@ -157,6 +164,33 @@ export function BusinessDashboard() {
           <TrendSparkline trend="down" color="var(--color-expense)" className="h-8 w-full" />
         </div>
       </section>
+
+      <Link
+        to="/business/invoices"
+        className="glass-panel clip-rounded-lg flex min-h-28 items-center justify-between rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+            <ReceiptText className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-sm font-medium text-on-surface">{t("business.dashboard.porCobrar")}</div>
+            {invoices.isLoading ? (
+              <Skeleton className="mt-1 h-6 w-24" />
+            ) : (
+              <div className="text-xl font-semibold text-on-surface">
+                {hideBalances
+                  ? "••••"
+                  : formatMoney(receivable, walletCurrency, { symbol: true })}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-sm text-primary">
+          {t("business.dashboard.seeInvoices")}
+          <ChevronRight className="h-4 w-4" />
+        </div>
+      </Link>
 
       <div className="flex flex-col gap-2">
         <Link to="/operations/new" className="w-full md:w-64">
