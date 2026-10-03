@@ -186,11 +186,14 @@ class TestTickService:
     """tick() directo: entrega, poda 410, cap y aislamiento."""
 
     def _overdue_tx(self, user, concepto: str = "Prueba") -> None:
+        # Fecha clara en el pasado (5 días) para no caer en la frontera
+        # UTC/Caracas cerca de la medianoche (hoy local aún podría ser ayer).
+        overdue = date.today() - timedelta(days=5)
         TransactionFactory(
             user=user,
             concepto=concepto,
-            fecha=_yesterday(),
-            fecha_vencimiento=_yesterday(),
+            fecha=overdue,
+            fecha_vencimiento=overdue,
         )
 
     def test_delivers_overdue_once(self) -> None:

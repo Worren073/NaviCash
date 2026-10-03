@@ -30,6 +30,7 @@ from django.utils import timezone as dj_timezone
 from pywebpush import WebPushException, webpush
 
 from apps.accounts.models import User
+from apps.crm.models import Invoice
 from apps.notifications.models import Notification, PushSubscription
 from apps.savings.models import SavingsGoal
 from apps.transactions.models import Transaction
@@ -101,6 +102,43 @@ def _candidates(user, today: date) -> list[dict]:
                     "title": f"¡Meta «{goal.name}» alcanzada!",
                     "message": (
                         f"Completaste el objetivo de {goal.target_amount} {goal.currency}."
+                    ),
+                }
+            )
+
+    # 3) Facturas pendientes de cobro del negocio (vencidas o por vencer).
+    from apps.crm.services import refresh_invoice_overdue_status
+
+    invoices = Invoice.objects.filter(
+        user=user,
+        status__in=["enviada", "parcial"],
+        due_date__isnull=False,
+    ).select_related("contact")
+    for inv in invoices:
+        if inv.due_date < today:
+            refresh_invoice_overdue_status(inv, today)
+            items.append(
+                {
+                    "kind": "invoice_overdue",
+                    "scope": "business",
+                    "extra": {"invoice_id": str(inv.id)},
+                    "title": f"Factura {inv.number} venció",
+                    "message": (
+                        f"«{inv.contact.name}» debe {inv.balance_due} {inv.currency} "
+                        f"desde el {inv.due_date.isoformat()}."
+                    ),
+                }
+            )
+        elif inv.due_date <= today + timedelta(days=_reminder_days(inv, user)):
+            items.append(
+                {
+                    "kind": "invoice_overdue",
+                    "scope": "business",
+                    "extra": {"invoice_id": str(inv.id), "upcoming": "1"},
+                    "title": f"Factura {inv.number} vence pronto",
+                    "message": (
+                        f"«{inv.contact.name}» tiene un saldo de "
+                        f"{inv.balance_due} {inv.currency} que vence el {inv.due_date.isoformat()}."
                     ),
                 }
             )

@@ -1,6 +1,7 @@
 """models — CRM ligero para pequeños negocios.
 
 Fase 1: Directorio de clientes y proveedores del negocio (`BusinessContact`).
+Fase 2: Facturación y cuentas por cobrar (`Invoice`, `InvoiceItem`, `InvoicePayment`).
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from django.db import models
 from apps.business.models import Business
 from apps.core.currency import CURRENCY_CHOICES, MONEY_DECIMALS
 from apps.core.models import OwnedModel
+from apps.transactions.models import Transaction
 
 
 class BusinessContact(OwnedModel):
@@ -94,3 +96,160 @@ class BusinessContact(OwnedModel):
 
     def __str__(self) -> str:
         return self.name
+
+
+INVOICE_STATUSES = [
+    ("borrador", "Borrador"),
+    ("enviada", "Enviada"),
+    ("parcial", "Parcial"),
+    ("pagada", "Pagada"),
+    ("vencida", "Vencida"),
+    ("anulada", "Anulada"),
+]
+
+
+class Invoice(OwnedModel):
+    """Factura de venta a crédito o de contado del negocio."""
+
+    business = models.ForeignKey(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="invoices",
+        verbose_name="Negocio",
+    )
+    contact = models.ForeignKey(
+        BusinessContact,
+        on_delete=models.PROTECT,
+        related_name="invoices",
+        verbose_name="Contacto",
+    )
+    number = models.CharField(max_length=20, verbose_name="Número")
+    issue_date = models.DateField(verbose_name="Fecha de emisión")
+    due_date = models.DateField(verbose_name="Fecha de vencimiento")
+    status = models.CharField(
+        max_length=10,
+        choices=INVOICE_STATUSES,
+        default="borrador",
+        verbose_name="Estado",
+    )
+    subtotal = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Subtotal"
+    )
+    tax_amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        default=0,
+        verbose_name="Impuesto",
+    )
+    total = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Total"
+    )
+    amount_paid = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        default=0,
+        verbose_name="Monto pagado",
+    )
+    balance_due = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        verbose_name="Saldo pendiente",
+    )
+    currency = models.CharField(
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        default="USD",
+        verbose_name="Moneda",
+    )
+    notes = models.TextField(blank=True, default="", verbose_name="Notas")
+
+    class Meta:
+        verbose_name = "Factura"
+        verbose_name_plural = "Facturas"
+        ordering = ["-issue_date", "-created_at"]
+        indexes = [
+            models.Index(
+                fields=["user", "business", "status"],
+                name="crm_inv_ub_status_idx",
+            ),
+            models.Index(
+                fields=["user", "business", "due_date"],
+                name="crm_inv_ub_due_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "number"],
+                name="uniq_business_invoice_number",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.number} - {self.contact.name}"
+
+
+class InvoiceItem(OwnedModel):
+    """Línea de factura."""
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="Factura",
+    )
+    description = models.CharField(max_length=160, verbose_name="Descripción")
+    quantity = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name="Cantidad"
+    )
+    unit_price = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Precio unitario"
+    )
+    discount = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        default=0,
+        verbose_name="Descuento",
+    )
+    total = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Total"
+    )
+
+    class Meta:
+        verbose_name = "Línea de factura"
+        verbose_name_plural = "Líneas de factura"
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.description} ({self.quantity} x {self.unit_price})"
+
+
+class InvoicePayment(OwnedModel):
+    """Pago recibido contra una factura."""
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="payments",
+        verbose_name="Factura",
+    )
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invoice_payments",
+        verbose_name="Operación de cobro",
+    )
+    amount = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Monto"
+    )
+    paid_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de pago")
+    note = models.CharField(max_length=200, blank=True, default="", verbose_name="Nota")
+
+    class Meta:
+        verbose_name = "Pago de factura"
+        verbose_name_plural = "Pagos de facturas"
+        ordering = ["-paid_at"]
+
+    def __str__(self) -> str:
+        return f"Pago {self.amount} {self.invoice.currency}"

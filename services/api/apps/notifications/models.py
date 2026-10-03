@@ -18,6 +18,8 @@ NOTIFICATION_KINDS = [
     ("overdue", "Vencida"),
     ("goal_reached", "Meta alcanzada"),
     ("expense_nudge", "Recordatorio de registro"),
+    ("invoice_overdue", "Factura vencida"),
+    ("invoice_paid", "Factura pagada"),
     ("system", "Sistema"),
 ]
 
