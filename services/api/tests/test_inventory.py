@@ -40,7 +40,7 @@ class TestInventory:
         data = {
             "name": "Arroz 1kg",
             "sku": "ARZ-01",
-            "unit": "kilogramo",
+            "unit": "kg",
             "unit_price": "1.50",
             "stock_quantity": "50",
         }
@@ -53,7 +53,7 @@ class TestInventory:
             "business": business,
             "name": "Arroz 1kg",
             "sku": "ARZ-01",
-            "unit": "kilogramo",
+            "unit": "kg",
             "unit_price": Decimal("1.50"),
             "stock_quantity": Decimal("50"),
         }
@@ -341,3 +341,129 @@ class TestInventory:
         assert Notification.objects.filter(
             user=api_client.user, kind="product_low_stock"
         ).count() == 0
+
+    # --- Unidad «unidad»: cantidades siempre enteras ---
+
+    def test_unit_requires_integer_stock(self, api_client, business) -> None:
+        """Con unidad «unidad» el stock inicial debe ser entero."""
+        resp = api_client.post(
+            self.URL,
+            self._product_payload(unit="unidad", stock_quantity="3.5"),
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "enteras" in str(resp.data).lower()
+
+    def test_kg_allows_decimal_stock(self, api_client, business) -> None:
+        """Con unidad «kg» el stock inicial puede tener decimales."""
+        resp = api_client.post(
+            self.URL,
+            self._product_payload(unit="kg", stock_quantity="3.5"),
+            format="json",
+        )
+        assert resp.status_code == 201, resp.data
+        assert resp.data["stock_quantity"] == "3.50"
+
+    def test_unit_requires_integer_threshold(self, api_client, business) -> None:
+        """Con «unidad» también el umbral de alerta va en enteros."""
+        resp = api_client.post(
+            self.URL,
+            self._product_payload(
+                unit="unidad", stock_quantity="5", low_stock_threshold="1.5"
+            ),
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_adjust_unit_requires_integer_delta(self, api_client, business) -> None:
+        """El ajuste de un producto «por unidad» no acepta decimales."""
+        product = self._build_product(api_client, business, unit="unidad")
+        resp = api_client.post(
+            f"{self.URL}{product.id}/adjust/", {"delta": "0.5", "reason": "Merma"}
+        )
+        assert resp.status_code == 400
+        assert "entero" in str(resp.data["detail"]).lower()
+        resp = api_client.post(
+            f"{self.URL}{product.id}/adjust/", {"delta": "2", "reason": "Reposición"}
+        )
+        assert resp.status_code == 200, resp.data
+        product.refresh_from_db()
+        assert product.stock_quantity == Decimal("52")
+
+    def test_adjust_kg_allows_decimal_delta(self, api_client, business) -> None:
+        """El ajuste de un producto en kg sí acepta decimales."""
+        product = self._build_product(api_client, business, unit="kg")
+        resp = api_client.post(
+            f"{self.URL}{product.id}/adjust/", {"delta": "0.5", "reason": "Reposición"}
+        )
+        assert resp.status_code == 200, resp.data
+        product.refresh_from_db()
+        assert product.stock_quantity == Decimal("50.5")
+
+    def test_switch_kg_to_unit_with_decimal_stock_rejected(
+        self, api_client, business
+    ) -> None:
+        """No se puede volver «unidad» un producto con existencias decimales."""
+        product = self._build_product(
+            api_client, business, unit="kg", stock_quantity=Decimal("3.5")
+        )
+        resp = api_client.patch(
+            f"{self.URL}{product.id}/", {"unit": "unidad"}, format="json"
+        )
+        assert resp.status_code == 400
+        assert "entero" in str(resp.data).lower()
+        product.refresh_from_db()
+        assert product.unit == "kg"
+
+    def test_invoice_unit_product_requires_integer_quantity(
+        self, api_client, business
+    ) -> None:
+        """La factura de un producto «por unidad» exige cantidad entera."""
+        product = self._build_product(api_client, business, unit="unidad")
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=business, name="Cliente A", type="cliente"
+        )
+        resp = api_client.post(
+            "/api/business/invoices/",
+            {
+                "contact": str(contact.id),
+                "items": [
+                    {
+                        "product": str(product.id),
+                        "description": "Arroz",
+                        "quantity": "0.5",
+                    }
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "entera" in str(resp.data).lower()
+        product.refresh_from_db()
+        assert product.stock_quantity == Decimal("50")
+
+    def test_invoice_kg_product_allows_decimal_quantity(
+        self, api_client, business
+    ) -> None:
+        """La factura de un producto en kg admite cantidades decimales."""
+        product = self._build_product(api_client, business, unit="kg")
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=business, name="Cliente A", type="cliente"
+        )
+        resp = api_client.post(
+            "/api/business/invoices/",
+            {
+                "contact": str(contact.id),
+                "items": [
+                    {
+                        "product": str(product.id),
+                        "description": "Arroz",
+                        "quantity": "0.5",
+                    }
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.data
+        product.refresh_from_db()
+        assert product.stock_quantity == Decimal("49.5")

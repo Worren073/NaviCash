@@ -20,7 +20,7 @@ from apps.crm.models import (
     ProductCategory,
     StockAdjustment,
 )
-from apps.crm.services import GOODS_OUT_STATUSES
+from apps.crm.services import GOODS_OUT_STATUSES, requires_integer_amounts
 from apps.crm.serializers import (
     BusinessContactSerializer,
     CollectionFollowUpSerializer,
@@ -262,6 +262,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         except (TypeError, ValueError, DecimalException):
             return Response(
                 {"detail": "El delta debe ser un número.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Con la unidad «Unidad» las existencias se manejan en enteros.
+        if requires_integer_amounts(product.unit) and delta != delta.to_integral_value():
+            return Response(
+                {
+                    "detail": "Este producto se cuenta por unidad: el ajuste debe ser entero.",
+                    "code": "validation_error",
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         reason = str(request.data.get("reason", "")).strip()

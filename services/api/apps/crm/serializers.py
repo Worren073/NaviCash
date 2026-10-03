@@ -145,6 +145,17 @@ class InvoiceItemWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "El producto no pertenece a tu catálogo."
             )
+        # Los productos contados «por unidad» solo admiten cantidades enteras.
+        from apps.crm.services import requires_integer_amounts
+
+        if (
+            product is not None
+            and requires_integer_amounts(product.unit)
+            and quantity != quantity.to_integral_value()
+        ):
+            raise serializers.ValidationError(
+                "Este producto se vende por unidad: la cantidad debe ser entera."
+            )
         attrs["total"] = quantity * unit_price - discount
         return attrs
 
@@ -505,6 +516,40 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def validate_low_stock_threshold(self, value):
         return self._non_negative(value)
+
+    def validate(self, attrs: dict) -> dict:
+        # Regla de redondez: con la unidad «Unidad» las cantidades se manejan
+        # en enteros (existencias y umbral de alerta). En alta, adelante; en
+        # edición, se usa la unidad que quede vigente tras el cambio.
+        from apps.crm.services import requires_integer_amounts
+
+        unit = attrs.get("unit")
+        if unit is None and self.instance is not None:
+            unit = self.instance.unit
+        if not requires_integer_amounts(unit or ""):
+            return attrs
+
+        message = "Con la unidad «Unidad» las cantidades deben ser enteras (sin decimales)."
+        errors: dict = {}
+        for field in ("stock_quantity", "low_stock_threshold"):
+            value = attrs.get(field)
+            if value is not None and value != value.to_integral_value():
+                errors[field] = message
+        # kg → unidad con existencias ya decimales: se pide entero previo.
+        if (
+            self.instance is not None
+            and attrs.get("unit") == "unidad"
+            and self.instance.unit != "unidad"
+            and self.instance.stock_quantity != self.instance.stock_quantity.to_integral_value()
+        ):
+            errors.setdefault(
+                "unit",
+                "Este producto tiene existencias con decimales. Ajústalas a un "
+                "entero antes de cambiar a la unidad «Unidad».",
+            )
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
     def create(self, validated_data: dict) -> Product:
         from apps.business.models import Business

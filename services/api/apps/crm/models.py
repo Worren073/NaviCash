@@ -382,7 +382,11 @@ class Product(OwnedModel):
     )
     description = models.TextField(blank=True, default="", verbose_name="Descripción")
     unit = models.CharField(
-        max_length=12, blank=True, default="unidad", verbose_name="Unidad de medida"
+        max_length=12,
+        choices=[("unidad", "Unidad"), ("kg", "Kg")],
+        blank=True,
+        default="unidad",
+        verbose_name="Unidad de medida",
     )
     unit_price = models.DecimalField(
         max_digits=20,

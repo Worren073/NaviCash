@@ -23,6 +23,15 @@ from apps.transactions.services import register_transaction
 # Estados de factura en los que la mercancía ya salió de inventario.
 GOODS_OUT_STATUSES = {"enviada", "parcial", "pagada", "vencida"}
 
+# Unidades cuyas cantidades deben ser enteras (sin decimales) en todo el
+# flujo: existencias, ajustes y líneas de factura.
+INTEGER_UNITS = frozenset({"unidad"})
+
+
+def requires_integer_amounts(unit: str) -> bool:
+    """True si la unidad de medida exige cantidades enteras."""
+    return unit in INTEGER_UNITS
+
 
 def _pick_unit_price(product: Product, contact) -> Decimal:
     """Precio de venta a usar para un cliente al armar la factura.
