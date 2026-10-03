@@ -2,6 +2,7 @@
 
 Fase 1: Directorio de clientes y proveedores del negocio (`BusinessContact`).
 Fase 2: Facturación y cuentas por cobrar (`Invoice`, `InvoiceItem`, `InvoicePayment`).
+Fase 3: Pipeline de cobranza (`CollectionFollowUp`).
 """
 
 from __future__ import annotations
@@ -253,3 +254,65 @@ class InvoicePayment(OwnedModel):
 
     def __str__(self) -> str:
         return f"Pago {self.amount} {self.invoice.currency}"
+
+
+FOLLOW_UP_CHANNELS = [
+    ("llamada", "Llamada"),
+    ("email", "Correo"),
+    ("whatsapp", "WhatsApp"),
+    ("visita", "Visita"),
+    ("otro", "Otro"),
+]
+
+FOLLOW_UP_OUTCOMES = [
+    ("sin_respuesta", "Sin respuesta"),
+    ("promesa_pago", "Promesa de pago"),
+    ("pago_realizado", "Pago realizado"),
+    ("rechazado", "Rechazado"),
+    ("otro", "Otro"),
+]
+
+
+class CollectionFollowUp(OwnedModel):
+    """Seguimiento de cobranza registrado contra una factura abierta.
+
+    Modela la gestión manual de cobro: canal de contacto, resultado de la
+    gestión y, si hay promesa de pago, la fecha comprometida.
+    """
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="follow_ups",
+        verbose_name="Factura",
+    )
+    channel = models.CharField(
+        max_length=10,
+        choices=FOLLOW_UP_CHANNELS,
+        verbose_name="Canal",
+    )
+    outcome = models.CharField(
+        max_length=16,
+        choices=FOLLOW_UP_OUTCOMES,
+        verbose_name="Resultado",
+    )
+    promised_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha de pago prometida",
+    )
+    notes = models.TextField(blank=True, default="", verbose_name="Notas")
+
+    class Meta:
+        verbose_name = "Seguimiento de cobranza"
+        verbose_name_plural = "Seguimientos de cobranza"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["user", "invoice", "created_at"],
+                name="crm_followup_ui_created",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.invoice.number} - {self.outcome}"

@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.permissions import IsOwner
-from apps.crm.models import BusinessContact, Invoice
+from apps.crm.models import BusinessContact, CollectionFollowUp, Invoice
 from apps.crm.serializers import (
     BusinessContactSerializer,
+    CollectionFollowUpSerializer,
     InvoiceReadSerializer,
     InvoiceWriteSerializer,
 )
@@ -57,7 +58,14 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         qs = (
             Invoice.objects.filter(user=self.request.user)
             .select_related("business", "contact")
-            .prefetch_related("items", "payments")
+            .prefetch_related(
+                "items",
+                "payments",
+                Prefetch(
+                    "follow_ups",
+                    queryset=CollectionFollowUp.objects.order_by("-created_at"),
+                ),
+            )
         )
         search = self.request.query_params.get("search")
         if search:
@@ -134,3 +142,21 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
         cancel_invoice(invoice)
         return Response(self.get_serializer(invoice).data)
+
+
+class CollectionFollowUpViewSet(viewsets.ModelViewSet):
+    """Seguimientos de cobranza del negocio (solo lectura, alta y borrado)."""
+
+    serializer_class = CollectionFollowUpSerializer
+    permission_classes = [IsOwner]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_queryset(self):
+        """Seguimientos del usuario, filtrables por factura."""
+        qs = CollectionFollowUp.objects.filter(user=self.request.user).select_related(
+            "invoice", "invoice__contact"
+        )
+        invoice_id = self.request.query_params.get("invoice")
+        if invoice_id:
+            qs = qs.filter(invoice_id=invoice_id)
+        return qs.order_by("-created_at")

@@ -2,7 +2,13 @@
 
 from django.contrib import admin
 
-from apps.crm.models import BusinessContact, Invoice, InvoiceItem, InvoicePayment
+from apps.crm.models import (
+    BusinessContact,
+    CollectionFollowUp,
+    Invoice,
+    InvoiceItem,
+    InvoicePayment,
+)
 
 
 @admin.register(BusinessContact)
@@ -29,6 +35,13 @@ class InvoicePaymentInline(admin.TabularInline):
     extra = 0
 
 
+class CollectionFollowUpInline(admin.TabularInline):
+    """Seguimientos de cobranza en el admin."""
+
+    model = CollectionFollowUp
+    extra = 0
+
+
 @admin.register(Invoice)
 class InvoiceAdmin(admin.ModelAdmin):
     """Admin de facturas."""
@@ -37,7 +50,7 @@ class InvoiceAdmin(admin.ModelAdmin):
     list_filter = ["status", "currency"]
     search_fields = ["number", "contact__name"]
     ordering = ["-issue_date"]
-    inlines = [InvoiceItemInline, InvoicePaymentInline]
+    inlines = [InvoiceItemInline, InvoicePaymentInline, CollectionFollowUpInline]
 
 
 @admin.register(InvoiceItem)
@@ -52,3 +65,12 @@ class InvoicePaymentAdmin(admin.ModelAdmin):
     """Admin de pagos de factura."""
 
     list_display = ["invoice", "amount", "paid_at"]
+
+
+@admin.register(CollectionFollowUp)
+class CollectionFollowUpAdmin(admin.ModelAdmin):
+    """Admin de seguimientos de cobranza."""
+
+    list_display = ["invoice", "channel", "outcome", "promised_date", "created_at"]
+    list_filter = ["channel", "outcome"]
+    search_fields = ["invoice__number", "invoice__contact__name"]

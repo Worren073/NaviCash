@@ -7,7 +7,13 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.core.currency import is_valid_amount, round_money
-from apps.crm.models import BusinessContact, Invoice, InvoiceItem, InvoicePayment
+from apps.crm.models import (
+    BusinessContact,
+    CollectionFollowUp,
+    Invoice,
+    InvoiceItem,
+    InvoicePayment,
+)
 
 
 class BusinessContactSerializer(serializers.ModelSerializer):
@@ -126,6 +132,7 @@ class InvoiceReadSerializer(serializers.ModelSerializer):
     contact = BusinessContactSerializer(read_only=True)
     items = InvoiceItemSerializer(many=True, read_only=True)
     payments = InvoicePaymentSerializer(many=True, read_only=True)
+    latest_follow_up = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -146,10 +153,32 @@ class InvoiceReadSerializer(serializers.ModelSerializer):
             "notes",
             "items",
             "payments",
+            "latest_follow_up",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "business", "number", "created_at", "updated_at"]
+
+    def get_latest_follow_up(self, obj) -> dict | None:
+        """Resumen del seguimiento más reciente (prefetched en el viewset)."""
+        rows = obj.follow_ups.all()[:1]
+        if not rows:
+            return None
+        follow_up = rows[0]
+        return {
+            "id": str(follow_up.id),
+            "channel": follow_up.channel,
+            "outcome": follow_up.outcome,
+            "promised_date": (
+                serializers.DateField().to_representation(follow_up.promised_date)
+                if follow_up.promised_date
+                else None
+            ),
+            "notes": follow_up.notes,
+            "created_at": serializers.DateTimeField().to_representation(
+                follow_up.created_at
+            ),
+        }
 
 
 class InvoiceWriteSerializer(serializers.ModelSerializer):
@@ -275,3 +304,44 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
+
+class CollectionFollowUpSerializer(serializers.ModelSerializer):
+    """Serializador de seguimientos de cobranza.
+
+    Solo admite lectura, alta y borrado (los registros no se editan: si hubo
+    un error se eliminan y se crea uno nuevo).
+    """
+
+    class Meta:
+        model = CollectionFollowUp
+        fields = [
+            "id",
+            "invoice",
+            "channel",
+            "outcome",
+            "promised_date",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        user = self.context["request"].user
+        self.fields["invoice"].queryset = Invoice.objects.filter(business__user=user)
+
+    def validate(self, attrs: dict) -> dict:
+        outcome = attrs.get("outcome")
+        promised_date = attrs.get("promised_date")
+        if outcome == "promesa_pago" and not promised_date:
+            raise serializers.ValidationError(
+                {"promised_date": "Una promesa de pago requiere fecha comprometida."}
+            )
+        return attrs
+
+    def create(self, validated_data: dict) -> CollectionFollowUp:
+        request = self.context["request"]
+        validated_data["user_id"] = request.user.id
+        return super().create(validated_data)
