@@ -6,6 +6,7 @@ import type {
   BusinessContact,
   BusinessSummary,
   Checklist,
+  CollectionFollowUp,
   Invoice,
   NotificationsResponse,
   Overview,
@@ -32,6 +33,7 @@ export const queryKeys = {
   businessSummary: ["business-summary"] as const,
   businessContacts: ["business-contacts"] as const,
   invoices: ["invoices"] as const,
+  followUps: ["follow-ups"] as const,
 };
 
 export function useOverview() {
@@ -135,5 +137,19 @@ export function useInvoice(id: string | undefined) {
     queryKey: [...queryKeys.invoices, id],
     enabled: Boolean(id),
     queryFn: ({ signal }) => api.get<Invoice>(`/business/invoices/${id}`, { signal }),
+  });
+}
+
+export function useFollowUps(invoiceId?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.followUps, invoiceId],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (invoiceId) params.set("invoice", invoiceId);
+      return api.get<Paginated<CollectionFollowUp>>(
+        `/business/follow-ups?${params.toString()}`,
+        { signal }
+      );
+    },
   });
 }

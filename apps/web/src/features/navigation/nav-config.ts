@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Briefcase, CalendarRange, FileText, ListChecks, PiggyBank, Users } from "lucide-react";
+import { Briefcase, CalendarRange, FileText, HandCoins, ListChecks, PiggyBank, Users } from "lucide-react";
 
 import {
   HomeIcon,
@@ -30,6 +30,7 @@ export const PRIMARY_NAV: Record<NavView, readonly NavItem[]> = {
     { to: "/transactions", label: "nav.transactions", icon: SendHorizontalIcon },
     { to: "/business/contacts", label: "nav.contacts", icon: Users },
     { to: "/business/invoices", label: "nav.invoices", icon: FileText },
+    { to: "/business/collection", label: "nav.collection", icon: HandCoins },
   ],
 };
 

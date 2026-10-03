@@ -107,6 +107,7 @@ export interface Invoice {
   notes: string;
   items: InvoiceItem[];
   payments: InvoicePayment[];
+  latest_follow_up: LatestFollowUp | null;
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +119,43 @@ export interface InvoiceDraft {
   due_date?: string;
   tax_amount?: string;
   paid_amount?: string;
+  notes?: string;
+}
+
+export type CollectionChannel = "llamada" | "email" | "whatsapp" | "visita" | "otro";
+
+export type CollectionOutcome =
+  | "sin_respuesta"
+  | "promesa_pago"
+  | "pago_realizado"
+  | "rechazado"
+  | "otro";
+
+interface LatestFollowUp {
+  id: string;
+  channel: CollectionChannel;
+  outcome: CollectionOutcome;
+  promised_date: string | null;
+  notes: string;
+  created_at: string;
+}
+
+export interface CollectionFollowUp {
+  id: string;
+  invoice: string;
+  channel: CollectionChannel;
+  outcome: CollectionOutcome;
+  promised_date: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CollectionFollowUpDraft {
+  invoice: string;
+  channel: CollectionChannel;
+  outcome: CollectionOutcome;
+  promised_date?: string;
   notes?: string;
 }
 

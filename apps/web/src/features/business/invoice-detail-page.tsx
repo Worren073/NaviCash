@@ -3,7 +3,17 @@ import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { sileo } from "sileo";
-import { ArrowLeft, Banknote, Mail, Phone, ReceiptText, XCircle, SendHorizontal } from "lucide-react";
+import {
+  ArrowLeft,
+  Banknote,
+  Mail,
+  Phone,
+  PhoneCall,
+  ReceiptText,
+  Trash2,
+  XCircle,
+  SendHorizontal,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,11 +26,22 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useInvoice } from "@/hooks/use-queries";
+import { Badge } from "@/components/ui/badge";
+import { useFollowUps, useInvoice } from "@/hooks/use-queries";
 import { queryKeys } from "@/hooks/use-queries";
 import { api, ApiErrorClass } from "@/lib/api";
 import { formatMoney, formatDate } from "@/lib/format";
 import { InvoiceStatusBadge } from "./invoices-page";
+import { FollowUpDialog } from "./follow-up-dialog";
+import type { CollectionOutcome } from "@/lib/types";
+
+const OUTCOME_VARIANT: Record<CollectionOutcome, "pending" | "warning" | "success" | "delayed" | "secondary"> = {
+  sin_respuesta: "pending",
+  promesa_pago: "warning",
+  pago_realizado: "success",
+  rechazado: "delayed",
+  otro: "secondary",
+};
 
 export default function InvoiceDetailPage() {
   const { t } = useTranslation();
@@ -28,11 +49,14 @@ export default function InvoiceDetailPage() {
   const queryClient = useQueryClient();
 
   const { data: invoice, isLoading, isError } = useInvoice(id);
+  const { data: followUpsData } = useFollowUps(id);
+  const followUps = useMemo(() => followUpsData?.results ?? [], [followUpsData]);
   const [confirmSend, setConfirmSend] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payNote, setPayNote] = useState("");
+  const [followUpOpen, setFollowUpOpen] = useState(false);
 
   const paid = useMemo(() => Number(invoice?.amount_paid ?? 0), [invoice]);
   const balanceDue = useMemo(() => Number(invoice?.balance_due ?? 0), [invoice]);
@@ -82,6 +106,21 @@ export default function InvoiceDetailPage() {
       setPayAmount("");
       setPayNote("");
       sileo.success({ title: t("invoices.updated") });
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiErrorClass ? err.message : t("errors.generic");
+      sileo.error({ title: msg });
+    },
+  });
+
+  const deleteFollowUp = useMutation({
+    mutationFn: (followUpId: string) => api.delete(`/business/follow-ups/${followUpId}/`),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.followUps }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.invoices }),
+      ]);
+      sileo.success({ title: t("collection.followUps.deleted") });
     },
     onError: (err) => {
       const msg = err instanceof ApiErrorClass ? err.message : t("errors.generic");
@@ -296,6 +335,65 @@ export default function InvoiceDetailPage() {
         </section>
       )}
 
+      <section className="glass-panel clip-rounded-lg rounded-lg p-4">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-on-surface">
+            {t("collection.followUps.history")}
+          </h2>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => setFollowUpOpen(true)}
+          >
+            <PhoneCall className="h-3.5 w-3.5" /> {t("collection.followUps.record")}
+          </Button>
+        </div>
+        {followUps.length === 0 ? (
+          <p className="mt-2 text-sm text-on-surface-variant">
+            {t("collection.followUps.emptyHistory")}
+          </p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {followUps.map((followUp) => (
+              <div
+                key={followUp.id}
+                className="flex items-start justify-between gap-2 rounded-lg bg-surface-container-high px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">
+                      {t(`collection.channels.${followUp.channel}`)}
+                    </Badge>
+                    <Badge variant={OUTCOME_VARIANT[followUp.outcome]}>
+                      {t(`collection.outcomes.${followUp.outcome}`)}
+                    </Badge>
+                    {followUp.promised_date && (
+                      <span className="text-xs text-on-surface-variant">
+                        {t("collection.promised")}: {formatDate(followUp.promised_date)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-on-surface-variant">
+                    {formatDate(followUp.created_at)}
+                    {followUp.notes ? ` · ${followUp.notes}` : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => deleteFollowUp.mutate(followUp.id)}
+                  disabled={deleteFollowUp.isPending}
+                  className="text-on-surface-variant transition-colors hover:text-destructive"
+                  aria-label={t("common.delete")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <Dialog open={confirmSend} onOpenChange={setConfirmSend}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -374,6 +472,13 @@ export default function InvoiceDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <FollowUpDialog
+        open={followUpOpen}
+        onOpenChange={setFollowUpOpen}
+        invoiceId={invoice.id}
+        onRegistered={() => void refresh()}
+      />
     </div>
   );
 }
