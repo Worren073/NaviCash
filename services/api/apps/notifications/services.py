@@ -30,7 +30,7 @@ from django.utils import timezone as dj_timezone
 from pywebpush import WebPushException, webpush
 
 from apps.accounts.models import User
-from apps.crm.models import Invoice
+from apps.crm.models import Invoice, Product
 from apps.notifications.models import Notification, PushSubscription
 from apps.savings.models import SavingsGoal
 from apps.transactions.models import Transaction
@@ -139,6 +139,26 @@ def _candidates(user, today: date) -> list[dict]:
                     "message": (
                         f"«{inv.contact.name}» tiene un saldo de "
                         f"{inv.balance_due} {inv.currency} que vence el {inv.due_date.isoformat()}."
+                    ),
+                }
+            )
+
+    # 4) Stock bajo del inventario del negocio (una vez por día).
+    for product in Product.objects.select_related("business").filter(
+        user=user,
+        is_active=True,
+        low_stock_threshold__isnull=False,
+    ):
+        if product.stock_quantity <= product.low_stock_threshold:
+            items.append(
+                {
+                    "kind": "product_low_stock",
+                    "scope": "business",
+                    "extra": {"product_id": str(product.id), "date": today.isoformat()},
+                    "title": "Stock bajo",
+                    "message": (
+                        f"Quedan {product.stock_quantity} de «{product.name}» "
+                        f"(mínimo {product.low_stock_threshold})."
                     ),
                 }
             )

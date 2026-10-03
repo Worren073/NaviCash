@@ -3,11 +3,13 @@
 Fase 1: Directorio de clientes y proveedores del negocio (`BusinessContact`).
 Fase 2: Facturación y cuentas por cobrar (`Invoice`, `InvoiceItem`, `InvoicePayment`).
 Fase 3: Pipeline de cobranza (`CollectionFollowUp`).
+Fase 4: Inventario conectado a facturación (`Product`, `ProductCategory`, `StockAdjustment`).
 """
 
 from __future__ import annotations
 
 from django.db import models
+from django.db.models.functions import Lower
 
 from apps.business.models import Business
 from apps.core.currency import CURRENCY_CHOICES, MONEY_DECIMALS
@@ -198,6 +200,14 @@ class InvoiceItem(OwnedModel):
         related_name="items",
         verbose_name="Factura",
     )
+    product = models.ForeignKey(
+        "Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invoice_items",
+        verbose_name="Producto del catálogo",
+    )
     description = models.CharField(max_length=160, verbose_name="Descripción")
     quantity = models.DecimalField(
         max_digits=10, decimal_places=2, verbose_name="Cantidad"
@@ -316,3 +326,173 @@ class CollectionFollowUp(OwnedModel):
 
     def __str__(self) -> str:
         return f"{self.invoice.number} - {self.outcome}"
+
+
+class ProductCategory(OwnedModel):
+    """Categoría para agrupar productos del inventario."""
+
+    business = models.ForeignKey(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="product_categories",
+        verbose_name="Negocio",
+    )
+    name = models.CharField(max_length=60, verbose_name="Nombre")
+
+    class Meta:
+        verbose_name = "Categoría de producto"
+        verbose_name_plural = "Categorías de producto"
+        ordering = ["name"]
+        indexes = [
+            models.Index(
+                fields=["user", "business", "name"],
+                name="crm_prod_cat_ub_name_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"),
+                "business",
+                name="uniq_business_product_category_name",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Product(OwnedModel):
+    """Producto del inventario del negocio.
+
+    ``stock_quantity`` se descuenta al crear/envíar facturas y se repone al
+    anularlas (ver ``apps.crm.services``). Los precios de venta son dos: el
+    general (``unit_price``) y el mayorista (``wholesale_price``), que se elige
+    según el ``customer_type`` del cliente al armar la factura.
+    """
+
+    business = models.ForeignKey(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="products",
+        verbose_name="Negocio",
+    )
+    name = models.CharField(max_length=120, verbose_name="Nombre")
+    sku = models.CharField(
+        max_length=40, blank=True, default="", verbose_name="Código/SKU"
+    )
+    description = models.TextField(blank=True, default="", verbose_name="Descripción")
+    unit = models.CharField(
+        max_length=12, blank=True, default="unidad", verbose_name="Unidad de medida"
+    )
+    unit_price = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        verbose_name="Precio de venta",
+    )
+    wholesale_price = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        null=True,
+        blank=True,
+        verbose_name="Precio mayorista",
+    )
+    cost_price = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        null=True,
+        blank=True,
+        verbose_name="Costo de compra",
+    )
+    category = models.ForeignKey(
+        ProductCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
+        verbose_name="Categoría",
+    )
+    supplier = models.ForeignKey(
+        BusinessContact,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
+        verbose_name="Proveedor",
+    )
+    stock_quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Existencias",
+    )
+    low_stock_threshold = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Alerta de stock mínimo",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
+
+    class Meta:
+        verbose_name = "Producto"
+        verbose_name_plural = "Productos"
+        ordering = ["name"]
+        indexes = [
+            models.Index(fields=["user", "business", "name"], name="crm_prod_ub_name_idx"),
+            models.Index(fields=["user", "business", "sku"], name="crm_prod_ub_sku_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"),
+                "business",
+                name="uniq_business_product_name",
+            ),
+            models.UniqueConstraint(
+                fields=["business", "sku"],
+                condition=models.Q(sku__gt=""),
+                name="uniq_business_product_sku",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(stock_quantity__gte=0),
+                name="ck_product_stock_nonneg",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(unit_price__gte=0),
+                name="ck_product_unit_price_nonneg",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.stock_quantity} {self.unit})"
+
+
+class StockAdjustment(OwnedModel):
+    """Auditoría de cada movimiento de existencias (venta, anulación o ajuste)."""
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="adjustments",
+        verbose_name="Producto",
+    )
+    delta = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        verbose_name="Variación de existencias",
+    )
+    reason = models.CharField(max_length=200, blank=True, default="", verbose_name="Motivo")
+
+    class Meta:
+        verbose_name = "Ajuste de inventario"
+        verbose_name_plural = "Ajustes de inventario"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["user", "product", "created_at"],
+                name="crm_stkadj_up_created_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product.name} {self.delta:+}"

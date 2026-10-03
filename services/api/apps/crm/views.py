@@ -2,20 +2,32 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 
+from django.db import IntegrityError
 from django.db.models import Prefetch, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.core.permissions import IsOwner
-from apps.crm.models import BusinessContact, CollectionFollowUp, Invoice
+from apps.crm.models import (
+    BusinessContact,
+    CollectionFollowUp,
+    Invoice,
+    Product,
+    ProductCategory,
+    StockAdjustment,
+)
+from apps.crm.services import GOODS_OUT_STATUSES
 from apps.crm.serializers import (
     BusinessContactSerializer,
     CollectionFollowUpSerializer,
     InvoiceReadSerializer,
     InvoiceWriteSerializer,
+    ProductCategorySerializer,
+    ProductSerializer,
 )
 
 
@@ -99,11 +111,19 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return self._read_response(serializer.instance)
 
     def perform_destroy(self, instance: Invoice):
-        """Impide borrar facturas con pagos (integridad de cobranza)."""
+        """Impide borrar facturas con pagos (integridad de cobranza).
+
+        Al borrar una factura sin pagos que ya descontó existencias se repone
+        el stock (la anulación es la operación formal; el borrado es un atajo).
+        """
         if instance.payments.exists():
             from rest_framework.exceptions import ValidationError
 
             raise ValidationError("No se puede borrar una factura con pagos registrados.")
+        if instance.status in GOODS_OUT_STATUSES:
+            from apps.crm.services import _restore_stock
+
+            _restore_stock(instance)
         instance.delete()
 
     @action(detail=True, methods=["post"])
@@ -160,3 +180,108 @@ class CollectionFollowUpViewSet(viewsets.ModelViewSet):
         if invoice_id:
             qs = qs.filter(invoice_id=invoice_id)
         return qs.order_by("-created_at")
+
+
+class ProductCategoryViewSet(viewsets.ModelViewSet):
+    """CRUD de categorías de producto."""
+
+    serializer_class = ProductCategorySerializer
+    permission_classes = [IsOwner]
+
+    def get_queryset(self):
+        return ProductCategory.objects.filter(user=self.request.user).order_by("name")
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            raise ValidationError(
+                {"name": "Ya tienes una categoría con ese nombre."}
+            )
+
+
+class ProductViewSet(viewsets.ModelViewSet):
+    """CRUD del inventario, con ajuste de existencias auditado."""
+
+    serializer_class = ProductSerializer
+    permission_classes = [IsOwner]
+
+    def get_queryset(self):
+        """Productos del usuario, con búsqueda y filtros de categoría/activo."""
+        qs = Product.objects.filter(user=self.request.user).select_related(
+            "category", "supplier"
+        )
+        search = self.request.query_params.get("search")
+        if search:
+            qs = qs.filter(Q(name__icontains=search) | Q(sku__icontains=search))
+        category = self.request.query_params.get("category")
+        if category:
+            qs = qs.filter(category_id=category)
+        active = self.request.query_params.get("active")
+        if active in ("true", "false"):
+            qs = qs.filter(is_active=active == "true")
+        return qs.order_by("name")
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            raise ValidationError(
+                {
+                    "detail": "Ya tienes un producto con ese nombre o código (SKU) "
+                    "en este negocio."
+                }
+            )
+
+    def update(self, request, *args, **kwargs):
+        try:
+            return super().update(request, *args, **kwargs)
+        except IntegrityError:
+            raise ValidationError(
+                {
+                    "detail": "Ya tienes un producto con ese nombre o código (SKU) "
+                    "en este negocio."
+                }
+            )
+
+    @action(detail=True, methods=["post"])
+    def adjust(self, request, pk=None):
+        """Ajusta existencias de forma auditada ({delta, reason}).
+
+        ``delta`` es un número con signo (p.ej. `+5` entrada, `-2` salida).
+        """
+        product = self.get_object()
+        delta = request.data.get("delta")
+        if delta is None:
+            return Response(
+                {"detail": "Debes indicar el delta del ajuste.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            delta = Decimal(str(delta))
+        except (TypeError, ValueError, DecimalException):
+            return Response(
+                {"detail": "El delta debe ser un número.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        reason = str(request.data.get("reason", "")).strip()
+        if not reason:
+            return Response(
+                {"detail": "Indica un motivo para el ajuste.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        new_stock = product.stock_quantity + delta
+        if new_stock < 0:
+            return Response(
+                {
+                    "detail": f"El stock no puede quedar negativo (hay {product.stock_quantity}).",
+                    "code": "validation_error",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        product.stock_quantity = new_stock
+        product.save(update_fields=["stock_quantity", "updated_at"])
+        StockAdjustment.objects.create(
+            user=request.user, product=product, delta=delta, reason=reason
+        )
+        return Response(self.get_serializer(product).data)

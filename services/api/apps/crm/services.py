@@ -10,9 +10,29 @@ from django.utils import timezone
 
 from apps.core.currency import round_money
 from apps.core.exceptions import BusinessRuleError
-from apps.crm.models import Invoice, InvoiceItem, InvoicePayment
+from apps.crm.models import (
+    Invoice,
+    InvoiceItem,
+    InvoicePayment,
+    Product,
+    StockAdjustment,
+)
 from apps.notifications.models import Notification
 from apps.transactions.services import register_transaction
+
+# Estados de factura en los que la mercancía ya salió de inventario.
+GOODS_OUT_STATUSES = {"enviada", "parcial", "pagada", "vencida"}
+
+
+def _pick_unit_price(product: Product, contact) -> Decimal:
+    """Precio de venta a usar para un cliente al armar la factura.
+
+    Los clientes mayoristas usan ``wholesale_price`` cuando el producto lo
+    tiene; el resto usa ``unit_price``.
+    """
+    if contact.customer_type == "mayorista" and product.wholesale_price is not None:
+        return product.wholesale_price
+    return product.unit_price
 
 
 def _next_invoice_number(business) -> str:
@@ -36,6 +56,53 @@ def _derive_status(amount_paid: Decimal, total: Decimal) -> str:
     if amount_paid >= total:
         return "pagada"
     return "parcial"
+
+
+def _withdraw_stock(invoice: Invoice) -> None:
+    """Descuenta existencias de los productos de una factura.
+
+    Bloquea las filas con ``select_for_update`` para evitar carreras y rechaza
+    la operación si alguna línea supera el stock disponible. Registra cada
+    movimiento en ``StockAdjustment``.
+    """
+    lines = list(invoice.items.filter(product__isnull=False).select_related("product"))
+    if not lines:
+        return
+    product_ids = [line.product_id for line in lines]
+    products = {
+        p.id: p
+        for p in Product.objects.select_for_update().filter(id__in=product_ids)
+    }
+    for line in lines:
+        product = products[line.product_id]
+        if line.quantity > product.stock_quantity:
+            raise BusinessRuleError(
+                f"Stock insuficiente de «{product.name}»: quedan {product.stock_quantity}."
+            )
+    for line in lines:
+        product = products[line.product_id]
+        product.stock_quantity = round_money(product.stock_quantity - line.quantity)
+        product.save(update_fields=["stock_quantity", "updated_at"])
+        StockAdjustment.objects.create(
+            user=invoice.user,
+            product=product,
+            delta=-line.quantity,
+            reason=f"Factura {invoice.number}",
+        )
+
+
+def _restore_stock(invoice: Invoice) -> None:
+    """Republica existencias de una factura que ya no está en curso."""
+    for line in invoice.items.filter(product__isnull=False).select_related("product"):
+        product = line.product
+        product.stock_quantity = round_money(product.stock_quantity + line.quantity)
+        product.save(update_fields=["stock_quantity", "updated_at"])
+        StockAdjustment.objects.create(
+            user=invoice.user,
+            product=product,
+            delta=line.quantity,
+            reason=f"Anulación {invoice.number}",
+        )
 
 
 @transaction.atomic
@@ -97,6 +164,7 @@ def create_invoice(
         subtotal += total
         prepared_items.append(
             {
+                "product": row.get("product"),
                 "description": row.get("description", ""),
                 "quantity": quantity,
                 "unit_price": unit_price,
@@ -134,12 +202,15 @@ def create_invoice(
         InvoiceItem.objects.create(
             user=user,
             invoice=invoice,
+            product=row.get("product"),
             description=row["description"],
             quantity=row["quantity"],
             unit_price=row["unit_price"],
             discount=row["discount"],
             total=row["total"],
         )
+
+    _withdraw_stock(invoice)
 
     if paid_amount > 0:
         tx = register_transaction(
@@ -248,11 +319,12 @@ def record_invoice_payment(
 
 @transaction.atomic
 def send_invoice(invoice: Invoice) -> Invoice:
-    """Cambia una factura de borrador a enviada."""
+    """Cambia una factura de borrador a enviada y descuenta stock."""
     if invoice.status != "borrador":
         raise BusinessRuleError("Solo las facturas en borrador pueden enviarse.")
     invoice.status = "enviada"
     invoice.save(update_fields=["status", "updated_at"])
+    _withdraw_stock(invoice)
     return invoice
 
 
@@ -260,12 +332,16 @@ def send_invoice(invoice: Invoice) -> Invoice:
 def cancel_invoice(invoice: Invoice) -> Invoice:
     """Anula una factura.
 
-    No revierte pagos ya registrados; simplemente congela el documento.
+    No revierte pagos ya registrados; simplemente congela el documento y
+    repone las existencias si la mercancía ya había salido.
     """
     if invoice.status == "anulada":
         raise BusinessRuleError("La factura ya está anulada.")
+    was_out = invoice.status in GOODS_OUT_STATUSES
     invoice.status = "anulada"
     invoice.save(update_fields=["status", "updated_at"])
+    if was_out:
+        _restore_stock(invoice)
     return invoice
 
 

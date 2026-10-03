@@ -13,6 +13,8 @@ from apps.crm.models import (
     Invoice,
     InvoiceItem,
     InvoicePayment,
+    Product,
+    ProductCategory,
 )
 
 
@@ -98,20 +100,50 @@ class BusinessContactSerializer(serializers.ModelSerializer):
 
 
 class InvoiceItemSerializer(serializers.ModelSerializer):
-    """Serializador de líneas de factura (lectura y escritura)."""
+    """Serializador de líneas de factura (lectura)."""
 
     class Meta:
         model = InvoiceItem
-        fields = ["id", "description", "quantity", "unit_price", "discount", "total"]
-        read_only_fields = ["id", "total"]
+        fields = ["id", "product", "description", "quantity", "unit_price", "discount", "total"]
+        read_only_fields = ["id", "product", "total"]
+
+
+class InvoiceItemWriteSerializer(serializers.ModelSerializer):
+    """Serializador de líneas de factura en alta/edición.
+
+    Acepta ``product`` del catálogo; si no se envía ``unit_price`` y hay
+    producto, el precio se toma del catálogo según el tipo de cliente
+    (ver ``InvoiceWriteSerializer.validate``).
+    """
+
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), required=False
+    )
+    unit_price = serializers.DecimalField(
+        max_digits=20, decimal_places=2, required=False
+    )
+
+    class Meta:
+        model = InvoiceItem
+        fields = ["product", "description", "quantity", "unit_price", "discount", "total"]
+        read_only_fields = ["total"]
 
     def validate(self, attrs: dict) -> dict:
         quantity = attrs.get("quantity", 1)
         unit_price = attrs.get("unit_price", Decimal("0"))
         discount = attrs.get("discount", Decimal("0"))
+        product = attrs.get("product")
         if quantity <= 0 or unit_price < 0:
             raise serializers.ValidationError(
                 "La cantidad y el precio unitario deben ser positivos."
+            )
+        if product is None and attrs.get("unit_price") is None:
+            raise serializers.ValidationError(
+                "Indica un precio o un producto del catálogo."
+            )
+        if product is not None and product.user_id != self.context["request"].user.id:
+            raise serializers.ValidationError(
+                "El producto no pertenece a tu catálogo."
             )
         attrs["total"] = quantity * unit_price - discount
         return attrs
@@ -185,7 +217,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
     """Serializador de alta/edición de facturas."""
 
     contact = serializers.PrimaryKeyRelatedField(queryset=BusinessContact.objects.none())
-    items = InvoiceItemSerializer(many=True)
+    items = InvoiceItemWriteSerializer(many=True)
     issue_date = serializers.DateField(required=False)
     due_date = serializers.DateField(required=False)
     paid_amount = serializers.DecimalField(
@@ -251,6 +283,20 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"due_date": "El vencimiento no puede ser anterior a la emisión."}
             )
+
+        # Líneas sin precio explicitado pero con producto del catálogo: se toma
+        # el precio según el tipo de cliente (mayorista → wholesale_price).
+        contact = attrs.get("contact") or getattr(self.instance, "contact", None)
+        for row in attrs.get("items", []):
+            product = row.get("product")
+            if product is not None and row.get("unit_price") is None and contact is not None:
+                from apps.crm.services import _pick_unit_price
+
+                unit_price = _pick_unit_price(product, contact)
+                row["unit_price"] = unit_price
+                row["total"] = round_money(
+                    row["quantity"] * unit_price - row.get("discount", Decimal("0"))
+                )
         return attrs
 
     def create(self, validated_data: dict) -> Invoice:
@@ -291,6 +337,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
                 InvoiceItem.objects.create(
                     user=instance.user,
                     invoice=instance,
+                    product=row.get("product"),
                     description=row["description"],
                     quantity=row["quantity"],
                     unit_price=row["unit_price"],
@@ -345,3 +392,135 @@ class CollectionFollowUpSerializer(serializers.ModelSerializer):
         request = self.context["request"]
         validated_data["user_id"] = request.user.id
         return super().create(validated_data)
+
+
+class ProductCategorySerializer(serializers.ModelSerializer):
+    """Serializador de categorías de producto."""
+
+    class Meta:
+        model = ProductCategory
+        fields = ["id", "business", "name"]
+        read_only_fields = ["id", "business"]
+
+    def validate_name(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("El nombre no puede estar vacío.")
+        return value
+
+    def create(self, validated_data: dict) -> ProductCategory:
+        from apps.business.models import Business
+
+        request = self.context["request"]
+        try:
+            business = Business.objects.get(user=request.user)
+        except Business.DoesNotExist:
+            raise serializers.ValidationError(
+                {"business": "No tienes un negocio creado."}
+            )
+        validated_data["user_id"] = request.user.id
+        validated_data["business"] = business
+        return super().create(validated_data)
+
+
+class ProductSerializer(serializers.ModelSerializer):
+    """Serializador de productos del inventario.
+
+    ``is_low_stock`` informa si queda por debajo del umbral de alerta. Las
+    existencias no se editan a través del CRUD: cualquier movimiento se hace
+    con el endpoint ``adjust`` para quedar auditado en ``StockAdjustment``.
+    """
+
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=ProductCategory.objects.none(), required=False, allow_null=True
+    )
+    supplier = serializers.PrimaryKeyRelatedField(
+        queryset=BusinessContact.objects.none(), required=False, allow_null=True
+    )
+    stock_quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False
+    )
+    is_low_stock = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Product
+        fields = [
+            "id",
+            "business",
+            "name",
+            "sku",
+            "description",
+            "unit",
+            "unit_price",
+            "wholesale_price",
+            "cost_price",
+            "category",
+            "supplier",
+            "stock_quantity",
+            "low_stock_threshold",
+            "is_active",
+            "is_low_stock",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "business", "created_at", "updated_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        user = self.context["request"].user
+        self.fields["category"].queryset = ProductCategory.objects.filter(
+            business__user=user
+        )
+        self.fields["supplier"].queryset = BusinessContact.objects.filter(
+            business__user=user, type__in=["proveedor", "ambos"]
+        ).select_related("business")
+
+    def get_is_low_stock(self, obj: Product) -> bool:
+        if obj.low_stock_threshold is None:
+            return False
+        return obj.stock_quantity <= obj.low_stock_threshold
+
+    def validate_name(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("El nombre no puede estar vacío.")
+        return value
+
+    def validate_sku(self, value: str) -> str:
+        return value.strip()
+
+    def _non_negative(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("El valor no puede ser negativo.")
+        return value
+
+    def validate_unit_price(self, value):
+        return self._non_negative(value)
+
+    def validate_wholesale_price(self, value):
+        return self._non_negative(value)
+
+    def validate_cost_price(self, value):
+        return self._non_negative(value)
+
+    def validate_low_stock_threshold(self, value):
+        return self._non_negative(value)
+
+    def create(self, validated_data: dict) -> Product:
+        from apps.business.models import Business
+
+        request = self.context["request"]
+        try:
+            business = Business.objects.get(user=request.user)
+        except Business.DoesNotExist:
+            raise serializers.ValidationError(
+                {"business": "No tienes un negocio creado."}
+            )
+        validated_data["user_id"] = request.user.id
+        validated_data["business"] = business
+        return super().create(validated_data)
+
+    def update(self, instance: Product, validated_data: dict) -> Product:
+        # Las existencias solo cambian por el endpoint de ajuste (auditoría).
+        validated_data.pop("stock_quantity", None)
+        return super().update(instance, validated_data)

@@ -8,6 +8,9 @@ from apps.crm.models import (
     Invoice,
     InvoiceItem,
     InvoicePayment,
+    Product,
+    ProductCategory,
+    StockAdjustment,
 )
 
 
@@ -74,3 +77,48 @@ class CollectionFollowUpAdmin(admin.ModelAdmin):
     list_display = ["invoice", "channel", "outcome", "promised_date", "created_at"]
     list_filter = ["channel", "outcome"]
     search_fields = ["invoice__number", "invoice__contact__name"]
+
+
+class StockAdjustmentInline(admin.TabularInline):
+    """Ajustes de inventario en el admin."""
+
+    model = StockAdjustment
+    extra = 0
+    readonly_fields = ["delta", "reason"]
+
+
+@admin.register(ProductCategory)
+class ProductCategoryAdmin(admin.ModelAdmin):
+    """Admin de categorías de producto."""
+
+    list_display = ["name", "business"]
+    search_fields = ["name"]
+
+
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    """Admin de productos del inventario."""
+
+    list_display = [
+        "name",
+        "sku",
+        "business",
+        "category",
+        "supplier",
+        "unit_price",
+        "wholesale_price",
+        "stock_quantity",
+        "low_stock_threshold",
+        "is_active",
+    ]
+    list_filter = ["is_active", "category"]
+    search_fields = ["name", "sku", "description"]
+    inlines = [StockAdjustmentInline]
+
+
+@admin.register(StockAdjustment)
+class StockAdjustmentAdmin(admin.ModelAdmin):
+    """Admin de ajustes de inventario."""
+
+    list_display = ["product", "delta", "reason", "created_at"]
+    readonly_fields = ["product", "delta", "reason", "created_at"]

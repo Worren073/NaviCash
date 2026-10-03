@@ -117,7 +117,7 @@ class TestNotifications:
                 fecha=date.today() - timedelta(days=5),
                 fecha_vencimiento=date.today() - timedelta(days=1),
             )
-        with django_assert_num_queries(7):
+        with django_assert_num_queries(8):
             refresh_notifications(api_client.user)
         assert (
             Notification.objects.filter(user=api_client.user, kind="overdue").count()
