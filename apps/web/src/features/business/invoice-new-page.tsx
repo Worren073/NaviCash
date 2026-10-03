@@ -8,11 +8,12 @@ import { sileo } from "sileo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiErrorClass } from "@/lib/api";
-import { queryKeys, useBusinessContacts } from "@/hooks/use-queries";
+import { queryKeys, useBusinessContacts, useProducts } from "@/hooks/use-queries";
 import { formatMoney } from "@/lib/format";
 import type { Invoice } from "@/lib/types";
 
 interface ItemRow {
+  product?: string;
   description: string;
   quantity: string;
   unit_price: string;
@@ -40,6 +41,8 @@ export default function InvoiceNewPage() {
     () => (contactsData?.results ?? []).filter((c) => c.type !== "proveedor" && c.is_active),
     [contactsData]
   );
+  const { data: productsData } = useProducts();
+  const catalogue = useMemo(() => productsData?.results ?? [], [productsData]);
 
   const [contact, setContact] = useState("");
   const [issueDate, setIssueDate] = useState("");
@@ -62,6 +65,22 @@ export default function InvoiceNewPage() {
 
   const setItem = (idx: number, key: keyof ItemRow, value: string) =>
     updateItem(idx, { [key]: value });
+
+  const pickProduct = (idx: number, productId: string) => {
+    const product = catalogue.find((p) => p.id === productId);
+    if (!product) return;
+    const isMayorista =
+      customers.find((c) => c.id === contact)?.customer_type === "mayorista";
+    const price =
+      isMayorista && product.wholesale_price
+        ? product.wholesale_price
+        : product.unit_price;
+    updateItem(idx, {
+      product: product.id,
+      description: product.name,
+      unit_price: price,
+    });
+  };
 
   const validationError = useMemo(() => {
     if (!contact) return t("invoices.form.errors.contact");
@@ -87,6 +106,7 @@ export default function InvoiceNewPage() {
           description: r.description.trim(),
           quantity: r.quantity,
           unit_price: r.unit_price,
+          ...(r.product ? { product: r.product } : {}),
           ...(r.discount ? { discount: r.discount } : {}),
         })),
         ...(issueDate ? { issue_date: issueDate } : {}),
@@ -182,6 +202,20 @@ export default function InvoiceNewPage() {
             key={idx}
             className="glass-panel clip-rounded-lg grid grid-cols-12 items-center gap-2 rounded-lg p-3"
           >
+            {catalogue.length > 0 && (
+              <select
+                value={row.product ?? ""}
+                onChange={(e) => pickProduct(idx, e.target.value)}
+                className="col-span-12 h-11 w-full rounded-xl border border-glass-border bg-glass-surface px-3 text-base text-on-surface shadow-sm outline-none backdrop-blur-md focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 md:text-sm"
+              >
+                <option value="">{t("invoices.form.fromCatalogue")}</option>
+                {catalogue.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {t("inventory.stock")}: {p.stock_quantity}
+                  </option>
+                ))}
+              </select>
+            )}
             <Input
               className="col-span-12 sm:col-span-4"
               placeholder={t("invoices.form.itemDescription")}

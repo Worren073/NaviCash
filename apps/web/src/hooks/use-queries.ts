@@ -11,6 +11,8 @@ import type {
   NotificationsResponse,
   Overview,
   Paginated,
+  Product,
+  ProductCategory,
   Subscription,
   User,
   Wallet,
@@ -34,6 +36,8 @@ export const queryKeys = {
   businessContacts: ["business-contacts"] as const,
   invoices: ["invoices"] as const,
   followUps: ["follow-ups"] as const,
+  products: ["products"] as const,
+  productCategories: ["product-categories"] as const,
 };
 
 export function useOverview() {
@@ -150,6 +154,29 @@ export function useFollowUps(invoiceId?: string) {
         `/business/follow-ups?${params.toString()}`,
         { signal }
       );
+    },
+  });
+}
+
+export function useProductCategories() {
+  return useQuery({
+    queryKey: queryKeys.productCategories,
+    queryFn: ({ signal }) =>
+      api.get<Paginated<ProductCategory>>("/business/product-categories", { signal }),
+  });
+}
+
+export function useProducts(search?: string, category?: string, active?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.products, { search, category, active }],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (category) params.set("category", category);
+      if (active) params.set("active", active);
+      return api.get<Paginated<Product>>(`/business/products?${params.toString()}`, {
+        signal,
+      });
     },
   });
 }

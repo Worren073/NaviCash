@@ -75,6 +75,7 @@ export type InvoiceStatus =
 
 export interface InvoiceItem {
   id: string;
+  product: string | null;
   description: string;
   quantity: string;
   unit_price: string;
@@ -114,12 +115,51 @@ export interface Invoice {
 
 export interface InvoiceDraft {
   contact: string;
-  items: { description: string; quantity: string; unit_price: string; discount?: string }[];
+  items: { product?: string; description: string; quantity: string; unit_price: string; discount?: string }[];
   issue_date?: string;
   due_date?: string;
   tax_amount?: string;
   paid_amount?: string;
   notes?: string;
+}
+
+export interface ProductCategory {
+  id: string;
+  name: string;
+  business: string;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  sku: string | null;
+  description: string;
+  unit: string | null;
+  unit_price: string;
+  wholesale_price: string | null;
+  cost_price: string;
+  category: string | null;
+  supplier: string | null;
+  stock_quantity: string;
+  low_stock_threshold: string;
+  is_active: boolean;
+  is_low_stock: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductDraft {
+  name: string;
+  sku?: string;
+  description?: string;
+  unit?: string;
+  unit_price?: string;
+  wholesale_price?: string;
+  cost_price?: string;
+  category?: string;
+  supplier?: string;
+  low_stock_threshold?: string;
+  is_active?: boolean;
 }
 
 export type CollectionChannel = "llamada" | "email" | "whatsapp" | "visita" | "otro";

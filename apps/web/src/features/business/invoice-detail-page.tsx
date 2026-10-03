@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Banknote,
   Mail,
+  Package,
   Phone,
   PhoneCall,
   ReceiptText,
@@ -259,7 +260,16 @@ export default function InvoiceDetailPage() {
             <tbody>
               {invoice.items.map((item) => (
                 <tr key={item.id} className="border-b border-glass-border/60 last:border-b-0">
-                  <td className="px-4 py-2.5 font-medium text-on-surface">{item.description}</td>
+                  <td className="px-4 py-2.5 font-medium text-on-surface">
+                    <div className="flex items-center gap-2">
+                      {item.description}
+                      {item.product && (
+                        <Badge variant="secondary" className="gap-1">
+                          <Package className="h-3 w-3" /> {t("inventory.catalogue")}
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-2 py-2.5 text-right text-on-surface-variant">{item.quantity}</td>
                   <td className="px-2 py-2.5 text-right text-on-surface-variant">
                     {formatMoney(item.unit_price, invoice.currency)}
