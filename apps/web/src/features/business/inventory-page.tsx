@@ -179,7 +179,12 @@ function ProductCard({
         <div className="text-right">
           <div className="text-sm font-semibold text-on-surface">{formatMoney(product.unit_price)}</div>
           <div className="text-xs text-on-surface-variant">
-            {product.stock_quantity} {product.unit ? product.unit : ""}
+            {product.stock_quantity}{" "}
+            {product.unit === "kg"
+              ? t("inventory.units.kg")
+              : product.unit
+                ? t("inventory.units.unidad")
+                : ""}
           </div>
         </div>
         <div className="flex gap-1">

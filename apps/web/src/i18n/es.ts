@@ -472,6 +472,8 @@ export default {
     noCategory: "Sin categoría",
     unit: "Unidad",
     unitPlaceholder: "p. ej. c/u, kg, docena",
+    units: { unidad: "Unidad", kg: "Kg" },
+    integerRequired: "Con «Unidad» las cantidades van en enteros (sin decimales).",
     unitPrice: "Precio",
     wholesalePrice: "Precio mayorista",
     costPrice: "Costo",

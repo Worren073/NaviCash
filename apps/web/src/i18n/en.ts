@@ -473,6 +473,8 @@ dashboard: {
     noCategory: "No category",
     unit: "Unit",
     unitPlaceholder: "e.g. ea, kg, dozen",
+    units: { unidad: "Unit", kg: "Kg" },
+    integerRequired: "With «Unit» amounts must be whole numbers (no decimals).",
     unitPrice: "Price",
     wholesalePrice: "Wholesale price",
     costPrice: "Cost",

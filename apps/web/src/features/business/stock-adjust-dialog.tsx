@@ -40,13 +40,17 @@ export function StockAdjustDialog({
 
   const deltaNum = Number(delta) || 0;
   const wouldBeNegative = (Number(product?.stock_quantity ?? 0) + deltaNum) < 0;
+  // Con la unidad «Unidad» las existencias se manejan en enteros.
+  const needsInteger = product?.unit === "unidad";
   const validationError = useMemo(() => {
     if (!delta || !Number.isFinite(deltaNum) || deltaNum === 0)
       return t("inventory.adjustDeltaError");
+    if (needsInteger && !Number.isInteger(deltaNum))
+      return t("inventory.integerRequired");
     if (wouldBeNegative) return t("inventory.adjustErrorNegative");
     if (!reason.trim()) return t("inventory.adjustReasonError");
     return null;
-  }, [delta, deltaNum, wouldBeNegative, reason, t]);
+  }, [delta, deltaNum, needsInteger, wouldBeNegative, reason, t]);
 
   const adjust = useMutation({
     mutationFn: () =>
@@ -83,7 +87,7 @@ export function StockAdjustDialog({
             </span>
             <Input
               type="number"
-              inputMode="decimal"
+              inputMode={needsInteger ? "numeric" : "decimal"}
               value={delta}
               onChange={(e) => setDelta(e.target.value)}
               placeholder="+5"

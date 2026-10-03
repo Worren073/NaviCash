@@ -88,6 +88,16 @@ export default function InvoiceNewPage() {
       return t("invoices.form.errors.itemDescription");
     if (items.some((r) => (Number(r.quantity) || 0) <= 0))
       return t("invoices.form.errors.invalidQty");
+    // Producto «por unidad»: la cantidad de la línea debe ser entera.
+    if (
+      items.some((r) => {
+        const p = r.product ? catalogue.find((c) => c.id === r.product) : undefined;
+        return (
+          p?.unit === "unidad" && r.quantity !== "" && !Number.isInteger(Number(r.quantity))
+        );
+      })
+    )
+      return t("inventory.integerRequired");
     if (items.some((r) => ((Number(r.unit_price) || 0)) < 0))
       return t("invoices.form.errors.invalidPrice");
     if (tax < 0) return t("invoices.form.errors.invalidTax");
@@ -96,7 +106,7 @@ export default function InvoiceNewPage() {
     if (dueDate && issueDate && dueDate < issueDate)
       return t("invoices.form.errors.invalidDate");
     return null;
-  }, [contact, items, tax, paid, total, dueDate, issueDate, t]);
+  }, [contact, items, catalogue, tax, paid, total, dueDate, issueDate, t]);
 
   const create = useMutation({
     mutationFn: () => {
@@ -225,7 +235,12 @@ export default function InvoiceNewPage() {
             <Input
               className="col-span-4 sm:col-span-2"
               type="number"
-              inputMode="decimal"
+              inputMode={
+                row.product &&
+                catalogue.find((c) => c.id === row.product)?.unit === "unidad"
+                  ? "numeric"
+                  : "decimal"
+              }
               placeholder={t("invoices.form.itemQty")}
               value={row.quantity}
               onChange={(e) => setItem(idx, "quantity", e.target.value)}

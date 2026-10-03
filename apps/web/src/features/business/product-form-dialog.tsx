@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys, useProductCategories } from "@/hooks/use-queries";
@@ -34,7 +35,7 @@ export function ProductFormDialog({
 
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
-  const [unit, setUnit] = useState("");
+  const [unit, setUnit] = useState<"unidad" | "kg">("unidad");
   const [category, setCategory] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [wholesalePrice, setWholesalePrice] = useState("");
@@ -47,7 +48,7 @@ export function ProductFormDialog({
     if (open) {
       setName(product?.name ?? "");
       setSku(product?.sku ?? "");
-      setUnit(product?.unit ?? "");
+      setUnit(product?.unit === "kg" ? "kg" : "unidad");
       setCategory(product?.category ?? "");
       setUnitPrice(product?.unit_price ?? "");
       setWholesalePrice(product?.wholesale_price ?? "");
@@ -61,19 +62,24 @@ export function ProductFormDialog({
   const numberLtZero = (...vals: Array<string | null>) =>
     vals.some((v) => v != null && v !== "" && (Number(v) < 0 || !Number.isFinite(Number(v))));
 
+  const nonInteger = (v: string) => v !== "" && !Number.isInteger(Number(v));
+
   const validationError = useMemo(() => {
     if (!name.trim()) return t("inventory.nameRequired");
     if (numberLtZero(unitPrice, wholesalePrice, costPrice, threshold, initialStock))
       return t("inventory.nonNegative");
+    // Con la unidad «Unidad» las cantidades van en enteros (sin decimales).
+    if (unit === "unidad" && (nonInteger(initialStock) || nonInteger(threshold)))
+      return t("inventory.integerRequired");
     return null;
-  }, [name, unitPrice, wholesalePrice, costPrice, threshold, initialStock, t]);
+  }, [name, unit, unitPrice, wholesalePrice, costPrice, threshold, initialStock, t]);
 
   const mutation = useMutation({
     mutationFn: () => {
       const base = {
         name: name.trim(),
         sku: sku.trim(),
-        unit: unit.trim(),
+        unit,
         category: category || null,
         unit_price: unitPrice,
         wholesale_price: wholesalePrice || null,
@@ -139,16 +145,20 @@ export function ProductFormDialog({
                 placeholder={t("inventory.skuPlaceholder")}
               />
             </label>
-            <label className="block">
+            <div className="block">
               <span className="mb-1 block text-sm font-medium text-on-surface">
                 {t("inventory.unit")}
               </span>
-              <Input
+              <Segmented<"unidad" | "kg">
+                options={[
+                  { value: "unidad", label: t("inventory.units.unidad") },
+                  { value: "kg", label: t("inventory.units.kg") },
+                ]}
                 value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                placeholder={t("inventory.unitPlaceholder")}
+                onChange={setUnit}
+                layoutId="product-unit-segmented"
               />
-            </label>
+            </div>
           </div>
 
           <label className="block">
@@ -212,7 +222,7 @@ export function ProductFormDialog({
               </span>
               <Input
                 type="number"
-                inputMode="decimal"
+                inputMode={unit === "unidad" ? "numeric" : "decimal"}
                 value={threshold}
                 onChange={(e) => setThreshold(e.target.value)}
               />
@@ -229,7 +239,7 @@ export function ProductFormDialog({
               </span>
               <Input
                 type="number"
-                inputMode="decimal"
+                inputMode={unit === "unidad" ? "numeric" : "decimal"}
                 value={initialStock}
                 onChange={(e) => setInitialStock(e.target.value)}
               />
