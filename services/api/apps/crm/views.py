@@ -21,7 +21,7 @@ from apps.crm.models import (
     StockAdjustment,
 )
 from apps.crm.services import GOODS_OUT_STATUSES, requires_integer_amounts
-from apps.crm.tax_id import tax_id_search_term
+from apps.crm.tax_id import TAX_ID_TYPES, tax_id_search_term
 from apps.crm.serializers import (
     BusinessContactSerializer,
     CollectionFollowUpSerializer,
@@ -39,7 +39,7 @@ class BusinessContactViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwner]
 
     def get_queryset(self):
-        """Contactos del usuario autenticado, con búsqueda opcional."""
+        """Contactos del usuario autenticado, con búsqueda y filtros opcionales."""
         qs = BusinessContact.objects.filter(user=self.request.user).select_related("business")
         search = self.request.query_params.get("search")
         if search:
@@ -55,6 +55,22 @@ class BusinessContactViewSet(viewsets.ModelViewSet):
         type_filter = self.request.query_params.get("type")
         if type_filter:
             qs = qs.filter(type=type_filter)
+        doc_type = self.request.query_params.get("tax_id_type")
+        if doc_type:
+            # Filtra SOLO por tipo de cédula (V/J/E). Va aparte de ``search``
+            # porque un prefijo suelto ("V-") no sirve: al normalizarlo queda
+            # vacío y ``icontains ""`` empareja con todos los contactos.
+            prefix = doc_type.strip().upper()
+            if prefix not in TAX_ID_TYPES:
+                raise ValidationError(
+                    {
+                        "tax_id_type": (
+                            f"Tipo de cédula inválido. Opciones: "
+                            f"{', '.join(TAX_ID_TYPES)}."
+                        )
+                    }
+                )
+            qs = qs.filter(tax_id__istartswith=f"{prefix}-")
         return qs.order_by("name")
 
 

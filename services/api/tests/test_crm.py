@@ -262,6 +262,72 @@ class TestBusinessContact:
             assert resp.status_code == 200
             assert len(resp.data["results"]) == 1, term
 
+    def test_filter_by_tax_id_type(self, api_client, business) -> None:
+        """``tax_id_type`` filtra solo por tipo de cédula, sin texto de búsqueda."""
+        for name, tax_id in [
+            ("Venezolano", "V-12345678"),
+            ("Empresa", "J-310123456"),
+            ("Extranjero", "E-A123456"),
+            ("Sin documento", ""),
+        ]:
+            BusinessContact.objects.create(
+                user=api_client.user,
+                business=business,
+                name=name,
+                type="cliente",
+                tax_id=tax_id,
+            )
+        expected = {"V": ["Venezolano"], "J": ["Empresa"], "E": ["Extranjero"]}
+        for prefix, names in expected.items():
+            resp = api_client.get(f"{self.URL}?tax_id_type={prefix}")
+            assert resp.status_code == 200
+            assert [r["name"] for r in resp.data["results"]] == names, prefix
+
+    def test_filter_by_tax_id_type_accepts_lowercase(self, api_client, business) -> None:
+        """El tipo arrives en minúscula también filtra (istartswith)."""
+        BusinessContact.objects.create(
+            user=api_client.user,
+            business=business,
+            name="Empresa",
+            type="cliente",
+            tax_id="J-310123456",
+        )
+        resp = api_client.get(f"{self.URL}?tax_id_type=j")
+        assert resp.status_code == 200
+        assert len(resp.data["results"]) == 1
+
+    def test_filter_by_tax_id_type_invalid(self, api_client, business) -> None:
+        """Un tipo desconocido se rechaza en vez de ignorarse en silencio."""
+        resp = api_client.get(f"{self.URL}?tax_id_type=X")
+        assert resp.status_code == 400
+        assert "tax_id_type" in resp.data["errors"]
+
+    def test_filter_tax_id_type_combines_with_search_and_type(
+        self, api_client, business
+    ) -> None:
+        """El filtro por tipo de cédula se combina con búsqueda y tipo de contacto."""
+        BusinessContact.objects.create(
+            user=api_client.user,
+            business=business,
+            name="Distribuidora El Sol",
+            type="proveedor",
+            tax_id="J-310123456",
+        )
+        BusinessContact.objects.create(
+            user=api_client.user,
+            business=business,
+            name="Otro proveedor",
+            type="proveedor",
+            tax_id="V-12345678",
+        )
+        both = api_client.get(f"{self.URL}?tax_id_type=J&type=proveedor&search=Sol")
+        assert both.status_code == 200
+        assert [r["name"] for r in both.data["results"]] == ["Distribuidora El Sol"]
+
+        only_clients = api_client.get(f"{self.URL}?tax_id_type=J&type=cliente")
+        assert only_clients.status_code == 200
+        assert only_clients.data["results"] == []
+
     def test_tax_id_still_optional(self, api_client, business) -> None:
         """La cédula sigue siendo opcional para contactos sin ella."""
         first = api_client.post(
