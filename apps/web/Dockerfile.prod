@@ -15,6 +15,15 @@ WORKDIR /app
 
 ENV PATH=/app/node_modules/.bin:$PATH
 
+# Las variables de la SPA tienen que declararse como ARG: en un build de Docker
+# las variables de entorno del servicio NO llegan solas al build, y vite.config
+# aborta si falta VITE_CAPTCHA_SITE_KEY.
+# VITE_API_URL por defecto = /api (mismo origen vía proxy de nginx).
+ARG VITE_API_URL=/api
+ARG VITE_CAPTCHA_SITE_KEY
+ENV VITE_API_URL=${VITE_API_URL} \
+    VITE_CAPTCHA_SITE_KEY=${VITE_CAPTCHA_SITE_KEY}
+
 COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then \
       npm ci --prefer-offline; \
@@ -25,10 +34,14 @@ RUN if [ -f package-lock.json ]; then \
 COPY . .
 RUN npm run build
 
-# Stage 2: nginx alpine sirviendo dist/ con cabeceras de seguridad.
+# Stage 2: nginx alpine sirviendo dist/ + proxy same-origin de /api.
 FROM nginx:1.27-alpine
 
-# Configuración de nginx: SPA fallback + cabeceras de seguridad + caché.
+# ca-certificates es obligatorio: el proxy de /api habla HTTPS contra el
+# servicio de la API y sin el CA bundle el handshake falla al arrancar.
+RUN apk add --no-cache ca-certificates
+
+# Configuración de nginx: SPA fallback + proxy /api + cabeceras de seguridad.
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 

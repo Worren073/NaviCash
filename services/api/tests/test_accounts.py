@@ -10,7 +10,9 @@ from __future__ import annotations
 import logging
 
 import pytest
+from django.conf import settings
 from django.core import mail
+from django.test import override_settings
 from django.utils import timezone
 
 from apps.accounts.models import EmailVerification, PasswordResetToken, User
@@ -178,6 +180,21 @@ class TestAuthFlow:
         assert resp.status_code == 200
         assert resp.data["access"]
         assert resp.cookies["refresh_token"]["httponly"] is True
+
+    def test_cookie_samesite_configurable_por_entorno(self, api_client) -> None:
+        """``JWT_COOKIE_SAMESITE`` manda sobre el default (mismo origen -> Lax).
+
+        Con la API servida en el mismo origen que la SPA (nginx hace proxy de
+        /api) la cookie del refresh es first-party y "Lax" es lo correcto: el
+        default "None" solo hace falta cuando la SPA vive en otro dominio.
+        """
+        UserFactory(email="samesite@example.com")
+        with override_settings(
+            SIMPLE_JWT={**settings.SIMPLE_JWT, "AUTH_COOKIE_SAMESITE": "Lax"}
+        ):
+            resp = self._login(api_client, "samesite@example.com", "test-password-123")
+        assert resp.status_code == 200
+        assert resp.cookies["refresh_token"]["samesite"] == "Lax"
 
     def test_login_rejects_inactive_account(self, api_client) -> None:
         """Cuenta sin verificar no puede iniciar sesión (código not_verified)."""

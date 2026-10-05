@@ -1,6 +1,45 @@
 # Fix: Cookies no viajaban en producción (Render)
 
-## Diagnóstico del problema
+> ## ACTUALIZADO: este fix cross-site era INSUFICIENTE (y es lo que rompe hoy)
+>
+> **Síntoma real:** la sesión moría a los ~15 minutos en todos los navegadores
+> (Chrome de escritorio y Safari/iOS por igual), con este log en la API:
+>
+> ```
+> REFRESH_REJECTED reason=no_cookie user=- ip=...
+> ```
+>
+> **Causa raíz:** `onrender.com` está en la **Public Suffix List**, así que
+> `navicash-web.onrender.com` y `navicash-api-xxxxx.onrender.com` son **sitios
+> distintos**, no solo orígenes distintos. La cookie httpOnly del refresh es
+> entonces **third-party**, y Chrome 1xx / Safari-iOS ya no guardan cookies
+> third-party sin `Partitioned`. El login "funcionaba" (el access token viene en
+> el body y CORS responde bien), pero el navegador **descartaba el
+> `Set-Cookie`** en silencio: no había cookie que renovar.
+>
+> Poner `SameSite=None` y `CORS_ALLOWED_ORIGINS` es **necesario pero no
+> suficiente**: ninguna cabecera puede forzar al navegador a guardar una cookie
+> third-party.
+>
+> **Fix definitivo: mismo origen.** nginx hace proxy de `/api` al servicio de la
+> API (`apps/web/nginx.conf`), de modo que la SPA se llama a sí misma y la
+> cookie es **first-party**. Requisitos:
+>
+> - Web desplegado como **Web Service (Docker)** con `apps/web/Dockerfile.prod`
+>   (no como Static Site: nginx no está ahí y no hay proxy).
+> - `VITE_API_URL=/api` en el servicio web.
+> - `CORS_ALLOWED_ORIGINS` en la API **incluyendo el origen del web** (el
+>   refresh sigue validando Origin; si falta, verás `reason=origin`).
+> - `JWT_COOKIE_SAMESITE=Lax` en la API (ya no hace falta `None`).
+>
+> Ojo al hacer el proxy a un host HTTPS: hacen falta
+> `proxy_ssl_server_name on` y `proxy_ssl_protocols TLSv1.2 TLSv1.3`, o el
+> handshake falla con `alert 40` y el proxy devuelve 502 en todo `/api`
+> (y `nginx -t` no lo detecta).
+>
+> Ver el paso a paso completo en `docs/RENDER_CONFIG.md`.
+
+## Diagnóstico del problema original
 
 ```
 Error en producción (Render):

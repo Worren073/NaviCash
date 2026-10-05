@@ -390,7 +390,15 @@ SIMPLE_JWT = {
     "AUTH_COOKIE": "refresh_token",
     "AUTH_COOKIE_HTTP_ONLY": True,
     "AUTH_COOKIE_SECURE": not DEBUG,
-    "AUTH_COOKIE_SAMESITE": "None" if not DEBUG else "Lax",
+    # Con la API servida en el MISMO origen (nginx hace proxy de /api, que es
+    # como se despliega en producción) la cookie es first-party y basta "Lax",
+    # que además blinda el refresh frente a POST cross-site sin depender del
+    # chequeo de Origin. "None" se mantiene por si alguien despliega la SPA en
+    # otro dominio (entonces la cookie es third-party y depende de que el
+    # navegador no la bloquee: ver docs/FIX_COOKIES_PRODUCCION.md).
+    "AUTH_COOKIE_SAMESITE": env(
+        "JWT_COOKIE_SAMESITE", default="None" if not DEBUG else "Lax"
+    ),
     "AUTH_COOKIE_PATH": "/api/auth/",
 }
 
