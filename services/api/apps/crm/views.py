@@ -21,6 +21,7 @@ from apps.crm.models import (
     StockAdjustment,
 )
 from apps.crm.services import GOODS_OUT_STATUSES, requires_integer_amounts
+from apps.crm.tax_id import tax_id_search_term
 from apps.crm.serializers import (
     BusinessContactSerializer,
     CollectionFollowUpSerializer,
@@ -42,11 +43,14 @@ class BusinessContactViewSet(viewsets.ModelViewSet):
         qs = BusinessContact.objects.filter(user=self.request.user).select_related("business")
         search = self.request.query_params.get("search")
         if search:
+            # La búsqueda por cédula tolera el prefijo suelto: "v1234" y
+            # "V-1234" encuentran el mismo contacto.
             qs = qs.filter(
                 Q(name__icontains=search)
                 | Q(email__icontains=search)
                 | Q(phone__icontains=search)
                 | Q(tax_id__icontains=search)
+                | Q(tax_id__icontains=tax_id_search_term(search))
             )
         type_filter = self.request.query_params.get("type")
         if type_filter:

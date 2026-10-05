@@ -7,6 +7,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.core.currency import is_valid_amount, round_money
+from apps.crm.tax_id import normalize_tax_id, tax_id_error
 from apps.crm.models import (
     BusinessContact,
     CollectionFollowUp,
@@ -60,9 +61,16 @@ class BusinessContactSerializer(serializers.ModelSerializer):
         return value
 
     def validate_tax_id(self, value: str) -> str:
-        tax_id = value.strip()
+        # Formato canónico PREFIJO-NÚMERO (V/J/E) y único por negocio.
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        tax_id = normalize_tax_id(raw)
         if not tax_id:
-            return tax_id
+            raise serializers.ValidationError("Indica el tipo y el número de la cédula.")
+        error = tax_id_error(tax_id)
+        if error:
+            raise serializers.ValidationError(error)
         request = self.context["request"]
         qs = BusinessContact.objects.filter(
             business__user=request.user, tax_id=tax_id
@@ -70,7 +78,9 @@ class BusinessContactSerializer(serializers.ModelSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("Ya existe un contacto con este RIF/NIT.")
+            raise serializers.ValidationError(
+                "Ya existe un cliente con esta cédula/RIF."
+            )
         return tax_id
 
     def validate(self, attrs: dict) -> dict:
