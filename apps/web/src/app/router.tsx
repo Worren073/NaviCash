@@ -31,19 +31,26 @@ const VerifyPage = lazy(() => import("@/features/auth/verify-page"));
 const ForgotPasswordPage = lazy(() => import("@/features/auth/forgot-password-page"));
 const ResetPasswordPage = lazy(() => import("@/features/auth/reset-password-page"));
 
+/** Intentos de arranque antes de admitir que no hay sesión. */
+const BOOTSTRAP_ATTEMPTS = 3;
+/** Espera entre intentos cuando el refresh falló por red, no por rechazo. */
+const BOOTSTRAP_RETRY_DELAY_MS = 1_500;
+
 /**
  * Guard de sesión: comprueba si hay una sesión válida (access en memoria o
  * refresh cookie httpOnly) antes de mostrar las rutas privadas.
  *
  * Si no hay access en memoria, intenta refrescar usando la cookie. Si funciona,
- * hace GET /api/auth/me para validar. Si el refresh falla, no hay sesión.
+ * hace GET /api/auth/me para validar. Si el SERVIDOR rechaza la cookie no hay
+ * sesión; si solo falló la red, reintenta un par de veces antes de rendirse
+ * (móvil: PWA reanudada del segundo plano o túnel sin cobertura).
  */
 function RequireAuth() {
   const [checking, setChecking] = useState(() => !getAccessToken());
   const [ok, setOk] = useState(() => Boolean(getAccessToken()));
   const queryClient = useQueryClient();
 
-  useEffect(() => {
+useEffect(() => {
     if (getAccessToken()) return;
     let cancelled = false;
     (async () => {
@@ -51,17 +58,33 @@ function RequireAuth() {
         // Sin access en memoria: intentar refrescar usando la cookie.
         // Se usa el MISMO single-flight que el cliente HTTP (refreshSession):
         // nunca dos refrescos simultáneos con la misma cookie (rotación).
-        const ok = await refreshSession();
-        if (!ok) {
-          if (!cancelled) setOk(false);
-          return;
+        for (let attempt = 1; attempt <= BOOTSTRAP_ATTEMPTS; attempt += 1) {
+          if (cancelled) return;
+          const outcome = await refreshSession();
+          if (cancelled) return;
+
+          if (outcome === "ok") {
+            // Access ya guardado por refreshSession: validar con /me.
+            const me = await api.get<User>("/auth/me");
+            // Pre-cargar el perfil para que el layout (y el tour de Navi) lo lean
+            // de react-query sin una petición extra.
+            queryClient.setQueryData(queryKeys.me, me);
+            if (!cancelled) setOk(Boolean(me));
+            return;
+          }
+
+          // El servidor rechazó la cookie: no hay sesión, ir al login.
+          if (outcome === "rejected") {
+            if (!cancelled) setOk(false);
+            return;
+          }
+
+          // Sin conexión: la sesión puede estar viva. En móvil (PWA reanudada
+          // del segundo plano, túnel sin cobertura) landing aquí no significa
+          // sesión caducada, así que se reintenta antes de rendirse.
+          await new Promise((r) => setTimeout(r, BOOTSTRAP_RETRY_DELAY_MS));
         }
-        // Access ya guardado por refreshSession: validar con /me.
-        const me = await api.get<User>("/auth/me");
-        // Pre-cargar el perfil para que el layout (y el tour de Navi) lo lean
-        // de react-query sin una petición extra.
-        queryClient.setQueryData(queryKeys.me, me);
-        if (!cancelled) setOk(Boolean(me));
+        if (!cancelled) setOk(false);
       } catch {
         if (!cancelled) setOk(false);
       } finally {

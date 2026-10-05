@@ -4,8 +4,11 @@
 // - Refresh en cookie httpOnly: se reintenta una vez si el access expira.
 // - Timeout por defecto de 10s (AbortSignal.timeout) en requests sin signal.
 // - Errores normalizados a { message, fieldErrors?, code? }.
-// - Si el refresh falla para una petición autenticada se notifica a un
-//   listener global (A11): la app hace logout limpio y navega al login.
+// - Si el SERVIDOR rechaza el refresh de una petición autenticada se notifica
+//   a un listener global (A11): la app hace logout limpio y navega al login.
+//   Un fallo de red NO cierra sesión (importante en móvil): se distingue
+//   "rechazado" de "sin conexión" para no expulsar al usuario con la sesión
+//   todavía válida.
 
 export interface ApiError {
   message: string;
@@ -30,7 +33,7 @@ export class ApiErrorClass extends Error {
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
 let accessToken: string | null = null;
-let refreshPromise: Promise<boolean> | null = null;
+let refreshPromise: Promise<RefreshOutcome> | null = null;
 let sessionExpiredListener: (() => void) | null = null;
 let sessionExpiredFlag = false;
 
@@ -70,7 +73,15 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   skipAuth?: boolean;
 }
 
-async function tryRefresh(): Promise<boolean> {
+/**
+ * Resultado de intentar renovar la sesión.
+ * - `ok`: el servidor devolvió un access nuevo.
+ * - `rejected`: el servidor respondió y rechazó la cookie (sesión muerta).
+ * - `offline`: ni siquiera hubo respuesta (sin red, PWA reanudada, timeout).
+ */
+export type RefreshOutcome = "ok" | "rejected" | "offline";
+
+async function tryRefresh(): Promise<RefreshOutcome> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     try {
@@ -78,15 +89,17 @@ async function tryRefresh(): Promise<boolean> {
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && data.access) {
         setAccessToken(data.access);
-        return true;
+        return "ok" as const;
       }
       // NO se limpia el access en memoria: un refresh fallido puede ser una
       // rotación concurrente de la cookie (otra pestaña/PWA); si lo borráramos,
       // las siguientes peticiones irían SIN cabecera y el logout global nunca
       // se dispararía (bucle silencioso de 401). Se deja y se reintenta.
-      return false;
+      return "rejected" as const;
     } catch {
-      return false;
+      // Fallo de transporte: no sabemos nada de la sesión, así que NO se
+      // toca. En móvil esto pasa al volver de segundo plano sin cobertura.
+      return "offline" as const;
     } finally {
       refreshPromise = null;
     }
@@ -100,17 +113,18 @@ const REFRESH_RETRY_DELAY_MS = 750;
  * Renueva la sesión con un único vuelo en memoria (single-flight, A11).
  * Todas las rutas de la app (RequireAuth y el reintento de requests 401)
  * pasan por aquí para nunca usar la misma cookie de refresh dos veces a la
- * vez. Si el primer intento falla, se deja un pequeño margen y se reintenta
- * una vez (el navegador pudo no haber procesado la nueva cookie de una
- * rotación concurrente en otra pestaña).
+ * vez. Si el servidor rechaza la cookie se deja un pequeño margen y se
+ * reintenta una vez (el navegador pudo no haber procesado la nueva cookie de
+ * una rotación concurrente en otra pestaña). Un fallo de red NO se reintenta
+ * aquí: lo reintenta quien lo necesita (RequireAuth al arrancar).
  */
-export async function refreshSession(): Promise<boolean> {
-  let ok = await tryRefresh();
-  if (!ok) {
+export async function refreshSession(): Promise<RefreshOutcome> {
+  let outcome = await tryRefresh();
+  if (outcome === "rejected") {
     await new Promise((r) => setTimeout(r, REFRESH_RETRY_DELAY_MS));
-    ok = await tryRefresh();
+    outcome = await tryRefresh();
   }
-  return ok;
+  return outcome;
 }
 
 function normalizeError(status: number, payload: unknown): ApiError {
@@ -160,15 +174,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   let resp = await doFetch();
 
-  // Access expirado: reintentar tras refrescar. Si el refresh falla incluso
-  // tras el reintento de una petición autenticada, la sesión murió: notificar
-  // al listener (A11) para hacer logout limpio.
+  // Access expirado: reintentar tras refrescar. Solo si el SERVIDOR rechazó la
+  // cookie la sesión está muerta y se avisa al listener global (A11) para hacer
+  // logout limpio; si fue un fallo de red se propaga el 401 original sin tocar
+  // la sesión (así react-query reintenta y el usuario no pierde su sesión).
   if (resp.status === 401 && !skipAuth) {
     const hadAuth = Boolean(accessToken);
-    const ok = await refreshSession();
-    if (ok) {
+    const outcome = await refreshSession();
+    if (outcome === "ok") {
       resp = await doFetch();
-    } else if (hadAuth) {
+    } else if (outcome === "rejected" && hadAuth) {
       notifySessionExpired();
     }
   }
