@@ -1,16 +1,32 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, ReceiptText, Trash2, UserPlus } from "lucide-react";
+import { Plus, ReceiptText, Trash2, UserPlus, Users } from "lucide-react";
 import { sileo } from "sileo";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys, useBusinessContacts, useProducts } from "@/hooks/use-queries";
 import { formatMoney } from "@/lib/format";
-import type { Invoice } from "@/lib/types";
+import { TAX_ID_TYPES, formatTaxId, isValidTaxId, taxIdSearchTerm, type TaxIdType } from "@/lib/tax-id";
+import type { BusinessContact, Invoice } from "@/lib/types";
+import {
+  ContactForm,
+  emptyContactForm,
+  type ContactFormValue,
+} from "./contact-form";
 
 interface ItemRow {
   product?: string;
@@ -36,15 +52,27 @@ export default function InvoiceNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: contactsData } = useBusinessContacts();
-  const customers = useMemo(
+  const [docType, setDocType] = useState<TaxIdType>("V");
+  const [contactSearch, setContactSearch] = useState("");
+  const [debouncedContactSearch, setDebouncedContactSearch] = useState("");
+  const [selectedContact, setSelectedContact] = useState<BusinessContact | null>(null);
+  const [affiliateOpen, setAffiliateOpen] = useState(false);
+  const [affiliateForm, setAffiliateForm] = useState<ContactFormValue>(emptyContactForm());
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedContactSearch(contactSearch), 300);
+    return () => clearTimeout(id);
+  }, [contactSearch]);
+
+  const { term } = taxIdSearchTerm(debouncedContactSearch, docType);
+  const { data: contactsData } = useBusinessContacts(term || undefined);
+  const matches = useMemo(
     () => (contactsData?.results ?? []).filter((c) => c.type !== "proveedor" && c.is_active),
-    [contactsData]
+    [contactsData],
   );
   const { data: productsData } = useProducts();
   const catalogue = useMemo(() => productsData?.results ?? [], [productsData]);
 
-  const [contact, setContact] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [taxAmount, setTaxAmount] = useState("");
@@ -69,8 +97,7 @@ export default function InvoiceNewPage() {
   const pickProduct = (idx: number, productId: string) => {
     const product = catalogue.find((p) => p.id === productId);
     if (!product) return;
-    const isMayorista =
-      customers.find((c) => c.id === contact)?.customer_type === "mayorista";
+    const isMayorista = selectedContact?.customer_type === "mayorista";
     const price =
       isMayorista && product.wholesale_price
         ? product.wholesale_price
@@ -83,7 +110,7 @@ export default function InvoiceNewPage() {
   };
 
   const validationError = useMemo(() => {
-    if (!contact) return t("invoices.form.errors.contact");
+    if (!selectedContact) return t("invoices.form.errors.contact");
     if (items.length === 0 || items.some((r) => !r.description.trim()))
       return t("invoices.form.errors.itemDescription");
     if (items.some((r) => (Number(r.quantity) || 0) <= 0))
@@ -106,12 +133,39 @@ export default function InvoiceNewPage() {
     if (dueDate && issueDate && dueDate < issueDate)
       return t("invoices.form.errors.invalidDate");
     return null;
-  }, [contact, items, catalogue, tax, paid, total, dueDate, issueDate, t]);
+  }, [selectedContact, items, catalogue, tax, paid, total, dueDate, issueDate, t]);
+
+  const openAffiliate = () => {
+    const form = emptyContactForm();
+    form.tax_id = formatTaxId(docType, taxIdSearchTerm(contactSearch, docType).number);
+    setAffiliateForm(form);
+    setAffiliateOpen(true);
+  };
+
+  const affiliate = useMutation({
+    mutationFn: () =>
+      api.post<BusinessContact>("/business/contacts/", {
+        ...affiliateForm,
+        type: "cliente",
+        credit_limit: affiliateForm.credit_limit === "" ? null : affiliateForm.credit_limit,
+      }),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.businessContacts });
+      setSelectedContact(created);
+      setAffiliateOpen(false);
+      setContactSearch("");
+      sileo.success({ title: t("contacts.created") });
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiErrorClass ? err.message : t("errors.generic");
+      sileo.error({ title: msg });
+    },
+  });
 
   const create = useMutation({
     mutationFn: () => {
       const payload: Record<string, unknown> = {
-        contact,
+        contact: selectedContact?.id,
         items: items.map((r) => ({
           description: r.description.trim(),
           quantity: r.quantity,
@@ -150,29 +204,108 @@ export default function InvoiceNewPage() {
       </div>
 
       <section className="space-y-4">
-        <label className="block">
+        <div>
           <span className="mb-1 block text-sm font-medium text-on-surface">
-            {t("invoices.form.contact")}
+            {t("invoices.form.contact")} *
           </span>
-          {customers.length === 0 ? (
-            <Link to="/business/contacts" className="text-sm text-primary hover:underline">
-              {t("invoices.form.newContact")} <UserPlus className="inline h-4 w-4" />
-            </Link>
+          {selectedContact ? (
+            <div className="glass-panel clip-rounded-lg flex items-center justify-between gap-3 rounded-lg p-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                  <Users className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="truncate font-medium text-on-surface">
+                      {selectedContact.name}
+                    </span>
+                    {selectedContact.customer_type && (
+                      <Badge variant="outline">
+                        {t(`contacts.customerTypes.${selectedContact.customer_type}`)}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="truncate text-xs text-on-surface-variant">
+                    {selectedContact.tax_id || t("contacts.noTaxId")}
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedContact(null)}
+              >
+                {t("invoices.form.changeClient")}
+              </Button>
+            </div>
           ) : (
-            <select
-              value={contact}
-              onChange={(e) => setContact(e.target.value)}
-              className="h-11 w-full rounded-xl border border-glass-border bg-glass-surface px-3 text-base text-on-surface shadow-sm outline-none backdrop-blur-md focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 md:text-sm"
-            >
-              <option value="">{t("invoices.form.contactPlaceholder")}</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-32 shrink-0">
+                  <Segmented<TaxIdType>
+                    options={TAX_ID_TYPES.map((value) => ({ value, label: value }))}
+                    value={docType}
+                    onChange={(next) => {
+                      setDocType(next);
+                      const { number } = taxIdSearchTerm(contactSearch, next);
+                      setContactSearch(number);
+                    }}
+                    layoutId="invoice-doc-type"
+                    size="sm"
+                  />
+                </div>
+                <Input
+                  value={contactSearch}
+                  onChange={(e) => setContactSearch(e.target.value)}
+                  placeholder={t("invoices.form.searchClient")}
+                  inputMode="search"
+                  className="flex-1"
+                />
+              </div>
+
+              {matches.length > 0 && (
+                <div className="max-h-56 space-y-1 overflow-y-auto">
+                  {matches.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setSelectedContact(c)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-glass-border bg-glass-surface px-3 py-2 text-left transition-colors hover:border-primary/50"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-on-surface">
+                          {c.name}
+                        </span>
+                        <span className="block truncate text-xs text-on-surface-variant">
+                          {c.tax_id || t("contacts.noTaxId")}
+                        </span>
+                      </span>
+                      {c.customer_type && (
+                        <Badge variant="secondary">
+                          {t(`contacts.customerTypes.${c.customer_type}`)}
+                        </Badge>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {term && matches.length === 0 && (
+                <Button
+                  variant="ghost"
+                  onClick={openAffiliate}
+                  className="w-full justify-center gap-1 border border-dashed border-glass-border"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  {t("invoices.form.affiliateClient")}
+                  {term && taxIdSearchTerm(contactSearch, docType).number
+                    ? ` ${formatTaxId(docType, taxIdSearchTerm(contactSearch, docType).number)}`
+                    : ""}
+                </Button>
+              )}
+            </div>
           )}
-        </label>
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
@@ -359,6 +492,40 @@ export default function InvoiceNewPage() {
           {create.isPending ? t("invoices.form.creating") : t("invoices.form.create")}
         </Button>
       </div>
+
+      <Dialog open={affiliateOpen} onOpenChange={setAffiliateOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t("invoices.form.affiliateTitle")}</DialogTitle>
+            <DialogDescription>{t("invoices.form.affiliateHint")}</DialogDescription>
+          </DialogHeader>
+          <ContactForm
+            value={affiliateForm}
+            onChange={setAffiliateForm}
+            fixedTaxIdType={docType}
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setAffiliateOpen(false)}
+              disabled={affiliate.isPending}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="glow"
+              onClick={() => affiliate.mutate()}
+              disabled={
+                !affiliateForm.name.trim() ||
+                Boolean(affiliateForm.tax_id && !isValidTaxId(affiliateForm.tax_id)) ||
+                affiliate.isPending
+              }
+            >
+              {affiliate.isPending ? t("common.loading") : t("invoices.form.affiliateSave")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

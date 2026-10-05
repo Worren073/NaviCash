@@ -8,12 +8,14 @@ export function Segmented<T extends string>({
   onChange,
   layoutId,
   size = "md",
+  disabled = false,
 }: {
   options: Array<{ value: T; label: string }>;
   value: T;
   onChange: (value: T) => void;
   layoutId: string;
   size?: "sm" | "md" | "lg";
+  disabled?: boolean;
 }) {
   const padBySize = {
     sm: "px-3 py-1.5 text-xs",
@@ -24,7 +26,8 @@ export function Segmented<T extends string>({
     <div
       className={cn(
         "flex rounded-full border border-glass-border bg-surface-container-highest p-1",
-        size === "lg" && "p-1.5"
+        size === "lg" && "p-1.5",
+        disabled && "opacity-70",
       )}
     >
       {options.map((opt) => {
@@ -34,6 +37,7 @@ export function Segmented<T extends string>({
             key={opt.value}
             type="button"
             aria-pressed={active}
+            disabled={disabled}
             onClick={() => onChange(opt.value)}
             className={cn(
               "relative flex-1 rounded-full font-medium transition-colors",
