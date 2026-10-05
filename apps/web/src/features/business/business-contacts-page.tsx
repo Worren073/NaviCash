@@ -30,6 +30,13 @@ import { Segmented } from "@/components/ui/segmented";
 import { useBusinessContacts } from "@/hooks/use-queries";
 import { queryKeys } from "@/hooks/use-queries";
 import { api, ApiErrorClass } from "@/lib/api";
+import {
+  TAX_ID_TYPES,
+  formatTaxId,
+  taxIdHintKey,
+  taxIdNumberPlaceholder,
+  type TaxIdType,
+} from "@/lib/tax-id";
 import type { BusinessContact } from "@/lib/types";
 import {
   ContactForm,
@@ -43,6 +50,36 @@ const TYPE_OPTIONS = [
   { value: "proveedor", label: "contacts.types.proveedor" },
   { value: "ambos", label: "contacts.types.ambos" },
 ];
+
+/** Opciones del filtro por tipo de cédula: "Todos" + V/J/E. */
+const TAX_TYPE_OPTIONS = [
+  { value: "", label: "contacts.types.all" },
+  ...TAX_ID_TYPES.map((value) => ({ value, label: value })),
+];
+
+/**
+ * Compone el término de búsqueda con el filtro de tipo de cédula.
+ *
+ * - Sin tipo seleccionado: texto libre (nombre, correo, teléfono o cédula).
+ * - Con tipo y campo vacío: no se manda ``search``; el filtro ``tax_id_type``
+ *   del backend se encarga de listar solo ese tipo.
+ * - Con tipo y dígitos: cédula canónica ("J" + "1234" -> "J-1234").
+ */
+function buildSearchTerm(raw: string, taxType: TaxIdType | ""): string {
+  const text = raw.trim();
+  if (!taxType) return text;
+  if (!text) return "";
+  // Se reutiliza el saneador para que E conserve lo alfanumérico ("A123" ->
+  // "E-A123") y para tolerar guiones ya escritos ("310-12345" -> "J-31012345").
+  const number = sanitizeTaxNumber(text, taxType);
+  return number ? formatTaxId(taxType, number) : "";
+}
+
+/** Limpia lo que se escribe según el tipo: solo dígitos, salvo E (alfanumérico). */
+function sanitizeTaxNumber(raw: string, taxType: TaxIdType): string {
+  const cleaned = raw.toUpperCase().replace(/[\s._-]/g, "");
+  return taxType === "E" ? cleaned.replace(/[^A-Z0-9]/g, "") : cleaned.replace(/\D/g, "");
+}
 
 function ContactCard({
   contact,
@@ -89,9 +126,11 @@ function ContactCard({
           )}
         </div>
         <div className="text-xs text-on-surface-variant">
-          {contact.tax_id && (
-            <span className="mr-3">{t("contacts.taxId")}: {contact.tax_id}</span>
-          )}
+          <span className="mr-3">
+            {contact.tax_id
+              ? `${t("contacts.taxId")}: ${contact.tax_id}`
+              : t("contacts.noTaxId")}
+          </span>
           <span>
             {t("contacts.paymentTerms")}: {contact.payment_terms_days} {t("contacts.days")}
           </span>
@@ -132,6 +171,7 @@ export default function BusinessContactsPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [taxType, setTaxType] = useState<TaxIdType | "">("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<BusinessContact | null>(null);
   const [form, setForm] = useState<ContactFormValue>(emptyContactForm());
@@ -142,9 +182,14 @@ export default function BusinessContactsPage() {
     return () => clearTimeout(id);
   }, [search]);
 
+  const searchTerm = buildSearchTerm(debouncedSearch, taxType);
+  const hasFilters =
+    searchTerm.length > 0 || typeFilter.length > 0 || taxType.length > 0;
+
   const { data, isLoading, isError } = useBusinessContacts(
-    debouncedSearch || undefined,
-    typeFilter || undefined
+    searchTerm || undefined,
+    typeFilter || undefined,
+    taxType || undefined
   );
 
   const contacts = useMemo(() => data?.results ?? [], [data]);
@@ -231,23 +276,65 @@ export default function BusinessContactsPage() {
         </Button>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+      <div className="space-y-3">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("contacts.searchPlaceholder")}
+            onChange={(e) => {
+              const next = e.target.value;
+              setSearch(taxType ? sanitizeTaxNumber(next, taxType) : next);
+            }}
+            inputMode={taxType ? (taxType === "E" ? "text" : "numeric") : "search"}
+            placeholder={
+              taxType
+                ? taxIdNumberPlaceholder(taxType)
+                : t("contacts.searchPlaceholder")
+            }
+            aria-label={taxType ? t(taxIdHintKey(taxType)) : t("contacts.searchPlaceholder")}
             className="pl-9"
           />
         </div>
-        <Segmented
-          layoutId="seg-contact-type"
-          size="sm"
-          options={TYPE_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))}
-          value={typeFilter}
-          onChange={setTypeFilter}
-        />
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-on-surface-variant">
+              {t("contacts.taxId")}
+            </span>
+            <Segmented
+              layoutId="seg-contact-tax-type"
+              size="sm"
+              options={TAX_TYPE_OPTIONS.map((o) => ({
+                value: o.value,
+                label: t(o.label),
+              }))}
+              value={taxType}
+              onChange={(next) => {
+                const value = next as TaxIdType | "";
+                setTaxType(value);
+                // Se re-limpia para el nuevo tipo: lo alfanumérico de E se
+                // descarta al pasar a V/J para no dejar una búsqueda imposible.
+                setSearch(value && search ? sanitizeTaxNumber(search, value) : "");
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-on-surface-variant">
+              {t("contacts.type")}
+            </span>
+            <Segmented
+              layoutId="seg-contact-type"
+              size="sm"
+              options={TYPE_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))}
+              value={typeFilter}
+              onChange={setTypeFilter}
+            />
+          </div>
+        </div>
+
+        {taxType && (
+          <p className="text-xs text-on-surface-variant">{t(taxIdHintKey(taxType))}</p>
+        )}
       </div>
 
       {isError ? (
@@ -262,7 +349,7 @@ export default function BusinessContactsPage() {
         </div>
       ) : contacts.length === 0 ? (
         <p className="glass-panel clip-rounded-lg rounded-lg p-8 text-center text-sm text-on-surface-variant">
-          {t("contacts.empty")}
+          {hasFilters ? t("contacts.emptyFiltered") : t("contacts.empty")}
         </p>
       ) : (
         <div className="space-y-2">

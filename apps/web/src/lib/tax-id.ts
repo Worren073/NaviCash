@@ -41,6 +41,16 @@ export function formatTaxId(type: TaxIdType, number: string): string {
   return clean ? `${TYPE_CODES[type]}-${clean}` : "";
 }
 
+/** Ejemplo de número para el input, según el tipo (solo la parte numérica). */
+export function taxIdNumberPlaceholder(type: TaxIdType): string {
+  return type === "E" ? "A123456" : "12345678";
+}
+
+/** Key de i18n con la ayuda de formato del tipo dado. */
+export function taxIdHintKey(type: TaxIdType): string {
+  return `taxId.hint${type}`;
+}
+
 /** Key de i18n con el mensaje de formato para el tipo dado, o null si es válido. */
 export function taxIdFormatErrorKey(type: TaxIdType, number: string): string | null {
   if (!number) return null;

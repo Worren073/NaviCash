@@ -108,13 +108,14 @@ export function useBusinessSummary() {
   });
 }
 
-export function useBusinessContacts(search?: string, type?: string) {
+export function useBusinessContacts(search?: string, type?: string, taxIdType?: string) {
   return useQuery({
-    queryKey: [...queryKeys.businessContacts, { search, type }],
+    queryKey: [...queryKeys.businessContacts, { search, type, taxIdType }],
     queryFn: ({ signal }) => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (type) params.set("type", type);
+      if (taxIdType) params.set("tax_id_type", taxIdType);
       return api.get<Paginated<BusinessContact>>(`/business/contacts?${params.toString()}`, {
         signal,
       });

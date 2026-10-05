@@ -252,6 +252,7 @@ dashboard: {
     formHint: "Contact details will be used for invoicing and collection follow-up.",
     searchPlaceholder: "Search by name, email, phone or tax ID…",
     empty: "You don't have business contacts yet.",
+    emptyFiltered: "No contacts match the filter.",
     name: "Name",
     namePlaceholder: "e.g. El Sol Distributor",
     type: "Type",
