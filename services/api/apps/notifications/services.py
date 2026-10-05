@@ -46,10 +46,15 @@ TICK_LOCK_TTL_SECONDS = 600
 _FALLBACK_TZ = "America/Caracas"
 
 
-def _reminder_days(tx: Transaction, user) -> int:
-    """Anticipación del aviso: la de la operación o la regla global del usuario."""
-    if tx.reminder_days is not None:
-        return tx.reminder_days
+def _reminder_days(tx: Transaction | Invoice, user) -> int:
+    """Anticipación del aviso: la del objeto si la tiene, o la regla global.
+
+    Solo ``Transaction`` define ``reminder_days`` (anticipación por
+    operación). Las facturas no lo tienen y heredan la regla global del
+    usuario, por eso se lee con ``getattr`` en lugar de atributo directo.
+    """
+    if (override := getattr(tx, "reminder_days", None)) is not None:
+        return override
     return getattr(user, "reminder_days", 3) or 0
 
 

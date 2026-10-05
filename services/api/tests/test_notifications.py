@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from apps.business.services import create_business
+from apps.crm.models import BusinessContact, Invoice
 from apps.notifications.models import Notification, PushSubscription
 from apps.notifications.services import deliver_pushes
 from factories import GoalContributionFactory, SavingsGoalFactory, TransactionFactory, UserFactory
@@ -263,3 +264,95 @@ class TestNotifications:
         by_scope = {p["scope"]: p["url"] for p in payloads}
         assert by_scope["personal"] == "/"
         assert by_scope["business"] == "/business"
+
+
+@pytest.mark.django_db
+class TestInvoiceNotifications:
+    """Alertas de facturas (regresión: Invoice no define reminder_days).
+
+    El generador calcula TODAS las candidatas y luego filtra por ámbito,
+    así que una factura por vencer provocaba 500 en cualquier scope.
+    """
+
+    URL = "/api/notifications?scope=business"
+
+    @pytest.fixture
+    def business(self, api_client):
+        return create_business(
+            api_client.user, name="Tienda Demo", currency="USD", initial_capital=Decimal("0")
+        )
+
+    @pytest.fixture
+    def contact(self, api_client, business):
+        return BusinessContact.objects.create(
+            user=api_client.user,
+            business=business,
+            name="Cliente A",
+            type="cliente",
+            payment_terms_days=15,
+        )
+
+    def _invoice(self, api_client, business, contact, *, due_in_days: int):
+        return Invoice.objects.create(
+            user=api_client.user,
+            business=business,
+            contact=contact,
+            number="F-00001",
+            issue_date=date.today(),
+            due_date=date.today() + timedelta(days=due_in_days),
+            status="enviada",
+            subtotal=Decimal("100.00"),
+            total=Decimal("100.00"),
+            balance_due=Decimal("100.00"),
+        )
+
+    def test_invoice_due_soon_does_not_500(self, api_client, business, contact) -> None:
+        """Factura por vencer dentro de la ventana global genera el aviso."""
+        self._invoice(api_client, business, contact, due_in_days=2)
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 200
+        upcoming = [
+            n for n in resp.data["results"] if n["extra"].get("upcoming") == "1"
+        ]
+        assert len(upcoming) == 1
+        assert upcoming[0]["kind"] == "invoice_overdue"
+
+    def test_personal_scope_also_ok(self, api_client, business, contact) -> None:
+        """El cálculo ocurre antes de filtrar ámbito: personal tampoco debe 500."""
+        self._invoice(api_client, business, contact, due_in_days=2)
+        resp = api_client.get("/api/notifications")
+        assert resp.status_code == 200
+        assert all(n["scope"] == "personal" for n in resp.data["results"])
+
+    def test_invoice_far_due_no_alert(self, api_client, business, contact) -> None:
+        """Factura lejana no genera aviso."""
+        self._invoice(api_client, business, contact, due_in_days=30)
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 200
+        assert not [
+            n for n in resp.data["results"] if n["extra"].get("invoice_id")
+        ]
+
+    def test_invoice_follows_user_rule(self, api_client, business, contact) -> None:
+        """La factura hereda la anticipación del perfil del usuario."""
+        api_client.user.reminder_days = 10
+        api_client.user.save(update_fields=["reminder_days"])
+        self._invoice(api_client, business, contact, due_in_days=8)
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 200
+        assert [
+            n for n in resp.data["results"] if n["extra"].get("upcoming") == "1"
+        ]
+
+    def test_invoice_overdue_marks_status(self, api_client, business, contact) -> None:
+        """La factura vencida se marca 'vencida' y avisa (rama previa intacta)."""
+        invoice = self._invoice(api_client, business, contact, due_in_days=-1)
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 200
+        invoice.refresh_from_db()
+        assert invoice.status == "vencida"
+        assert [
+            n
+            for n in resp.data["results"]
+            if n["kind"] == "invoice_overdue" and not n["extra"].get("upcoming")
+        ]
