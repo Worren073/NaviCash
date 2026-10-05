@@ -7,6 +7,8 @@ tokens hasheados y anti-enumeración en registro (B5).
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from django.core import mail
 from django.utils import timezone
@@ -305,6 +307,42 @@ class TestAuthFlow:
         client.cookies["refresh_token"] = login.cookies["refresh_token"]
         resp = client.post("/api/auth/refresh")
         assert resp.status_code == 401
+
+    def test_refresh_loguea_el_motivo_del_rechazo(self, caplog) -> None:
+        """Cada rechazo del refresh deja el motivo en INFO (diagnóstico SIEM).
+
+        Sin esto, un 401 en producción era indistinguible entre "cookie no
+        guardada", "origen", "reuso" y "familia revocada", y por eso los
+        intentos de arreglar el corte de sesión-mobile.configuraban a ciegas.
+        """
+        from rest_framework.test import APIClient
+
+        caplog.set_level(logging.INFO, logger="apps.accounts.security")
+
+        # 1) Sin cookie -> reason=no_cookie
+        client = APIClient()
+        assert client.post("/api/auth/refresh").status_code == 401
+        assert "REFRESH_REJECTED" in caplog.text
+        assert "reason=no_cookie" in caplog.text
+
+        # 2) Cookie corrupta -> reason=undecodable
+        caplog.clear()
+        client = APIClient()
+        client.cookies["refresh_token"] = "no-es-un-jwt"
+        assert client.post("/api/auth/refresh").status_code == 401
+        assert "reason=undecodable" in caplog.text
+
+        # 3) Refresh válido -> reason=ok (la rotación sigue funcionando)
+        caplog.clear()
+        UserFactory(email="motivo@example.com")
+        client = APIClient()
+        login = client.post(
+            self.LOGIN_URL, {"email": "motivo@example.com", "password": "test-password-123"}
+        )
+        assert login.status_code == 200
+        client.cookies["refresh_token"] = login.cookies["refresh_token"]
+        assert client.post("/api/auth/refresh").status_code == 200
+        assert "REFRESH_OK" in caplog.text
 
     def test_logout_revokes_whole_family(self) -> None:
         """Logout borra todos los refresh outstanding de la cuenta (C3)."""

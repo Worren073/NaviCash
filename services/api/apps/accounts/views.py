@@ -292,12 +292,32 @@ class LoginView(APIView):
 REUSE_GRACE_SECONDS = 120
 
 
+def _reject_refresh(request, reason: str, user=None, detail: str = "Sesión inválida o expirada.") -> Response:
+    """Responde 401 al refresh dejando registrado el MOTIVO del rechazo.
+
+    Todas las ramas de rechazo pasan por aquí. Antes eran silenciosas (salvo el
+    reuso), así que en SIEM era imposible distinguir por qué se cortaba la
+    sesión en producción: cookie ausente (no guardada o bloqueada por el
+    navegador), origen no permitido, reuso, token expirado o familia revocada.
+    El motivo va a INFO (mismo logger que PERMISSION_DENIED/LOGIN_SUCCESS) para
+    que se pueda ver sin tener que filtrar WARNING, y nunca incluye el token.
+    """
+    sec_logger.info(
+        "REFRESH_REJECTED reason=%s user=%s ip=%s",
+        reason,
+        getattr(user, "pk", None) or "-",
+        request.META.get("REMOTE_ADDR", "?"),
+    )
+    return Response({"detail": detail}, status=status.HTTP_401_UNAUTHORIZED)
+
+
 class RefreshView(APIView):
     """Renueva el access token usando el refresh de la cookie.
 
     Rotación segura (AUDIT C3/A7): el refresh usado se comprueba contra la
     blacklist (reuse-detection), la cuenta debe seguir activa, y el token se
-    blacklistea ANTES de emitir el nuevo. Cualquier anomalía → 401.
+    blacklistea ANTES de emitir el nuevo. Cualquier anomalía → 401, y cada
+    rechazo queda logueado con su motivo (ver ``_reject_refresh``).
     """
 
     permission_classes = [AllowAny]
@@ -314,17 +334,17 @@ class RefreshView(APIView):
                 "REFRESH_ORIGIN_REJECTED origin=%s",
                 request.META.get("HTTP_ORIGIN") or request.META.get("HTTP_REFERER"),
             )
-            return Response(
-                {"detail": "Sesión inválida o expirada."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            return _reject_refresh(request, "origin")
 
         cookie_name = settings.SIMPLE_JWT["AUTH_COOKIE"]
         refresh_value = request.COOKIES.get(cookie_name)
         if not refresh_value:
-            return Response(
-                {"detail": "No hay sesión refrescable."},
-                status=status.HTTP_401_UNAUTHORIZED,
+            # Causa raíz habitual en producción: la cookie nunca llegó al
+            # navegador (cross-site bloqueado por Safari/iOS) o fue borrada.
+            return _reject_refresh(
+                request,
+                "no_cookie",
+                detail="No hay sesión refrescable.",
             )
         try:
             refresh = RefreshToken(refresh_value, verify=False)
@@ -332,10 +352,7 @@ class RefreshView(APIView):
         except (TokenError, ObjectDoesNotExist, KeyError):
             # Token malformado/indecodificable o usuario inexistente: no es
             # necesariamente reuse, así que NO se revoca la familia.
-            return Response(
-                {"detail": "Sesión inválida o expirada."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            return _reject_refresh(request, "undecodable")
 
         # Reuse-detection (C3): un refresh ya rotado está blacklisted. Un
         # atacante pudo conservar copias anteriores de la familia: se revoca
@@ -357,13 +374,10 @@ class RefreshView(APIView):
                     "REFRESH_REUSE_BENIGN user=%s (dentro de la ventana de rotacion)",
                     user.id,
                 )
-            else:
-                logger.warning("REFRESH_REUSE_DETECTED user=%s", user.id)
-                _revoke_refresh_family(user)
-            return Response(
-                {"detail": "Sesión inválida o expirada."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+                return _reject_refresh(request, "reuse_grace", user)
+            logger.warning("REFRESH_REUSE_DETECTED user=%s", user.id)
+            _revoke_refresh_family(user)
+            return _reject_refresh(request, "reuse_detected", user)
 
         try:
             # Valida firma y expiración (ya descartado el blacklist arriba).
@@ -371,31 +385,25 @@ class RefreshView(APIView):
         except TokenError:
             # Firma inválida o token expirado: no es reuse (no blacklistado),
             # así que NO se revoca la familia (evita DoS por tokens basura).
-            return Response(
-                {"detail": "Sesión inválida o expirada."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            return _reject_refresh(request, "signature_or_expired", user)
 
         if not user.is_active:
             # Cuenta desactivada: no debe poder renovar sesiones (A7).
-            return Response(
-                {"detail": "Sesión inválida o expirada."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            return _reject_refresh(request, "inactive_user", user)
 
         if not OutstandingToken.objects.filter(user=user, jti=refresh["jti"]).exists():
             # Reuse-detection (C3): si la familia fue revocada/logout y el
             # OutstandingToken ya no existe, ``blacklist()`` lo recrearía.
-            # Rechazar aquí impide revivir un refresh borrado.
-            return Response(
-                {"detail": "Sesión inválida o expirada."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            # Rechazar aquí impide revivir un refresh borrado. Causa raíz
+            # habitual del "se me cae la sesión en otro dispositivo": un logout
+            # (voluntario o automático) en una pestaña mata la familia entera.
+            return _reject_refresh(request, "outstanding_missing", user)
 
         refresh.blacklist()
         new_refresh = RefreshToken.for_user(user)
         _record_outstanding(user, new_refresh)
         response = Response({"access": str(new_refresh.access_token)}, status=status.HTTP_200_OK)
+        sec_logger.info("REFRESH_OK user=%s ip=%s", user.pk, request.META.get("REMOTE_ADDR", "?"))
         return _set_refresh_cookie(response, new_refresh)
 
 
