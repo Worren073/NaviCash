@@ -370,7 +370,13 @@ class TestAuthFlow:
         La cookie httpOnly viaja sola en requests cross-site; sin verificar el
         origen, un formulario malicioso podría forzar la rotación. El Origin
         debe coincidir con un origen CORS permitido.
+
+        Se fija ``DEBUG=False`` explícitamente porque es el modo de producción
+        (allí la cookie va ``SameSite=None`` y la comprobación es la que
+        protege). Con ``DEBUG=True`` el origen se relaja, ya que en desarrollo
+        la cookie va ``SameSite=Lax`` y ni siquiera viaja cross-site.
         """
+        from django.test import override_settings
         from rest_framework.test import APIClient
 
         user = UserFactory(email="origin@example.com")
@@ -381,16 +387,79 @@ class TestAuthFlow:
         assert login.status_code == 200
         client.cookies["refresh_token"] = login.cookies["refresh_token"]
 
-        # Origin permitido (http://localhost:5173) → 200.
-        allowed = client.post(
-            "/api/auth/refresh", HTTP_ORIGIN="http://localhost:5173"
-        )
-        assert allowed.status_code == 200
+        with override_settings(DEBUG=False):
+            # Origin permitido (http://localhost:5173) → 200.
+            allowed = client.post(
+                "/api/auth/refresh", HTTP_ORIGIN="http://localhost:5173"
+            )
+            assert allowed.status_code == 200
 
-        client.cookies["refresh_token"] = allowed.cookies["refresh_token"]
-        # Origin de un sitio atacante → 401 y no rota.
-        evil = client.post("/api/auth/refresh", HTTP_ORIGIN="https://evil.example.com")
-        assert evil.status_code == 401
+            client.cookies["refresh_token"] = allowed.cookies["refresh_token"]
+            # Origin de un sitio atacante → 401 y no rota.
+            evil = client.post(
+                "/api/auth/refresh", HTTP_ORIGIN="https://evil.example.com"
+            )
+            assert evil.status_code == 401
+
+    def _logged_in_client(self, email: str = "origin2@example.com"):
+        """Cliente APIClient con sesión iniciada y la cookie de refresh puesta."""
+        from rest_framework.test import APIClient
+
+        UserFactory(email=email)
+        client = APIClient()
+        login = client.post(
+            self.LOGIN_URL, {"email": email, "password": "test-password-123"}
+        )
+        assert login.status_code == 200
+        client.cookies["refresh_token"] = login.cookies["refresh_token"]
+        return client
+
+    def test_refresh_allows_same_origin_as_request(self) -> None:
+        """Origen igual al de la petición (proxy/túnel/dominio propio) → 200.
+
+        El Host que ve la API lo impone el proxy, así que el caso "mismo origen"
+        se comprueba contra ese Host y no contra la lista de CORS.
+        """
+        client = self._logged_in_client()
+        previous = client.cookies["refresh_token"].value
+        resp = client.post("/api/auth/refresh", HTTP_ORIGIN="http://testserver")
+        assert resp.status_code == 200
+        # Rota de verdad (no es un atajo que devuelva 200 sin refrescar).
+        assert resp.cookies["refresh_token"].value != previous
+
+    def test_refresh_allows_lan_origin_in_debug(self) -> None:
+        """En DEBUG se acepta un origen desconocido: PWA en el móvil.
+
+        Sin esto, abrir la app por IP local o por túnel (que cambia de
+        subdominio) rompe el refresh y expulsa al login aunque el login
+        haya funcionado.
+        """
+        from django.test import override_settings
+
+        client = self._logged_in_client()
+        with override_settings(DEBUG=True):
+            lan = client.post(
+                "/api/auth/refresh", HTTP_ORIGIN="http://192.168.1.50:5173"
+            )
+        assert lan.status_code == 200
+        client.cookies["refresh_token"] = lan.cookies["refresh_token"]
+        with override_settings(DEBUG=True):
+            tunnel = client.post(
+                "/api/auth/refresh",
+                HTTP_ORIGIN="https://random-subdomain.trycloudflare.com",
+            )
+        assert tunnel.status_code == 200
+
+    def test_refresh_rejects_lan_origin_outside_debug(self) -> None:
+        """Sin DEBUG (producción) la IP local y el túnel siguen rechazados."""
+        from django.test import override_settings
+
+        client = self._logged_in_client()
+        with override_settings(DEBUG=False):
+            lan = client.post(
+                "/api/auth/refresh", HTTP_ORIGIN="http://192.168.1.50:5173"
+            )
+        assert lan.status_code == 401
 
     def test_login_locks_account_after_attempts(self) -> None:
         """Tras N intentos fallidos la cuenta se bloquea (429) unos minutos."""

@@ -116,13 +116,28 @@ def _revoke_refresh_family(user: User) -> None:
     OutstandingToken.objects.filter(user=user, expires_at__gt=timezone.now()).delete()
 
 
+def _request_origin(request) -> str:
+    """Origen propio de la petición, respetando el header del proxy TLS."""
+    scheme = "https" if request.is_secure() else "http"
+    return f"{scheme}://{request.get_host()}"
+
+
 def _origin_is_allowed(request) -> bool:
     """Comprueba que el Origin/Referer del request esté permitido (defensa CSRF).
 
     El navegador siempre adjunta ``Origin`` (o ``Referer``) en las peticiones
-    cross-site; si no coincide con un origen CORS permitido, la petición no
-    viene de nuestra SPA y se rechaza. Clientes no-navegador (curl, móvil) que
-    no envían cabecera de origen pasan (el JWT/cookie ya no se expone a ellos).
+    cross-site; si no viene de nuestra SPA y la cookie httpOnly viaja sola, un
+    formulario malicioso podría forzar una rotación. Se acepta, en orden:
+
+    1. Peticiones sin ``Origin``/``Referer`` (clientes no-navegador: el JWT ya
+       no se expone a ellos).
+    2. El MISMO origen que la petición: app desplegada detrás de proxy o con
+       dominio propio, sin depender de configurar la lista de CORS.
+    3. Un origen de ``CORS_ALLOWED_ORIGINS`` (la SPA en otro puerto/dominio).
+    4. **Cualquier origen en DEBUG**: probar la PWA desde el móvil por IP local
+       o por túnel cambia el origen en cada ejecución. No abre hueco de CSRF
+       porque en desarrollo la cookie va ``SameSite=Lax``, así que un POST
+       cross-site ni siquiera la envía.
     """
     origin = request.META.get("HTTP_ORIGIN") or request.META.get("HTTP_REFERER")
     if not origin:
@@ -131,7 +146,14 @@ def _origin_is_allowed(request) -> bool:
     if not parts.scheme or not parts.netloc:
         return False
     normalized = f"{parts.scheme}://{parts.netloc}".rstrip("/")
-    return normalized in set(settings.CORS_ALLOWED_ORIGINS or [])
+    if normalized == _request_origin(request):
+        return True
+    if normalized in set(settings.CORS_ALLOWED_ORIGINS or []):
+        return True
+    if settings.DEBUG:
+        logger.warning("REFRESH_ORIGIN_DEV_ALLOWED origin=%s", normalized)
+        return True
+    return False
 
 
 def _login_lock_key(user: User) -> str:
