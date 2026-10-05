@@ -5,11 +5,23 @@
 Después de desplegar, accede al dashboard de Render y configura EXACTAMENTE estas variables en el servicio **navicash-api**:
 
 ### 1. CORS_ALLOWED_ORIGINS
-**Valor requerido:**
+**Valor requerido — UNA SOLA LÍNEA, sin corchetes ni comillas:**
 ```
-["https://navicash-web-xxxxx.onrender.com"]
+https://navicash-web-xxxxx.onrender.com
+```
+Para varios orígenes, separados por comas y sin espacios:
+```
+https://navicash-web-xxxxx.onrender.com,https://otro-frontend.onrender.com
 ```
 Reemplaza `xxxxx` con el ID real de tu servicio web en Render (está en la URL del frontend en Render).
+
+**No lo escribas como JSON ni con saltos de línea.** Pegar
+`["https://a"]\n["https://b"]` hace que el API no arranque con
+`corsheaders.E013 ... is missing scheme or netloc`. El parser no reconoce el
+formato multilínea y produce entradas basura que Django rechaza en el system
+check. `settings._clean_origin_list` limpia comillas, corchetes y espacios de
+cada entrada y descarta la que no tenga esquema+host, pero lo correcto es
+pegarla como una línea separada por comas.
 
 **Por qué:** Sin esto, las cookies httpOnly no viajarán desde el frontend. El backend rechazará la petición con un error CORS.
 

@@ -8,12 +8,17 @@ fail-fast: si faltan secretos o se usan los valores de desarrollo conocidos,
 el arranque falla con ``ImproperlyConfigured`` (AUDIT A2).
 """
 
+import logging
+import re
 import sys
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import environ
 from django.core.exceptions import ImproperlyConfigured
+
+logger = logging.getLogger("apps.config")
 
 # ---------------------------------------------------------------------------
 # Rutas base
@@ -110,7 +115,81 @@ env = environ.Env(
 # ---------------------------------------------------------------------------
 DEBUG = env("DEBUG")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
-ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
+
+
+# Host válido: wildcard inicial de Django ("."), etiquetas alfanuméricas con
+# guiones internos y separados por puntos. Sin esto "no-es-un-host" pasaba el
+# urlsplit (netloc no vacío) y quedaba como entrada basura silenciosa.
+_HOST_RE = re.compile(r"\.?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+                      r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*")
+
+
+def _clean_origin_list(raw: str | list, *, require_scheme: bool = True) -> list[str]:
+    """Normaliza una lista de orígenes/hosts aunque venga mal formada.
+
+    Al editar la variable en el panel de Render es fácil dejar comillas sueltas
+    o un salto de línea; entonces ``django-environ`` no logra parsearla como
+    JSON y se la parte en entradas basura (``["https://web"``,
+    `` "https://api"]``) que ``django-cors-headers`` rechaza con E013 y el API
+    deja de arrancar por un typo en el panel.
+
+    Aquí se limpian las entradas: se quitan comillas, corchetes, comas y
+    espacios, y solo se aceptan valores con host. Lo inválido se descarta
+    (nunca se amplía el permiso) y se avisa por log. Si no queda NINGÚN valor
+    válido, el fail-fast de más abajo detiene el arranque.
+
+    ``require_scheme=False`` para ``DJANGO_ALLOWED_HOSTS``, cuyos valores son
+    hosts sin esquema (p. ej. ``.onrender.com``).
+    """
+    label = "CORS_ALLOWED_ORIGINS" if require_scheme else "DJANGO_ALLOWED_HOSTS"
+    if isinstance(raw, str):
+        raw = [raw]
+    cleaned: list[str] = []
+    dropped: list[str] = []
+    for item in raw:
+        # Primero se separa por comas: al quitar los caracteres de ruido, dos
+        # entradas válidas separadas por coma quedarían pegadas en un host
+        # basura ("a.com,b.com" -> "a.comb.com").
+        for fragment in str(item).split(","):
+            # Luego se quita el ruido de un pegado: corchetes, comillas,
+            # espacios y saltos de línea, en cualquier posición (una comilla
+            # pegada al final rompe el parseo del host).
+            candidate = re.sub(r"""[\s"'[\]]""", "", fragment)
+            if not candidate:
+                continue
+            parsed = urlsplit(candidate if "://" in candidate else f"//{candidate}")
+            # hostname (no netloc) para validar el dominio: netloc traería el
+            # puerto y "localhost:5173" sería rechazado por error.
+            hostname = parsed.hostname or ""
+            if not hostname or (require_scheme and not parsed.scheme):
+                dropped.append(fragment.strip())
+                continue
+            # El host debe parecer un dominio: wildcard inicial de Django
+            # permitido, etiquetas alfanuméricas separadas por puntos. Sin
+            # esto "no|es|un|host" pasaría el urlsplit (netloc no vacío) y
+            # quedaría como entrada basura silenciosa.
+            if not _HOST_RE.fullmatch(hostname):
+                dropped.append(fragment.strip())
+                continue
+            # Se reconstruye normalizado: se descarta ruta/query/credenciales.
+            # El puerto se conserva (necesario en dev: http://localhost:5173).
+            if require_scheme:
+                host = f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+                cleaned.append(f"{parsed.scheme.lower()}://{host.lower()}")
+            else:
+                cleaned.append(hostname.lower())
+    if dropped:
+        logger.warning(
+            "%s: %d entrada(s) ignorada(s) por formato inválido: %s",
+            label,
+            len(dropped),
+            ", ".join(dropped),
+        )
+    # Deduplica conservando el orden (un mismo origen puede venir repetido).
+    return list(dict.fromkeys(cleaned))
+
+
+ALLOWED_HOSTS = _clean_origin_list(env("DJANGO_ALLOWED_HOSTS"), require_scheme=False)
 
 # ---------------------------------------------------------------------------
 # Fail-fast de secretos (AUDIT A2): nada de valores de desarrollo en prod
@@ -444,7 +523,7 @@ if not DEBUG:
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
-CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+CORS_ALLOWED_ORIGINS = _clean_origin_list(env("CORS_ALLOWED_ORIGINS"), require_scheme=True)
 CORS_ALLOW_CREDENTIALS = True  # para que la cookie httpOnly pueda viajar.
 
 # ---------------------------------------------------------------------------

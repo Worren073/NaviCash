@@ -162,6 +162,68 @@ class TestVerifyEmail:
         assert resp.status_code == 400
 
 
+class TestCORSOriginSanitizer:
+    """`_clean_origin_list`: un valor mal pegado en Render no debe tumbar el API.
+
+    Con `CORS_ALLOWED_ORIGINS` multilínea, `django-environ` no lograba parsearla
+    como JSON y la partía en entradas basura (`["https://web"`,
+    ` "https://api"]`); django-cors-headers lanzaba E013 y el servicio no
+    arrancaba. El saneador descarta lo inválido y conserva lo válido.
+    """
+
+    def test_limpia_comillas_y_espacios(self) -> None:
+        from config.settings import _clean_origin_list
+
+        assert _clean_origin_list(
+            ['["https://navicash-web.onrender.com"', ' "https://navicash-mogt.onrender.com"]']
+        ) == [
+            "https://navicash-web.onrender.com",
+            "https://navicash-mogt.onrender.com",
+        ]
+
+    def test_descarta_entradas_invalidas(self) -> None:
+        from config.settings import _clean_origin_list
+
+        # Entradas sin esquema/host: se descartan, nunca amplían el permiso.
+        assert _clean_origin_list(
+            ["https://navicash.app", "no-es-un-origen", "  ", "///"]
+        ) == ["https://navicash.app"]
+
+    def test_normaliza_y_deduplica(self) -> None:
+        from config.settings import _clean_origin_list
+
+        assert _clean_origin_list(
+            ["https://navicash.app/", "https://navicash.app", "https://api.navicash.app/ruta"]
+        ) == ["https://navicash.app", "https://api.navicash.app"]
+
+    def test_acepta_string_simple(self) -> None:
+        from config.settings import _clean_origin_list
+
+        assert _clean_origin_list("https://navicash.app") == ["https://navicash.app"]
+
+    def test_conserva_puerto_de_desarrollo(self) -> None:
+        """El puerto de Vite (:5173) debe sobrevivir a la limpieza."""
+        from config.settings import _clean_origin_list
+
+        assert _clean_origin_list(["http://localhost:5173"]) == ["http://localhost:5173"]
+
+    def test_hosts_sin_esquema_conservan_wildcard(self) -> None:
+        """DJANGO_ALLOWED_HOSTS usa hosts sin esquema y con wildcard de Django."""
+        from config.settings import _clean_origin_list
+
+        assert _clean_origin_list(
+            ['["api.navicash.app", ".onrender.com"'], require_scheme=False
+        ) == ["api.navicash.app", ".onrender.com"]
+
+    def test_hosts_sin_esquema_rechaza_entrada_invalida(self) -> None:
+        """Basura real (con separador inválido) se descarta sin tumbar el arranque."""
+        from config.settings import _clean_origin_list
+
+        assert _clean_origin_list(
+            [".onrender.com", "no|es|un|host", "///", ""], require_scheme=False
+        ) == [".onrender.com"]
+
+
 @pytest.mark.django_db
 class TestAuthFlow:
     """Login, refresh, logout y perfil."""
