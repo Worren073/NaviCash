@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { api, ApiErrorClass } from "@/lib/api";
@@ -184,22 +185,18 @@ export function ProductFormDialog({
               <span className="mb-1 block text-sm font-medium text-on-surface">
                 {t("inventory.unitPrice")} *
               </span>
-              <Input
-                type="number"
-                inputMode="decimal"
+              <NumericInput
                 value={unitPrice}
-                onChange={(e) => setUnitPrice(e.target.value)}
+                onChange={setUnitPrice}
               />
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-on-surface">
                 {t("inventory.wholesalePrice")}
               </span>
-              <Input
-                type="number"
-                inputMode="decimal"
+              <NumericInput
                 value={wholesalePrice}
-                onChange={(e) => setWholesalePrice(e.target.value)}
+                onChange={setWholesalePrice}
               />
             </label>
           </div>
@@ -209,22 +206,19 @@ export function ProductFormDialog({
               <span className="mb-1 block text-sm font-medium text-on-surface">
                 {t("inventory.costPrice")}
               </span>
-              <Input
-                type="number"
-                inputMode="decimal"
+              <NumericInput
                 value={costPrice}
-                onChange={(e) => setCostPrice(e.target.value)}
+                onChange={setCostPrice}
               />
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-on-surface">
                 {t("inventory.threshold")}
               </span>
-              <Input
-                type="number"
-                inputMode={unit === "unidad" ? "numeric" : "decimal"}
+              <NumericInput
+                mode={unit === "unidad" ? "integer" : "decimal"}
                 value={threshold}
-                onChange={(e) => setThreshold(e.target.value)}
+                onChange={setThreshold}
               />
               <span className="mt-1 block text-xs text-on-surface-variant">
                 {t("inventory.thresholdHint")}
@@ -237,11 +231,10 @@ export function ProductFormDialog({
               <span className="mb-1 block text-sm font-medium text-on-surface">
                 {t("inventory.initialStock")}
               </span>
-              <Input
-                type="number"
-                inputMode={unit === "unidad" ? "numeric" : "decimal"}
+              <NumericInput
+                mode={unit === "unidad" ? "integer" : "decimal"}
                 value={initialStock}
-                onChange={(e) => setInitialStock(e.target.value)}
+                onChange={setInitialStock}
               />
             </label>
           )}

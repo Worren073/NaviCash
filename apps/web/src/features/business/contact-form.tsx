@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import type { TaxIdType } from "@/lib/tax-id";
 import type { BusinessContact, Currency } from "@/lib/types";
 import { TaxIdField } from "./tax-id-field";
@@ -171,11 +172,10 @@ export function ContactForm({
         <span className="mb-1 block text-sm font-medium text-on-surface">
           {t("contacts.paymentTerms")}
         </span>
-        <Input
-          type="number"
-          min={0}
-          value={value.payment_terms_days}
-          onChange={(e) => update("payment_terms_days", Number(e.target.value))}
+        <NumericInput
+          mode="integer"
+          value={String(value.payment_terms_days)}
+          onChange={(next) => update("payment_terms_days", Number(next))}
         />
       </label>
 
@@ -195,12 +195,9 @@ export function ContactForm({
               </option>
             ))}
           </select>
-          <Input
-            type="number"
-            min="0"
-            step="0.01"
+          <NumericInput
             value={value.credit_limit}
-            onChange={(e) => update("credit_limit", e.target.value)}
+            onChange={(next) => update("credit_limit", next)}
             placeholder="0.00"
             className="flex-1"
           />

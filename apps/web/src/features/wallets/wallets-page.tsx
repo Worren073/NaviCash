@@ -21,6 +21,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Segmented } from "@/components/ui/segmented";
 import { formatMoney, formatSymbol } from "@/lib/format";
@@ -178,13 +179,10 @@ export function NewWalletDialog({
 
             <div className="space-y-1.5">
               <Label htmlFor="wallet-initial">{t("wallet.initialBalance")}</Label>
-              <Input
+              <NumericInput
                 id="wallet-initial"
-                type="number"
-                step="0.01"
-                min="0"
                 value={saldoInicial}
-                onChange={(e) => setSaldoInicial(e.target.value)}
+                onChange={setSaldoInicial}
                 required
               />
             </div>
@@ -204,7 +202,15 @@ export function NewWalletDialog({
               >
                 {t("common.cancel")}
               </Button>
-              <Button type="submit" disabled={create.isPending}>
+              <Button
+                type="submit"
+                disabled={
+                  create.isPending ||
+                  saldoInicial.trim() === "" ||
+                  !Number.isFinite(Number(saldoInicial)) ||
+                  Number(saldoInicial) < 0
+                }
+              >
                 {create.isPending ? t("common.loading") : t("common.add")}
               </Button>
             </DialogFooter>
@@ -624,13 +630,9 @@ export function TransferWalletDialog({
               <span className="text-lg font-semibold text-on-surface">
                 {source ? formatSymbol(source.currency) : ""}
               </span>
-              <Input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
+              <NumericInput
                 value={monto}
-                onChange={(e) => setMonto(e.target.value)}
+                onChange={setMonto}
                 placeholder="0.00"
                 required
               />
@@ -658,13 +660,10 @@ export function TransferWalletDialog({
               {rateSource === "manual" && (
                 <div className="space-y-1.5">
                   <Label>{t("wallet.transferCustomPlaceholder")}</Label>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
+                  <NumericInput
                     value={customRate}
-                    onChange={(e) => setCustomRate(e.target.value)}
+                    onChange={setCustomRate}
+                    maxDecimals={4}
                     placeholder={t("wallet.transferCustomPlaceholder")}
                     required
                   />
@@ -760,12 +759,10 @@ function AdjustBalanceDialog({ wallet }: { wallet: Wallet }) {  const { t } = us
         >
           <div className="space-y-1.5">
             <Label htmlFor={`saldo-${wallet.id}`}>{t("wallet.initialBalance")}</Label>
-            <Input
+            <NumericInput
               id={`saldo-${wallet.id}`}
-              type="number"
-              step="0.01"
               value={saldo}
-              onChange={(e) => setSaldo(e.target.value)}
+              onChange={setSaldo}
               required
             />
           </div>

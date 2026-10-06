@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -119,14 +120,10 @@ function PriceDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor={`price-${item.id}`}>{t("checklists.unitPrice")}</Label>
-              <Input
+              <NumericInput
                 id={`price-${item.id}`}
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0.01"
                 value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                onChange={setPrice}
                 placeholder="0.00"
                 required
                 autoFocus
@@ -142,14 +139,11 @@ function PriceDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`qty-${item.id}`}>{t("checklists.quantity")}</Label>
-              <Input
+              <NumericInput
                 id={`qty-${item.id}`}
-                type="number"
-                inputMode="numeric"
-                step="1"
-                min="1"
+                mode="integer"
                 value={cantidad}
-                onChange={(e) => setCantidad(e.target.value)}
+                onChange={setCantidad}
                 required
                 aria-invalid={qtyInvalid}
                 aria-describedby={qtyInvalid ? `qty-err-${item.id}` : undefined}
@@ -326,14 +320,10 @@ function CompleteDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor={`complete-total-${list.id}`}>{t("checklists.totalReal")}</Label>
-            <Input
+            <NumericInput
               id={`complete-total-${list.id}`}
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0.01"
               value={total}
-              onChange={(e) => setTotal(e.target.value)}
+              onChange={setTotal}
               placeholder="0.00"
               required
               aria-invalid={totalInvalid}

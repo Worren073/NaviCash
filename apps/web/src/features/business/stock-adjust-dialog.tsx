@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys } from "@/hooks/use-queries";
 import type { Product } from "@/lib/types";
@@ -85,11 +86,10 @@ export function StockAdjustDialog({
             <span className="mb-1 block text-sm font-medium text-on-surface">
               {t("inventory.adjustDelta")}
             </span>
-            <Input
-              type="number"
-              inputMode={needsInteger ? "numeric" : "decimal"}
+            <NumericInput
+              mode={needsInteger ? "signed-integer" : "signed-decimal"}
               value={delta}
-              onChange={(e) => setDelta(e.target.value)}
+              onChange={setDelta}
               placeholder="+5"
             />
             <span className="mt-1 block text-xs text-on-surface-variant">

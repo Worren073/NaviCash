@@ -7,6 +7,7 @@ import { api, ApiErrorClass } from "@/lib/api";
 import { useMe, queryKeys } from "@/hooks/use-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { cn } from "@/lib/utils";
 import { formatSymbol } from "@/lib/format";
 import { sileo } from "sileo";
@@ -182,14 +183,10 @@ export function BusinessOnboarding() {
                   <span className="text-2xl font-bold text-primary sm:text-3xl">
                     {formatSymbol(currency)}
                   </span>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
+                  <NumericInput
                     placeholder="0.00"
                     value={capital}
-                    onChange={(e) => setCapital(e.target.value)}
+                    onChange={setCapital}
                   />
                 </div>
                 <span className="mt-1.5 block text-xs text-on-surface-variant sm:text-sm">

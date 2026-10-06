@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { SUBSCRIPTION_COLORS } from "@/lib/constants";
 import { CardGlow } from "@/components/ui/card-glow";
@@ -210,13 +211,10 @@ function RenewSubscriptionDialog({ sub }: { sub: Subscription }) {
 
             <div className="space-y-1.5">
               <Label htmlFor={`renew-amount-${sub.id}`}>{t("subscriptions.renewAmount")}</Label>
-              <Input
+              <NumericInput
                 id={`renew-amount-${sub.id}`}
-                type="number"
-                step="0.01"
-                min="0.01"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={setAmount}
                 placeholder="0.00"
                 required
                 disabled={renew.isPending}
@@ -238,7 +236,12 @@ function RenewSubscriptionDialog({ sub }: { sub: Subscription }) {
               >
                 {t("common.cancel")}
               </Button>
-              <Button type="submit" disabled={renew.isPending || walletsLoading}>
+              <Button
+                type="submit"
+                disabled={
+                  renew.isPending || walletsLoading || !amount || Number(amount) < 0.01
+                }
+              >
                 {renew.isPending ? t("common.loading") : t("subscriptions.renew")}
               </Button>
             </DialogFooter>

@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useFollowUps, useInvoice } from "@/hooks/use-queries";
@@ -454,11 +455,9 @@ export default function InvoiceDetailPage() {
                 {t("invoices.detail.payAmount")} ({t("invoices.detail.payMax")}{" "}
                 {formatMoney(balanceDue, invoice.currency)})
               </span>
-              <Input
-                type="number"
-                inputMode="decimal"
+              <NumericInput
                 value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value)}
+                onChange={setPayAmount}
               />
             </label>
             <label className="block">

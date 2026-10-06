@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { api, ApiErrorClass } from "@/lib/api";
+import { numericPattern, sanitizeNumeric } from "@/lib/number";
 import { queryKeys, useMe } from "@/hooks/use-queries";
 import { useNavView } from "@/features/navigation/nav-view";
 import { Button } from "@/components/ui/button";
@@ -225,13 +226,12 @@ export default function NewOperationPage() {
             </span>
             <input
               autoFocus
-              type="number"
+              type="text"
               inputMode="decimal"
-              step="0.01"
-              min="0"
+              pattern={numericPattern("decimal")}
               placeholder="0.00"
               value={monto}
-              onChange={(e) => setMonto(e.target.value)}
+              onChange={(e) => setMonto(sanitizeNumeric(e.target.value, "decimal"))}
               aria-label={t("addOperation.amountLabel")}
               className="w-full max-w-[280px] flex-1 bg-transparent text-center text-4xl font-bold tracking-tight text-on-surface outline-none focus:rounded-xl focus:bg-black/5"
             />
@@ -431,7 +431,7 @@ export default function NewOperationPage() {
               }
               create.mutate();
             }}
-            disabled={create.isPending || !monto || !wallet}
+            disabled={create.isPending || !monto || Number(monto) <= 0 || !wallet}
           >
             <CheckCircle2 />
             {create.isPending ? t("common.loading") : t("addOperation.register")}

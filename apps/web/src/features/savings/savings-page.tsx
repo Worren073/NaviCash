@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { formatMoney } from "@/lib/format";
 import { NewWalletDialog, EditWalletDialog } from "@/features/wallets/wallets-page";
@@ -411,13 +412,10 @@ const accountsUsd = savingWallets.reduce(
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="goal-target">{t("savings.targetAmount")}</Label>
-              <Input
+              <NumericInput
                 id="goal-target"
-                type="number"
-                step="0.01"
-                min="0.01"
                 value={target}
-                onChange={(e) => setTarget(e.target.value)}
+                onChange={setTarget}
                 required
               />
             </div>
@@ -464,7 +462,10 @@ const accountsUsd = savingWallets.reduce(
               </p>
             )}
             <DialogFooter>
-              <Button type="submit" disabled={create.isPending}>
+              <Button
+                type="submit"
+                disabled={create.isPending || !target || Number(target) < 0.01}
+              >
                 {create.isPending ? t("common.loading") : t("common.save")}
               </Button>
             </DialogFooter>

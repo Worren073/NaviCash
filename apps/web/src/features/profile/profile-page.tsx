@@ -16,6 +16,7 @@ import {
 import { queryKeys } from "@/hooks/use-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -512,13 +513,11 @@ export default function ProfilePage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="premind">{t("profile.reminderDays")}</Label>
-              <Input
+              <NumericInput
                 id="premind"
-                type="number"
-                min="0"
-                max="30"
+                mode="integer"
                 value={reminderDays}
-                onChange={(e) => setReminderDays(e.target.value)}
+                onChange={setReminderDays}
               />
             </div>
 
@@ -533,7 +532,16 @@ export default function ProfilePage() {
               </p>
             )}
 
-            <Button type="submit" className="w-full" disabled={save.isPending}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={
+                save.isPending ||
+                !Number.isInteger(Number(reminderDays)) ||
+                Number(reminderDays) < 0 ||
+                Number(reminderDays) > 30
+              }
+            >
               <SaveIcon size={16} /> {save.isPending ? t("common.loading") : t("profile.save")}
             </Button>
           </form>

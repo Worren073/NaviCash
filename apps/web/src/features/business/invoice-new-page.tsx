@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Segmented } from "@/components/ui/segmented";
 import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys, useBusinessContacts, useProducts } from "@/hooks/use-queries";
@@ -365,35 +366,30 @@ export default function InvoiceNewPage() {
               value={row.description}
               onChange={(e) => setItem(idx, "description", e.target.value)}
             />
-            <Input
+            <NumericInput
               className="col-span-4 sm:col-span-2"
-              type="number"
-              inputMode={
+              mode={
                 row.product &&
                 catalogue.find((c) => c.id === row.product)?.unit === "unidad"
-                  ? "numeric"
+                  ? "integer"
                   : "decimal"
               }
               placeholder={t("invoices.form.itemQty")}
               value={row.quantity}
-              onChange={(e) => setItem(idx, "quantity", e.target.value)}
+              onChange={(v) => setItem(idx, "quantity", v)}
             />
-            <Input
+            <NumericInput
               className="col-span-4 sm:col-span-3"
-              type="number"
-              inputMode="decimal"
               placeholder={t("invoices.form.itemPrice")}
               value={row.unit_price}
-              onChange={(e) => setItem(idx, "unit_price", e.target.value)}
+              onChange={(v) => setItem(idx, "unit_price", v)}
             />
             <div className="col-span-2 flex items-center justify-end gap-2 sm:col-span-1">
-              <Input
+              <NumericInput
                 className="w-full"
-                type="number"
-                inputMode="decimal"
                 placeholder={t("invoices.form.itemDiscount")}
                 value={row.discount}
-                onChange={(e) => setItem(idx, "discount", e.target.value)}
+                onChange={(v) => setItem(idx, "discount", v)}
               />
             </div>
             <div className="col-span-2 flex items-center justify-end gap-2 sm:col-span-2">
@@ -420,22 +416,18 @@ export default function InvoiceNewPage() {
           <span className="mb-1 block text-sm font-medium text-on-surface">
             {t("invoices.form.taxAmount")}
           </span>
-          <Input
-            type="number"
-            inputMode="decimal"
+          <NumericInput
             value={taxAmount}
-            onChange={(e) => setTaxAmount(e.target.value)}
+            onChange={setTaxAmount}
           />
         </label>
         <label className="block">
           <span className="mb-1 block text-sm font-medium text-on-surface">
             {t("invoices.form.paidAmount")}
           </span>
-          <Input
-            type="number"
-            inputMode="decimal"
+          <NumericInput
             value={paidAmount}
-            onChange={(e) => setPaidAmount(e.target.value)}
+            onChange={setPaidAmount}
           />
           <span className="mt-1 block text-xs text-on-surface-variant">
             {t("invoices.form.paidHint")}
