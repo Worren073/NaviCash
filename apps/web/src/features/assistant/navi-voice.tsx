@@ -6,6 +6,7 @@ import { Mic, RefreshCw, VolumeX, X } from "lucide-react";
 import { useAssistant } from "@/hooks/use-assistant";
 import { isIOSDevice } from "@/hooks/use-device-os";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
+import type { AnimationKey } from "@/features/assistant/navi-avatar/types";
 import {
   getRecognitionKind,
   getRecognitionProvider,
@@ -63,6 +64,16 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
   // En iOS el interruptor de silencio silencia speechSynthesis (sin API para
   // forzarlo): se muestra un recordatorio persistente.
   const isIOS = isIOSDevice();
+
+  // Animación del rostro según la fase de voz.
+  const voiceAnimation: AnimationKey =
+    phase === "listening" || phase === "recording"
+      ? "listening"
+      : phase === "thinking"
+        ? "thinking"
+        : phase === "speaking"
+          ? "happy"
+          : "idle";
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -310,7 +321,7 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
               style={{ touchAction: "none" }}
               disabled={phase === "thinking" || phase === "micError"}
             >
-              <NaviAvatar size={180} thinking={phase === "thinking"} />
+              <NaviAvatar size={180} animation={voiceAnimation} />
             </button>
           </motion.div>
 

@@ -199,6 +199,37 @@
   }
 }
 
+/* Micro-movimientos del avatar de Navi (expresiones "shake"/"slowDrift"). */
+@keyframes navi-head-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(2%);
+  }
+}
+
+@keyframes navi-eye-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(1.5%);
+  }
+}
+
+@keyframes navi-head-drift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2%);
+  }
+}
+
 /* Desenfoque de la página mientras carga contenido */
 @utility page-loading-blur {
   position: relative;
