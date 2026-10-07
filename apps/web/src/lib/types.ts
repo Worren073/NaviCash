@@ -162,6 +162,82 @@ export interface ProductDraft {
   is_active?: boolean;
 }
 
+export type OrderStatus =
+  | "borrador"
+  | "en_camino"
+  | "pagado"
+  | "recibido"
+  | "anulado";
+
+/** Producto nuevo ingresado inline en un pedido; se crea al recibir el pedido. */
+export interface OrderNewProduct {
+  name: string;
+  sku: string;
+  unit: "unidad" | "kg";
+  category: string | null;
+  unit_price: string;
+  wholesale_price: string | null;
+  cost_price: string | null;
+  low_stock_threshold: string | null;
+  is_active: boolean;
+}
+
+export interface OrderItem {
+  id: string;
+  product: string | null;
+  new_product: OrderNewProduct | null;
+  description: string;
+  quantity: string;
+  unit_price: string;
+  discount: string;
+  total: string;
+}
+
+export interface OrderPayment {
+  id: string;
+  transaction_id: string | null;
+  amount: string;
+  paid_at: string;
+  note: string;
+}
+
+export interface Order {
+  id: string;
+  business: string;
+  contact: BusinessContact;
+  number: string;
+  order_date: string;
+  status: OrderStatus;
+  subtotal: string;
+  shipping_amount: string;
+  total: string;
+  amount_paid: string;
+  balance_due: string;
+  currency: Currency;
+  notes: string;
+  items: OrderItem[];
+  payments: OrderPayment[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Linea editable de un pedido: producto del inventario o producto nuevo. */
+export interface OrderLineDraft {
+  product?: string;
+  new_product?: OrderNewProduct;
+  description: string;
+  quantity: string;
+  unit_price?: string;
+  discount?: string;
+}
+
+/** Prefill del CTA «aprovisionar desde stock bajo» (state del router). */
+export interface OrderPrefillLine {
+  product: string;
+  quantity: string;
+  unit_price: string;
+}
+
 export type CollectionChannel = "llamada" | "email" | "whatsapp" | "visita" | "otro";
 
 export type CollectionOutcome =

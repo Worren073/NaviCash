@@ -266,6 +266,178 @@ class InvoicePayment(OwnedModel):
         return f"Pago {self.amount} {self.invoice.currency}"
 
 
+ORDER_STATUSES = [
+    ("borrador", "Borrador"),
+    ("en_camino", "En camino"),
+    ("pagado", "Pagado"),
+    ("recibido", "Recibido"),
+    ("anulado", "Anulado"),
+]
+
+
+class Order(OwnedModel):
+    """Pedido de compra del negocio a un proveedor.
+
+    Al recibirse (``recibido``) las mercancías se integran de una vez al
+    inventario: las líneas con producto existente solo incrementan existencias
+    y las líneas con producto nuevo crean el producto del catálogo (ver
+    ``apps.crm.services.receive_order``).
+    """
+
+    business = models.ForeignKey(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="orders",
+        verbose_name="Negocio",
+    )
+    contact = models.ForeignKey(
+        BusinessContact,
+        on_delete=models.PROTECT,
+        related_name="orders",
+        verbose_name="Proveedor",
+    )
+    number = models.CharField(max_length=20, verbose_name="Número")
+    order_date = models.DateField(verbose_name="Fecha del pedido")
+    status = models.CharField(
+        max_length=10,
+        choices=ORDER_STATUSES,
+        default="borrador",
+        verbose_name="Estado",
+    )
+    subtotal = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Subtotal"
+    )
+    shipping_amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        default=0,
+        verbose_name="Envío",
+    )
+    total = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Total"
+    )
+    amount_paid = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        default=0,
+        verbose_name="Monto pagado",
+    )
+    balance_due = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        verbose_name="Saldo pendiente",
+    )
+    currency = models.CharField(
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        default="USD",
+        verbose_name="Moneda",
+    )
+    notes = models.TextField(blank=True, default="", verbose_name="Notas")
+
+    class Meta:
+        verbose_name = "Pedido"
+        verbose_name_plural = "Pedidos"
+        ordering = ["-order_date"]
+        indexes = [
+            models.Index(
+                fields=["user", "business", "status"],
+                name="crm_order_ub_status_idx",
+            ),
+            models.Index(
+                fields=["user", "business", "order_date"],
+                name="crm_order_ub_date_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "number"],
+                name="uniq_business_order_number",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.number} - {self.contact.name}"
+
+
+class OrderItem(OwnedModel):
+    """Línea de un pedido: producto del inventario o producto nuevo."""
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="Pedido",
+    )
+    product = models.ForeignKey(
+        "Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_items",
+        verbose_name="Producto del catálogo",
+    )
+    new_product = models.JSONField(
+        default=dict, blank=True, verbose_name="Datos del producto nuevo"
+    )
+    description = models.CharField(max_length=160, verbose_name="Descripción")
+    quantity = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name="Cantidad"
+    )
+    unit_price = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Precio unitario"
+    )
+    discount = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        default=0,
+        verbose_name="Descuento",
+    )
+    total = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Total"
+    )
+
+    class Meta:
+        verbose_name = "Línea de pedido"
+        verbose_name_plural = "Líneas de pedido"
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.description} ({self.quantity} x {self.unit_price})"
+
+
+class OrderPayment(OwnedModel):
+    """Pago realizado contra un pedido."""
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="payments",
+        verbose_name="Pedido",
+    )
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_payments",
+        verbose_name="Operación de pago",
+    )
+    amount = models.DecimalField(
+        max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Monto"
+    )
+    paid_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de pago")
+    note = models.CharField(max_length=200, blank=True, default="", verbose_name="Nota")
+
+    class Meta:
+        verbose_name = "Pago de pedido"
+        verbose_name_plural = "Pagos de pedidos"
+        ordering = ["-paid_at"]
+
+    def __str__(self) -> str:
+        return f"Pago {self.amount} {self.order.currency}"
+
+
 FOLLOW_UP_CHANNELS = [
     ("llamada", "Llamada"),
     ("email", "Correo"),

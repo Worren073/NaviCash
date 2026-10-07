@@ -8,13 +8,14 @@ import {
   PersonStanding,
   Plus,
   ReceiptText,
+  ShoppingCart,
   Store,
   TrendingDown,
   TrendingUp,
   Wrench,
 } from "lucide-react";
 
-import { useBusinessSummary, useInvoices } from "@/hooks/use-queries";
+import { useBusinessSummary, useInvoices, useOrders } from "@/hooks/use-queries";
 import { useHideBalances } from "@/hooks/use-hide-balances";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -82,10 +83,14 @@ export function BusinessDashboard() {
   const { data, isLoading, isError } = useBusinessSummary();
   const { hidden: hideBalances } = useHideBalances();
   const invoices = useInvoices();
+  const orders = useOrders();
 
   const receivable = (invoices.data?.results ?? [])
     .filter((inv) => ["enviada", "parcial", "vencida"].includes(inv.status))
     .reduce((sum, inv) => sum + Number(inv.balance_due), 0);
+  const payable = (orders.data?.results ?? [])
+    .filter((or) => ["borrador", "en_camino", "pagado"].includes(or.status))
+    .reduce((sum, or) => sum + Number(or.balance_due), 0);
   const walletCurrency = data?.currency ?? "USD";
 
   return (
@@ -194,6 +199,33 @@ export function BusinessDashboard() {
         </div>
       </Link>
 
+      <Link
+        to="/business/orders"
+        className="glass-panel clip-rounded-lg flex min-h-28 items-center justify-between rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-expense/15 text-expense">
+            <ShoppingCart className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-sm font-medium text-on-surface">{t("orders.porPagar")}</div>
+            {orders.isLoading ? (
+              <Skeleton className="mt-1 h-6 w-24" />
+            ) : (
+              <div className="text-xl font-semibold text-on-surface">
+                {hideBalances
+                  ? "••••"
+                  : formatMoney(payable, walletCurrency, { symbol: true })}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-sm text-primary">
+          {t("orders.seeOrders")}
+          <ChevronRight className="h-4 w-4" />
+        </div>
+      </Link>
+
       <div className="flex flex-col gap-2">
         <Link to="/operations/new" className="w-full md:w-64">
           <Button variant="glow" size="lg" className="w-full gap-2">
@@ -225,6 +257,15 @@ export function BusinessDashboard() {
               <Package className="h-5 w-5" />
             </div>
             <span className="text-sm font-medium text-on-surface">{t("nav.inventory")}</span>
+          </Link>
+          <Link
+            to="/business/orders"
+            className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-expense/15 text-expense">
+              <ShoppingCart className="h-5 w-5" />
+            </div>
+            <span className="text-sm font-medium text-on-surface">{t("nav.orders")}</span>
           </Link>
         </div>
       </section>

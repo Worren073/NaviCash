@@ -14,6 +14,9 @@ from apps.crm.models import (
     Invoice,
     InvoiceItem,
     InvoicePayment,
+    Order,
+    OrderItem,
+    OrderPayment,
     Product,
     ProductCategory,
 )
@@ -367,6 +370,277 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
                 )
             instance.subtotal = round_money(subtotal)
             instance.total = round_money(instance.subtotal + instance.tax_amount)
+            instance.balance_due = instance.total
+            instance.status = "borrador"
+
+        instance.save()
+        return instance
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    """Serializador de líneas de pedido (lectura)."""
+
+    class Meta:
+        model = OrderItem
+        fields = [
+            "id",
+            "product",
+            "new_product",
+            "description",
+            "quantity",
+            "unit_price",
+            "discount",
+            "total",
+        ]
+        read_only_fields = ["id", "product", "new_product", "total"]
+
+
+class OrderItemWriteSerializer(serializers.ModelSerializer):
+    """Serializador de líneas de pedido en alta/edición.
+
+    Cada línea refiere a un producto del inventario (``product``) o, en
+    excluyente mutuo, a los datos de un producto nuevo (``new_product``) que se
+    creará e integrará al inventario al recibir el pedido.
+    """
+
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), required=False, allow_null=True
+    )
+    new_product = serializers.JSONField(required=False, write_only=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+    unit_price = serializers.DecimalField(
+        max_digits=20, decimal_places=2, required=False
+    )
+
+    class Meta:
+        model = OrderItem
+        fields = [
+            "product",
+            "new_product",
+            "description",
+            "quantity",
+            "unit_price",
+            "discount",
+            "total",
+        ]
+        read_only_fields = ["total"]
+
+    def validate(self, attrs: dict) -> dict:
+        from apps.crm.services import _parse_new_product, requires_integer_amounts
+
+        request = self.context["request"]
+        product = attrs.get("product")
+        new_product = attrs.get("new_product")
+        if bool(product) == bool(new_product):
+            raise serializers.ValidationError(
+                "Indica un producto del inventario o los datos de un producto "
+                "nuevo, no ambos."
+            )
+
+        quantity = attrs.get("quantity", Decimal("1"))
+        discount = attrs.get("discount", Decimal("0"))
+        description = attrs.get("description", "")
+        unit: str = ""
+
+        if new_product:
+            data = _parse_new_product(dict(new_product))
+            unit = data["unit"]
+            description = description or data["name"]
+            unit_price = attrs.get("unit_price")
+            if unit_price is None:
+                unit_price = Decimal(data.get("cost_price") or "0")
+            else:
+                unit_price = Decimal(str(unit_price))
+            attrs["new_product"] = dict(data)
+        else:
+            if product.user_id != request.user.id:
+                raise serializers.ValidationError(
+                    "El producto no pertenece a tu catálogo."
+                )
+            description = description or product.name
+            unit = product.unit
+            unit_price = attrs.get("unit_price") or product.cost_price or Decimal("0")
+            unit_price = Decimal(str(unit_price))
+
+        attrs["description"] = description
+        attrs["unit_price"] = unit_price
+
+        if quantity <= 0 or unit_price < 0:
+            raise serializers.ValidationError(
+                "La cantidad y el precio unitario deben ser positivos."
+            )
+        if requires_integer_amounts(unit) and quantity != quantity.to_integral_value():
+            raise serializers.ValidationError(
+                "Este producto se cuenta por unidad: la cantidad debe ser entera."
+            )
+        attrs["total"] = round_money(quantity * unit_price - discount)
+        return attrs
+
+
+class OrderPaymentSerializer(serializers.ModelSerializer):
+    """Serializador de pagos realizados contra un pedido."""
+
+    class Meta:
+        model = OrderPayment
+        fields = ["id", "transaction_id", "amount", "paid_at", "note"]
+        read_only_fields = ["id", "transaction_id", "paid_at"]
+
+
+class OrderReadSerializer(serializers.ModelSerializer):
+    """Serializador de lectura con proveedor, líneas y pagos anidados."""
+
+    contact = BusinessContactSerializer(read_only=True)
+    items = OrderItemSerializer(many=True, read_only=True)
+    payments = OrderPaymentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "business",
+            "contact",
+            "number",
+            "order_date",
+            "status",
+            "subtotal",
+            "shipping_amount",
+            "total",
+            "amount_paid",
+            "balance_due",
+            "currency",
+            "notes",
+            "items",
+            "payments",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "business", "number", "created_at", "updated_at"]
+
+
+class OrderWriteSerializer(serializers.ModelSerializer):
+    """Serializador de alta/edición de pedidos a proveedores."""
+
+    contact = serializers.PrimaryKeyRelatedField(queryset=BusinessContact.objects.none())
+    items = OrderItemWriteSerializer(many=True)
+    order_date = serializers.DateField(required=False)
+    shipping_amount = serializers.DecimalField(
+        max_digits=20, decimal_places=2, required=False, default=Decimal("0")
+    )
+    paid_amount = serializers.DecimalField(
+        max_digits=20, decimal_places=2, required=False, default=Decimal("0")
+    )
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "business",
+            "contact",
+            "order_date",
+            "shipping_amount",
+            "paid_amount",
+            "notes",
+            "items",
+        ]
+        read_only_fields = ["id", "business"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        user = self.context["request"].user
+        self.fields["contact"].queryset = BusinessContact.objects.filter(
+            business__user=user, type__in=["proveedor", "ambos"]
+        )
+
+    def validate_items(self, value):
+        if not value:
+            raise serializers.ValidationError("El pedido debe tener al menos una línea.")
+        return value
+
+    def validate_shipping_amount(self, value):
+        if value is None:
+            return Decimal("0")
+        if value < 0:
+            raise serializers.ValidationError("El envío no puede ser negativo.")
+        return value
+
+    def validate_paid_amount(self, value):
+        if value is None:
+            return Decimal("0")
+        if value < 0:
+            raise serializers.ValidationError("El monto pagado no puede ser negativo.")
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        from apps.business.models import Business
+
+        request = self.context["request"]
+        try:
+            business = Business.objects.get(user=request.user)
+        except Business.DoesNotExist:
+            raise serializers.ValidationError(
+                {"business": "No tienes un negocio creado."}
+            )
+        attrs["business"] = business
+
+        contact = attrs.get("contact") or getattr(self.instance, "contact", None)
+        if contact is not None and contact.business_id != business.id:
+            raise serializers.ValidationError(
+                {"contact": "El proveedor no pertenece a tu negocio."}
+            )
+        if contact is not None and contact.type not in ("proveedor", "ambos"):
+            raise serializers.ValidationError(
+                {"contact": "El contacto debe ser un proveedor."}
+            )
+        return attrs
+
+    def create(self, validated_data: dict) -> Order:
+        from apps.crm.services import create_order
+
+        items = validated_data.pop("items")
+        return create_order(
+            user=self.context["request"].user,
+            business=validated_data["business"],
+            contact=validated_data["contact"],
+            items_data=items,
+            order_date=validated_data.get("order_date"),
+            shipping_amount=validated_data.get("shipping_amount"),
+            paid_amount=validated_data.get("paid_amount"),
+            notes=validated_data.get("notes", ""),
+        )
+
+    def update(self, instance: Order, validated_data: dict) -> Order:
+        """Permite editar solo pedidos en borrador; reemplaza las líneas."""
+        if instance.status != "borrador":
+            raise serializers.ValidationError(
+                {"status": "Solo se pueden editar pedidos en borrador."}
+            )
+
+        items = validated_data.pop("items", None)
+        instance.contact = validated_data.get("contact", instance.contact)
+        instance.order_date = validated_data.get("order_date", instance.order_date)
+        instance.shipping_amount = validated_data.get(
+            "shipping_amount", instance.shipping_amount
+        )
+        instance.notes = validated_data.get("notes", instance.notes)
+
+        if items is not None:
+            instance.items.all().delete()
+            subtotal = Decimal("0")
+            for row in items:
+                subtotal += row["total"]
+                OrderItem.objects.create(
+                    user=instance.user,
+                    order=instance,
+                    product=row.get("product"),
+                    new_product=row.get("new_product") or {},
+                    description=row["description"],
+                    quantity=row["quantity"],
+                    unit_price=row["unit_price"],
+                    discount=row.get("discount", Decimal("0")),
+                    total=row["total"],
+                )
+            instance.subtotal = round_money(subtotal)
+            instance.total = round_money(instance.subtotal + instance.shipping_amount)
             instance.balance_due = instance.total
             instance.status = "borrador"
 

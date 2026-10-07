@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { sileo } from "sileo";
-import { FolderClosed, Package, Pencil, Plus, Scale, Search, Trash2 } from "lucide-react";
+import { FolderClosed, Package, Pencil, Plus, Scale, Search, ShoppingCart, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -206,6 +207,7 @@ function ProductCard({
 export default function InventoryPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -218,6 +220,19 @@ export default function InventoryPage() {
     categoryFilter || undefined
   );
   const products = useMemo(() => data?.results ?? [], [data]);
+  const lowStock = useMemo(
+    () => products.filter((p) => p.is_low_stock),
+    [products],
+  );
+
+  const provision = () => {
+    const prefill = lowStock.map((p) => ({
+      product: p.id,
+      quantity: Number(p.low_stock_threshold) > 0 ? p.low_stock_threshold : "1",
+      unit_price: p.cost_price || p.unit_price,
+    }));
+    navigate("/business/orders/new", { state: { prefill } });
+  };
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -277,6 +292,23 @@ export default function InventoryPage() {
           </Button>
         </div>
       </div>
+
+      {lowStock.length > 0 && (
+        <Button
+          variant="outline"
+          onClick={provision}
+          className="w-full gap-2 border-dashed border-expense/40 text-expense transition-colors hover:border-expense hover:bg-expense/5"
+        >
+          <ShoppingCart className="h-4 w-4" />
+          <span className="text-left">
+            <span className="block text-sm font-semibold">{t("inventory.provision")}</span>
+            <span className="block text-xs font-normal text-on-surface-variant">
+              {t("inventory.provisionHint")}: {lowStock.length}{" "}
+              {t("inventory.product")}(s)
+            </span>
+          </span>
+        </Button>
+      )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">

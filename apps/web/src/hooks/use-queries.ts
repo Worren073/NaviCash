@@ -9,6 +9,7 @@ import type {
   CollectionFollowUp,
   Invoice,
   NotificationsResponse,
+  Order,
   Overview,
   Paginated,
   Product,
@@ -35,6 +36,7 @@ export const queryKeys = {
   businessSummary: ["business-summary"] as const,
   businessContacts: ["business-contacts"] as const,
   invoices: ["invoices"] as const,
+  orders: ["orders"] as const,
   followUps: ["follow-ups"] as const,
   products: ["products"] as const,
   productCategories: ["product-categories"] as const,
@@ -142,6 +144,28 @@ export function useInvoice(id: string | undefined) {
     queryKey: [...queryKeys.invoices, id],
     enabled: Boolean(id),
     queryFn: ({ signal }) => api.get<Invoice>(`/business/invoices/${id}`, { signal }),
+  });
+}
+
+export function useOrders(search?: string, status?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.orders, { search, status }],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (status) params.set("status", status);
+      return api.get<Paginated<Order>>(`/business/orders?${params.toString()}`, {
+        signal,
+      });
+    },
+  });
+}
+
+export function useOrder(id: string | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.orders, id],
+    enabled: Boolean(id),
+    queryFn: ({ signal }) => api.get<Order>(`/business/orders/${id}`, { signal }),
   });
 }
 

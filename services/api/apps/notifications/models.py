@@ -20,6 +20,7 @@ NOTIFICATION_KINDS = [
     ("expense_nudge", "Recordatorio de registro"),
     ("invoice_overdue", "Factura vencida"),
     ("invoice_paid", "Factura pagada"),
+    ("order_paid", "Pedido pagado"),
     ("product_low_stock", "Stock bajo"),
     ("system", "Sistema"),
 ]

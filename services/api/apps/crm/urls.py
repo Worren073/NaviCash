@@ -8,6 +8,7 @@ from apps.crm.views import (
     BusinessContactViewSet,
     CollectionFollowUpViewSet,
     InvoiceViewSet,
+    OrderViewSet,
     ProductCategoryViewSet,
     ProductViewSet,
 )
@@ -15,6 +16,7 @@ from apps.crm.views import (
 router = DefaultRouter()
 router.register("contacts", BusinessContactViewSet, basename="business-contact")
 router.register("invoices", InvoiceViewSet, basename="business-invoice")
+router.register("orders", OrderViewSet, basename="business-order")
 router.register("follow-ups", CollectionFollowUpViewSet, basename="business-follow-up")
 router.register("products", ProductViewSet, basename="business-product")
 router.register(

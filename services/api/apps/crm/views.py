@@ -16,6 +16,7 @@ from apps.crm.models import (
     BusinessContact,
     CollectionFollowUp,
     Invoice,
+    Order,
     Product,
     ProductCategory,
     StockAdjustment,
@@ -27,6 +28,8 @@ from apps.crm.serializers import (
     CollectionFollowUpSerializer,
     InvoiceReadSerializer,
     InvoiceWriteSerializer,
+    OrderReadSerializer,
+    OrderWriteSerializer,
     ProductCategorySerializer,
     ProductSerializer,
 )
@@ -182,6 +185,118 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
         cancel_invoice(invoice)
         return Response(self.get_serializer(invoice).data)
+
+
+class OrderViewSet(viewsets.ModelViewSet):
+    """Pedidos de compra a proveedores del negocio."""
+
+    permission_classes = [IsOwner]
+    filterset_fields = ["status"]
+
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return OrderWriteSerializer
+        return OrderReadSerializer
+
+    def get_queryset(self):
+        """Pedidos del usuario, con búsqueda y filtros opcionales."""
+        qs = (
+            Order.objects.filter(user=self.request.user)
+            .select_related("business", "contact")
+            .prefetch_related("items", "payments")
+        )
+        search = self.request.query_params.get("search")
+        if search:
+            qs = qs.filter(
+                Q(number__icontains=search) | Q(contact__name__icontains=search)
+            )
+        order_status = self.request.query_params.get("status")
+        if order_status:
+            qs = qs.filter(status=order_status)
+        return qs.order_by("-order_date")
+
+    def _read_response(self, instance, status_code: int = 200):
+        """Serializa con el serializer de lectura (más campos computados)."""
+        serializer = OrderReadSerializer(
+            instance, context=self.get_serializer_context()
+        )
+        return Response(serializer.data, status=status_code)
+
+    def _fresh_order(self, order: Order) -> Order:
+        """Recarga el pedido tras una acción para no leer caches viejas."""
+        return (
+            Order.objects.select_related("business", "contact")
+            .prefetch_related("items", "payments")
+            .get(pk=order.pk)
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return self._read_response(serializer.instance, status_code=201)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return self._read_response(serializer.instance)
+
+    def perform_destroy(self, instance: Order):
+        """Impide borrar pedidos con pagos o que ya salieron de borrador."""
+        if instance.payments.exists():
+            raise ValidationError("No se puede borrar un pedido con pagos registrados.")
+        if instance.status != "borrador":
+            raise ValidationError("Solo se pueden borrar pedidos en borrador.")
+        instance.delete()
+
+    @action(detail=True, methods=["post"])
+    def send(self, request, pk=None):
+        """Marca un pedido en borrador como «en camino»."""
+        order = self.get_object()
+        from apps.crm.services import send_order
+
+        send_order(order)
+        return Response(self.get_serializer(self._fresh_order(order)).data)
+
+    @action(detail=True, methods=["post"])
+    def pay(self, request, pk=None):
+        """Registra un pago al proveedor; crea la salida en la billetera."""
+        order = self.get_object()
+        from apps.crm.services import record_order_payment
+
+        amount = request.data.get("amount")
+        if not amount:
+            return Response(
+                {"detail": "Debes indicar el monto del pago.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        record_order_payment(
+            order,
+            Decimal(str(amount)),
+            note=request.data.get("note", ""),
+        )
+        return Response(self.get_serializer(self._fresh_order(order)).data)
+
+    @action(detail=True, methods=["post"])
+    def receive(self, request, pk=None):
+        """Marca el pedido como recibido e integra la mercancía al inventario."""
+        order = self.get_object()
+        from apps.crm.services import receive_order
+
+        receive_order(order)
+        return Response(self.get_serializer(self._fresh_order(order)).data)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Anula el pedido (congela el documento, no revierte pagos)."""
+        order = self.get_object()
+        from apps.crm.services import cancel_order
+
+        cancel_order(order)
+        return Response(self.get_serializer(self._fresh_order(order)).data)
 
 
 class CollectionFollowUpViewSet(viewsets.ModelViewSet):
