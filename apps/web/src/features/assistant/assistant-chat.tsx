@@ -6,12 +6,15 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { useAssistant } from "@/hooks/use-assistant";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
+import type { AnimationKey } from "@/features/assistant/navi-avatar/types";
 import { useVoiceChat } from "@/features/assistant/voice-chat-context";
 import { cn } from "@/lib/utils";
 
 interface AssistantChatProps {
   open: boolean;
   onClose: () => void;
+  /** Animación de saludo del avatar al abrir el chat (p.ej. "shy"). */
+  avatarAnimation?: AnimationKey;
 }
 
 /**
@@ -21,7 +24,7 @@ interface AssistantChatProps {
  * Accesibilidad (M11): role="dialog" + aria-modal + focus trap y cierre con
  * Escape a través de @radix-ui/react-dialog (incluye restaure de foco).
  */
-export function AssistantChat({ open, onClose }: AssistantChatProps) {
+export function AssistantChat({ open, onClose, avatarAnimation }: AssistantChatProps) {
   const { t } = useTranslation();
   const { messages, thinking, send } = useAssistant();
   const { openVoice } = useVoiceChat();
@@ -58,7 +61,7 @@ export function AssistantChat({ open, onClose }: AssistantChatProps) {
 
                 {/* Cabecera */}
                 <div className="flex items-center gap-3 border-b border-glass-border px-4 py-3">
-                  <NaviAvatar size={40} thinking={thinking} />
+                  <NaviAvatar size={40} thinking={thinking} animation={avatarAnimation} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-on-surface">{t("assistant.name")}</div>
                     <div className="flex items-center gap-1 text-xs text-on-surface-variant">

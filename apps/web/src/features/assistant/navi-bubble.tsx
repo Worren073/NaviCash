@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { motion, useMotionValue, useMotionValueEvent, useSpring } from "motion/react";
 
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
+import type { AnimationKey } from "@/features/assistant/navi-avatar/types";
 import { cn } from "@/lib/utils";
 
 const BUBBLE_SIZE = 48;
@@ -53,6 +54,11 @@ interface NaviBubbleProps {
   onOpen: () => void;
   /** Estado del chat para el "punto" de atención. */
   hasUnread?: boolean;
+  /**
+   * Animación explícita del avatar (sueño/saludo). Sin ella Navi usa su
+   * comportamiento automático ("idle").
+   */
+  animation?: AnimationKey;
   /** Globo del tour guiado de Navi, anclado a la burbuja (hijo del wrapper). */
   tour?: React.ReactElement<{ side?: "left" | "right" }>;
   /** Override de className del wrapper (p.ej. z-50 para mostrar sobre overlays). */
@@ -79,7 +85,7 @@ interface NaviBubbleProps {
  * El wrapper `fixed` mueve tanto la burbuja como el globo del tutorial anclado
  * (que se posiciona a la izquierda o derecha según el lado de la pantalla).
  */
-export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, tourActive = false }: NaviBubbleProps) {
+export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, tourActive = false, animation }: NaviBubbleProps) {
   const { t } = useTranslation();
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -242,7 +248,7 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
         }}
         className="clip-rounded-full block rounded-full shadow-[0_6px_24px_rgba(0,106,97,0.25)] transition-shadow hover:shadow-[0_8px_32px_rgba(0,106,97,0.4)] active:scale-95"
       >
-        <NaviAvatar size={BUBBLE_SIZE} />
+        <NaviAvatar size={BUBBLE_SIZE} animation={animation} />
         {/* Punto de atención si hay novedades */}
         {hasUnread && (
           <span className="absolute -right-0.5 -top-0.5 z-10 h-3 w-3 rounded-full bg-status-delayed ring-2 ring-white/60" />

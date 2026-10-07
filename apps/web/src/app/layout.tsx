@@ -20,6 +20,7 @@ import { AssistantChat } from "@/features/assistant/assistant-chat";
 import { NaviVoice } from "@/features/assistant/navi-voice";
 import { NaviTourGlobe } from "@/features/assistant/navi-tour";
 import { useNaviTour } from "@/features/assistant/use-navi-tour";
+import { useNaviAnimationState } from "@/features/assistant/use-navi-animation-state";
 import { useResizeGuard } from "@/hooks/use-resize-guard";
 import { unlockSpeech } from "@/features/assistant/speech";
 import { VoiceChatContext } from "@/features/assistant/voice-chat-context";
@@ -261,6 +262,10 @@ export default function AppLayout() {
 
   useResizeGuard();
 
+  // Ciclo de sueño de Navi: duerme al cargar, se despierta con "shy" al abrir
+  // el chat y vuelve a dormir tras 2 min sin abrirlo.
+  const naviAnimation = useNaviAnimationState(assistantOpen);
+
   // Tour guiado de Navi: solo para usuarios que aún no lo completaron.
   const { data: me } = useMe();
   const { view, stepIndex, totalSteps, visible, next, skip } = useNaviTour(location.pathname);
@@ -295,6 +300,7 @@ export default function AppLayout() {
       </main>
       <NaviBubble
         onOpen={() => setAssistantOpen(true)}
+        animation={naviAnimation}
         // Durante el tour, la burbuja y su globo quedan sobre TopBar/BottomNav
         // (z-50) para que ningún botón del globo quede tapado.
         wrapperClassName={tourMounted ? "z-[60]" : undefined}
@@ -313,7 +319,7 @@ export default function AppLayout() {
           ) : undefined
         }
       />
-      <AssistantChat open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      <AssistantChat open={assistantOpen} onClose={() => setAssistantOpen(false)} avatarAnimation={naviAnimation} />
       <NaviVoice open={voiceOpen} onClose={() => setVoiceOpen(false)} />
       <DeviceInfo />
       <BottomNav onVoiceOpen={() => setVoiceOpen(true)} />
