@@ -432,7 +432,7 @@ export default {
       contact: "Proveedor",
       orderDate: "Pedido",
       total: "Total",
-      balance: "Saldo",
+      balance: "Saldo pendiente",
       status: "Estado",
     },
     detail: {

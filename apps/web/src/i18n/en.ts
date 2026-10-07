@@ -433,7 +433,7 @@ export default {
       contact: "Supplier",
       orderDate: "Ordered",
       total: "Total",
-      balance: "Balance",
+      balance: "Balance due",
       status: "Status",
     },
     detail: {
