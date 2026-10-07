@@ -162,12 +162,9 @@ export interface ProductDraft {
   is_active?: boolean;
 }
 
-export type OrderStatus =
-  | "borrador"
-  | "en_camino"
-  | "pagado"
-  | "recibido"
-  | "anulado";
+export type OrderStatus = "borrador" | "en_camino" | "recibido" | "anulado";
+
+export type OrderPaymentState = "none" | "partial" | "paid";
 
 /** Producto nuevo ingresado inline en un pedido; se crea al recibir el pedido. */
 export interface OrderNewProduct {
@@ -208,6 +205,7 @@ export interface Order {
   number: string;
   order_date: string;
   status: OrderStatus;
+  payment_state: OrderPaymentState;
   subtotal: string;
   shipping_amount: string;
   total: string;

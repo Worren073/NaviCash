@@ -269,7 +269,6 @@ class InvoicePayment(OwnedModel):
 ORDER_STATUSES = [
     ("borrador", "Borrador"),
     ("en_camino", "En camino"),
-    ("pagado", "Pagado"),
     ("recibido", "Recibido"),
     ("anulado", "Anulado"),
 ]

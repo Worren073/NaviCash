@@ -381,13 +381,14 @@ def _next_order_number(business) -> str:
     return f"PO-{count + 1:05d}"
 
 
-def _order_status_for_paid(amount_paid: Decimal, total: Decimal) -> str:
-    """Estado inicial de un pedido según el pago realizado al crearlo."""
-    if amount_paid <= 0:
-        return "borrador"
-    if amount_paid >= total:
-        return "pagado"
-    return "en_camino"
+def _order_status_for_paid(amount_paid: Decimal) -> str:
+    """Fase inicial de un pedido según el pago realizado al crearlo.
+
+    El pago es ortogonal a la fase: cualquier pago inicial saca el pedido de
+    borrador a «en camino»; sin pago queda en borrador (la píldora de pago es
+    independiente, ver ``OrderReadSerializer.payment_state``).
+    """
+    return "en_camino" if amount_paid > 0 else "borrador"
 
 
 def _parse_new_product(data: dict) -> dict:
@@ -601,7 +602,7 @@ def create_order(
         contact=contact,
         number=_next_order_number(business),
         order_date=order_date,
-        status=_order_status_for_paid(paid_amount, total),
+        status=_order_status_for_paid(paid_amount),
         subtotal=subtotal,
         shipping_amount=shipping_amount,
         total=total,
@@ -674,7 +675,7 @@ def record_order_payment(
         raise BusinessRuleError("El monto del pago debe ser mayor a cero.")
     if order.status == "anulado":
         raise BusinessRuleError("No se puede pagar un pedido anulado.")
-    if order.status == "pagado":
+    if order.balance_due <= 0:
         raise BusinessRuleError("El pedido ya está pagado.")
     if amount > order.balance_due:
         raise BusinessRuleError("El pago no puede superar el saldo pendiente.")
@@ -700,11 +701,10 @@ def record_order_payment(
 
     order.amount_paid = round_money(order.amount_paid + amount)
     order.balance_due = round_money(order.total - order.amount_paid)
-    if order.balance_due <= 0 and order.status != "recibido":
-        order.status = "pagado"
-    order.save(update_fields=["amount_paid", "balance_due", "status", "updated_at"])
+    order.save(update_fields=["amount_paid", "balance_due", "updated_at"])
 
-    if order.status == "pagado":
+    is_paid = order.balance_due <= 0
+    if is_paid:
         title = f"¡Pedido {order.number} pagado!"
         message = f"Saldo pagado a {order.contact.name}: {order.total} {order.currency}."
     else:

@@ -492,6 +492,7 @@ class OrderReadSerializer(serializers.ModelSerializer):
     contact = BusinessContactSerializer(read_only=True)
     items = OrderItemSerializer(many=True, read_only=True)
     payments = OrderPaymentSerializer(many=True, read_only=True)
+    payment_state = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -502,6 +503,7 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "number",
             "order_date",
             "status",
+            "payment_state",
             "subtotal",
             "shipping_amount",
             "total",
@@ -515,6 +517,13 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "business", "number", "created_at", "updated_at"]
+
+    def get_payment_state(self, obj: Order) -> str:
+        if obj.amount_paid <= 0:
+            return "none"
+        if obj.balance_due <= 0:
+            return "paid"
+        return "partial"
 
 
 class OrderWriteSerializer(serializers.ModelSerializer):

@@ -101,6 +101,7 @@ class TestOrders:
         assert resp.status_code == 201, resp.data
         assert resp.data["number"] == "PO-00001"
         assert resp.data["status"] == "borrador"
+        assert resp.data["payment_state"] == "none"
         assert resp.data["subtotal"] == "250.00"
         assert resp.data["shipping_amount"] == "10.00"
         assert resp.data["total"] == "260.00"
@@ -110,7 +111,7 @@ class TestOrders:
         assert len(resp.data["items"]) == 2
 
     def test_create_order_full_paid(self, api_client, business, supplier, product) -> None:
-        """paid_amount == total: pedido pagado y la salida descuenta la billetera."""
+        """paid_amount == total: fase «en camino» + píldora pagado, salida de billetera."""
         wallet = self._fund_wallet(business, "1000.00")
         resp = api_client.post(
             self.URL,
@@ -126,7 +127,8 @@ class TestOrders:
             format="json",
         )
         assert resp.status_code == 201, resp.data
-        assert resp.data["status"] == "pagado"
+        assert resp.data["status"] == "en_camino"
+        assert resp.data["payment_state"] == "paid"
         assert resp.data["amount_paid"] == "260.00"
         assert resp.data["balance_due"] == "0.00"
         wallet.refresh_from_db()
@@ -138,7 +140,7 @@ class TestOrders:
         assert len(payments) == 1
 
     def test_create_order_partial_paid(self, api_client, business, supplier, product) -> None:
-        """Un pago parcial inicial deja el pedido «en camino» fuera de borrador."""
+        """Un pago parcial inicial deja la fase en camino con píldora de pago parcial."""
         self._fund_wallet(business, "1000.00")
         resp = api_client.post(
             self.URL,
@@ -153,6 +155,7 @@ class TestOrders:
         )
         assert resp.status_code == 201, resp.data
         assert resp.data["status"] == "en_camino"
+        assert resp.data["payment_state"] == "partial"
         assert resp.data["amount_paid"] == "100.00"
         assert resp.data["total"] == "250.00"
         assert resp.data["balance_due"] == "150.00"
@@ -173,6 +176,7 @@ class TestOrders:
         )
         assert resp.status_code == 201, resp.data
         assert resp.data["status"] == "en_camino"
+        assert resp.data["payment_state"] == "partial"
         assert resp.data["balance_due"] == "150.00"
 
     def test_paid_exceeds_total(self, api_client, business, supplier, product) -> None:
@@ -361,7 +365,7 @@ class TestOrders:
         assert resp.status_code == 400
 
     def test_pay_full_generates_notification(self, api_client, business, supplier, product) -> None:
-        """El pago que liquida el pedido notifica (order_paid) y descuenta billetera."""
+        """El pago que liquida el pedido lo deja pagado sin tocar su fase y notifica."""
         wallet = self._fund_wallet(business, "1000.00")
         order_id = api_client.post(
             self.URL,
@@ -373,13 +377,61 @@ class TestOrders:
         ).data["id"]
         resp = api_client.post(f"{self.URL}{order_id}/pay/", {"amount": "250.00"})
         assert resp.status_code == 200
-        assert resp.data["status"] == "pagado"
+        assert resp.data["status"] == "borrador"
+        assert resp.data["payment_state"] == "paid"
         assert resp.data["balance_due"] == "0.00"
         wallet.refresh_from_db()
         assert wallet.saldo == Decimal("750.00")
         assert Notification.objects.filter(
             user=api_client.user, kind="order_paid", scope="business"
         ).count() == 1
+
+    def test_pay_does_not_change_phase(self, api_client, business, supplier, product) -> None:
+        """Pagar un pedido en camino no lo saca de su fase: en_camino + pagado."""
+        wallet = self._fund_wallet(business, "1000.00")
+        order_id = api_client.post(
+            self.URL,
+            {
+                "contact": str(supplier.id),
+                "items": [{"product": str(product.id), "description": "X", "quantity": "1", "unit_price": "250.00"}],
+            },
+            format="json",
+        ).data["id"]
+        assert api_client.post(f"{self.URL}{order_id}/send/").status_code == 200
+        resp = api_client.post(f"{self.URL}{order_id}/pay/", {"amount": "250.00"})
+        assert resp.status_code == 200
+        assert resp.data["status"] == "en_camino"
+        assert resp.data["payment_state"] == "paid"
+
+    def test_pay_partial_keeps_phase(self, api_client, business, supplier, product) -> None:
+        """Un pago parcial no cambia la fase del pedido."""
+        self._fund_wallet(business, "1000.00")
+        order_id = api_client.post(
+            self.URL,
+            {
+                "contact": str(supplier.id),
+                "items": [{"product": str(product.id), "description": "X", "quantity": "1", "unit_price": "250.00"}],
+            },
+            format="json",
+        ).data["id"]
+        assert api_client.post(f"{self.URL}{order_id}/send/").status_code == 200
+        resp = api_client.post(f"{self.URL}{order_id}/pay/", {"amount": "100.00"})
+        assert resp.status_code == 200
+        assert resp.data["status"] == "en_camino"
+        assert resp.data["payment_state"] == "partial"
+        assert resp.data["balance_due"] == "150.00"
+
+    def test_receive_paid_order_keeps_paid_pill(self, api_client, business, supplier) -> None:
+        """Recibir un pedido pagado muestra fase recibido + píldora de pagado."""
+        wallet = self._fund_wallet(business, "1000.00")
+        order_id = api_client.post(self.URL, self._new_product_payload(supplier), format="json").data["id"]
+        paid = api_client.post(f"{self.URL}{order_id}/pay/", {"amount": "60.00"})
+        assert paid.status_code == 200, paid.data
+        receive = api_client.post(f"{self.URL}{order_id}/receive/")
+        assert receive.status_code == 200, receive.data
+        assert receive.data["status"] == "recibido"
+        assert receive.data["payment_state"] == "paid"
+        assert receive.data["items"][0]["product"] is not None
 
     def test_send_action(self, api_client, business, supplier, product) -> None:
         """POST send marca el pedido en borrador como «en camino»."""

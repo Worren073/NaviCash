@@ -34,7 +34,7 @@ import { useOrder } from "@/hooks/use-queries";
 import { queryKeys } from "@/hooks/use-queries";
 import { api, ApiErrorClass } from "@/lib/api";
 import { formatMoney, formatDate } from "@/lib/format";
-import { OrderStatusBadge } from "./orders-page";
+import { OrderStatusCluster } from "./orders-page";
 
 export default function OrderDetailPage() {
   const { t } = useTranslation();
@@ -161,7 +161,7 @@ export default function OrderDetailPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-on-surface">{order.number}</h1>
-                <OrderStatusBadge status={order.status} />
+                <OrderStatusCluster order={order} />
               </div>
               <div className="flex flex-wrap gap-x-4 text-sm text-on-surface-variant">
                 <span>

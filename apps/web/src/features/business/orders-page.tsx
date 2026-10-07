@@ -10,13 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/segmented";
 import { useOrders } from "@/hooks/use-queries";
 import { formatMoney, formatDate } from "@/lib/format";
-import type { Order, OrderStatus } from "@/lib/types";
+import type { Order, OrderPaymentState, OrderStatus } from "@/lib/types";
 
 export const ORDER_STATUS_OPTIONS: Array<{ value: OrderStatus | ""; label: string }> = [
   { value: "", label: "orders.statuses.all" },
   { value: "borrador", label: "orders.statuses.borrador" },
   { value: "en_camino", label: "orders.statuses.en_camino" },
-  { value: "pagado", label: "orders.statuses.pagado" },
   { value: "recibido", label: "orders.statuses.recibido" },
   { value: "anulado", label: "orders.statuses.anulado" },
 ];
@@ -24,15 +23,31 @@ export const ORDER_STATUS_OPTIONS: Array<{ value: OrderStatus | ""; label: strin
 const STATUS_VARIANT: Record<OrderStatus, "secondary" | "pending" | "success" | "warning" | "outline"> = {
   borrador: "secondary",
   en_camino: "pending",
-  pagado: "success",
   recibido: "warning",
   anulado: "outline",
 };
 
 export function OrderStatusBadge({ status }: { status: OrderStatus }) {
   const { t } = useTranslation();
+  return <Badge variant={STATUS_VARIANT[status]}>{t(`orders.statuses.${status}`)}</Badge>;
+}
+
+export function OrderPaymentBadge({ paymentState }: { paymentState: OrderPaymentState }) {
+  const { t } = useTranslation();
+  if (paymentState === "none") return null;
   return (
-    <Badge variant={STATUS_VARIANT[status]}>{t(`orders.statuses.${status}`)}</Badge>
+    <Badge variant={paymentState === "paid" ? "success" : "pending"}>
+      {t(paymentState === "paid" ? "orders.statuses.paid" : "orders.statuses.partial")}
+    </Badge>
+  );
+}
+
+export function OrderStatusCluster({ order }: { order: Order }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <OrderStatusBadge status={order.status} />
+      <OrderPaymentBadge paymentState={order.payment_state} />
+    </span>
   );
 }
 
@@ -46,7 +61,7 @@ function OrderCard({ order }: { order: Order }) {
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-on-surface">{order.number}</span>
-          <OrderStatusBadge status={order.status} />
+          <OrderStatusCluster order={order} />
         </div>
         <div className="mt-1 truncate text-sm text-on-surface-variant">{order.contact.name}</div>
         <div className="text-xs text-on-surface-variant">

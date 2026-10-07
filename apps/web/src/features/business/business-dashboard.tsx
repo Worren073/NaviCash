@@ -89,7 +89,7 @@ export function BusinessDashboard() {
     .filter((inv) => ["enviada", "parcial", "vencida"].includes(inv.status))
     .reduce((sum, inv) => sum + Number(inv.balance_due), 0);
   const payable = (orders.data?.results ?? [])
-    .filter((or) => ["borrador", "en_camino", "pagado"].includes(or.status))
+    .filter((or) => !["recibido", "anulado"].includes(or.status))
     .reduce((sum, or) => sum + Number(or.balance_due), 0);
   const walletCurrency = data?.currency ?? "USD";
 

@@ -317,7 +317,7 @@ export default {
       contact: "Customer",
       dueDate: "Due date",
       total: "Total",
-      balance: "Balance",
+      balance: "Balance due",
       status: "Status",
     },
     detail: {
@@ -423,9 +423,10 @@ export default {
       all: "All",
       borrador: "Draft",
       en_camino: "On the way",
-      pagado: "Paid",
       recibido: "Received",
       anulado: "Cancelled",
+      paid: "Paid",
+      partial: "Partially paid",
     },
     list: {
       number: "Number",
