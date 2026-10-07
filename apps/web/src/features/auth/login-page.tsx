@@ -19,6 +19,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 429: segundos de espera que pidió el servidor (throttle/lockout o el borde
+  // de la infra). Mientras dure, el botón queda deshabilitado.
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = window.setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [cooldown]);
 
   // Terms acceptance modal state
   const [termsOpen, setTermsOpen] = useState(false);
@@ -59,8 +68,13 @@ export default function LoginPage() {
         });
     },
     onError: (err) => {
-      if (err instanceof ApiErrorClass) setError(err.message);
-      else setError(t("errors.generic"));
+      if (err instanceof ApiErrorClass) {
+        // 429: se deshabilita el envío durante la espera que pidió el servidor
+        // y se muestra su mensaje (trae el motivo real cuando procede del API;
+        // el del borde de la infraestructura ya viene traducido por api.ts).
+        if (err.status === 429) setCooldown(err.retryAfter ?? 30);
+        setError(err.message);
+      } else setError(t("errors.generic"));
     },
   });
 
@@ -105,6 +119,7 @@ export default function LoginPage() {
         className="glass-panel-elevated clip-rounded-2xl w-full max-w-sm space-y-4 rounded-2xl p-6"
         onSubmit={(e) => {
           e.preventDefault();
+          if (cooldown > 0 || login.isPending) return;
           setError(null);
           setNotice(null);
           login.mutate();
@@ -154,9 +169,9 @@ export default function LoginPage() {
           </p>
         )}
 
-        <Button type="submit" className="w-full" disabled={login.isPending}>
+        <Button type="submit" className="w-full" disabled={login.isPending || cooldown > 0}>
           <LogIn />
-          {login.isPending ? t("common.loading") : t("auth.login")}
+          {login.isPending ? t("common.loading") : cooldown > 0 ? t("common.cooldown", { seconds: cooldown }) : t("auth.login")}
         </Button>
 
         <p className="text-center text-sm text-on-surface-variant">

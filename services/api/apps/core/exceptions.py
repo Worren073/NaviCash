@@ -12,7 +12,7 @@ Todos los errores devueltos por NaviCash usan la forma:
 """
 
 from rest_framework import status
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, Throttled
 from rest_framework.views import exception_handler
 
 
@@ -59,4 +59,10 @@ def base_exception_handler(exc, context):
         "code": code,
         "errors": errors,
     }
+
+    # El throttle de DRF no añade Retry-After: sin ella el front no sabe cuánto
+    # esperar y no puede bloquear el botón con una cuenta atrás exacta.
+    if isinstance(exc, Throttled) and exc.wait:
+        response["Retry-After"] = str(int(exc.wait) + 1)
+
     return response

@@ -29,6 +29,7 @@ export default {
     more: "Más",
     loading: "Cargando…",
     retry: "Reintentar",
+    cooldown: "Reintenta en {{seconds}} s",
     prev: "Anterior",
     next: "Siguiente",
     totalBalance: "Saldo total",
@@ -215,6 +216,7 @@ export default {
       viewAll: "Ver operaciones",
       porCobrar: "Por cobrar",
       seeInvoices: "Ver facturas",
+      quickLinks: "Accesos rápidos",
     },
     onboarding: {
       title: "Crea tu negocio",

@@ -14,12 +14,15 @@ export interface ApiError {
   message: string;
   code?: string;
   fieldErrors?: Record<string, string[]>;
+  /** Segundos de espera indicados por el servidor en un 429 (Retry-After). */
+  retryAfter?: number;
 }
 
 export class ApiErrorClass extends Error {
   status: number;
   code?: string;
   fieldErrors?: Record<string, string[]>;
+  retryAfter?: number;
 
   constructor(status: number, err: ApiError) {
     super(err.message);
@@ -27,6 +30,7 @@ export class ApiErrorClass extends Error {
     this.status = status;
     this.code = err.code;
     this.fieldErrors = err.fieldErrors;
+    this.retryAfter = err.retryAfter;
   }
 }
 
@@ -127,24 +131,51 @@ export async function refreshSession(): Promise<RefreshOutcome> {
   return outcome;
 }
 
-function normalizeError(status: number, payload: unknown): ApiError {
+/**
+ * Lee la cabecera Retry-After de un 429. Soporta los dos formatos admitidos:
+ * segundos ("30") y fecha HTTP (Wed, 21 Oct 2015 07:28:00 GMT).
+ */
+function parseRetryAfter(raw: string | null): number | undefined {
+  if (!raw) return undefined;
+  const seconds = Number(raw.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
+  const date = Date.parse(raw);
+  if (Number.isNaN(date)) return undefined;
+  return Math.max(1, Math.ceil((date - Date.now()) / 1000));
+}
+
+function normalizeError(status: number, payload: unknown, retryAfter?: number): ApiError {
+  // El 429 puede venir del throttle/lockout de Django (con `detail`) o del
+  // borde (Cloudflare/Render) con un cuerpo no JSON: en ambos casos hay que
+  // dar un mensaje entendible en vez de "Error inesperado (429)".
+  const throttledMessage =
+    retryAfter !== undefined
+      ? `Demasiados intentos. Vuelve a intentarlo en ${retryAfter} s.`
+      : "Demasiados intentos. Espera unos segundos antes de reintentar.";
+  const fallback = status === 429 ? throttledMessage : `Error inesperado (${status}).`;
+
   if (payload && typeof payload === "object") {
     const p = payload as Record<string, unknown>;
     const message =
-      typeof p.detail === "string"
+      typeof p.detail === "string" && p.detail.trim().length > 0
         ? p.detail
-        : typeof p.message === "string"
+        : typeof p.message === "string" && p.message.trim().length > 0
           ? p.message
-          : `Error inesperado (${status}).`;
+          : fallback;
     const fieldErrors: Record<string, string[]> = {};
     if (p.errors && typeof p.errors === "object") {
       for (const [key, value] of Object.entries(p.errors as Record<string, unknown>)) {
         fieldErrors[key] = Array.isArray(value) ? value.map(String) : [String(value)];
       }
     }
-    return { message, code: typeof p.code === "string" ? p.code : undefined, fieldErrors };
+    return {
+      message,
+      code: typeof p.code === "string" ? p.code : status === 429 ? "throttled" : undefined,
+      fieldErrors,
+      retryAfter: status === 429 ? retryAfter : undefined,
+    };
   }
-  return { message: `Error inesperado (${status}).` };
+  return { message: fallback, code: status === 429 ? "throttled" : undefined, retryAfter };
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -193,7 +224,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const payload = await resp.json().catch(() => null);
 
   if (!resp.ok) {
-    throw new ApiErrorClass(resp.status, normalizeError(resp.status, payload));
+    const retryAfter = resp.status === 429 ? parseRetryAfter(resp.headers.get("Retry-After")) : undefined;
+    throw new ApiErrorClass(resp.status, normalizeError(resp.status, payload, retryAfter));
   }
   return payload as T;
 }

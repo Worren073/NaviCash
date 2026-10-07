@@ -190,28 +190,30 @@ export function Sidebar({ onVoiceOpen }: { onVoiceOpen: () => void }) {
         {PRIMARY_NAV[view].map((item) => (
           <SidebarLink key={item.to} {...item} expanded={expanded} />
         ))}
-        <div
-          className={cn(
-            "flex items-center gap-3 py-1.5",
-            ANIM_CLS,
-            expanded ? "px-3" : "px-1"
-          )}
-        >
-          <AddButton
-            onVoiceOpen={onVoiceOpen}
-            className="h-9 w-9 shrink-0 translate-y-0 shadow-md shadow-primary/20"
-            iconClassName="h-5 w-5"
-          />
-          <span
+        {view === "personal" && (
+          <div
             className={cn(
-              "inline-block overflow-hidden whitespace-nowrap text-sm font-medium text-on-surface",
+              "flex items-center gap-3 py-1.5",
               ANIM_CLS,
-              expanded ? "translate-x-0 opacity-100" : "-translate-x-3 opacity-0"
+              expanded ? "px-3" : "px-1"
             )}
           >
-            {t("nav.add")}
-          </span>
-        </div>
+            <AddButton
+              onVoiceOpen={onVoiceOpen}
+              className="h-9 w-9 shrink-0 translate-y-0 shadow-md shadow-primary/20"
+              iconClassName="h-5 w-5"
+            />
+            <span
+              className={cn(
+                "inline-block overflow-hidden whitespace-nowrap text-sm font-medium text-on-surface",
+                ANIM_CLS,
+                expanded ? "translate-x-0 opacity-100" : "-translate-x-3 opacity-0"
+              )}
+            >
+              {t("nav.add")}
+            </span>
+          </div>
+        )}
       </nav>
       {SECONDARY_NAV[view].length > 0 && (
         <div className="mt-4 border-t border-glass-border pt-3">

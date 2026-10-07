@@ -481,6 +481,28 @@ class TestAuthFlow:
             statuses.append(resp.status_code)
         assert 429 in statuses
 
+    def test_login_throttle_deja_traza_para_atribuir_el_429(self, caplog) -> None:
+        """El corte del throttle registra THROTTLED con la identidad usada (A1).
+
+        Un 429 sin cuerpo legible no procede de Django (el handler global
+        siempre emite ``detail``): esta traza permite distinguir el throttle
+        del login de un 429 del borde de la infraestructura.
+        """
+        from django.core.cache import cache
+        from rest_framework.test import APIClient
+
+        cache.clear()
+        caplog.set_level(logging.WARNING, logger="apps.accounts.security")
+        client = APIClient()
+        for _ in range(6):
+            resp = client.post(
+                self.LOGIN_URL, {"email": "traza@example.com", "password": "incorrecta"}
+            )
+        assert resp.status_code == 429
+        assert resp.headers.get("Retry-After"), "el 429 del throttle debe llevar Retry-After"
+        assert "THROTTLED scope=login" in caplog.text
+        assert "ident=" in caplog.text
+
     def test_refresh_rejects_untrusted_origin(self) -> None:
         """Refresh con Origin de otro sitio responde 401 (defensa CSRF).
 

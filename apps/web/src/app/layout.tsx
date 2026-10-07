@@ -194,9 +194,12 @@ function TopBar() {
 function BottomNav({ onVoiceOpen }: { onVoiceOpen: () => void }) {
   const { view } = useNavView();
   const items = BOTTOM_NAV[view];
+  // 5 iconos en ambas vistas: 4 enlaces + "+" en personal; 5 enlaces sin "+"
+  // en negocio (la bottom-nav no supera nunca los 5 elementos).
+  const showAdd = view === "personal";
   const mid = Math.ceil(items.length / 2);
-  const left = items.slice(0, mid);
-  const right = items.slice(mid);
+  const left = showAdd ? items.slice(0, mid) : items;
+  const right = showAdd ? items.slice(mid) : [];
 
   return (
     <nav
@@ -206,7 +209,7 @@ function BottomNav({ onVoiceOpen }: { onVoiceOpen: () => void }) {
       {left.map(({ to, label, icon, matchEnd }) => (
         <NavLink key={to} to={to} label={label} icon={icon} matchEnd={matchEnd} />
       ))}
-      <AddButton onVoiceOpen={onVoiceOpen} />
+      {showAdd && <AddButton onVoiceOpen={onVoiceOpen} />}
       {right.map(({ to, label, icon, matchEnd }) => (
         <NavLink key={to} to={to} label={label} icon={icon} matchEnd={matchEnd} />
       ))}

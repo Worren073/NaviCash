@@ -55,6 +55,7 @@ from apps.accounts.services import (
     maybe_purge_daily,
     schedule_account_deletion,
 )
+from apps.core.throttling import LoggedScopedRateThrottle
 from apps.notifications.models import Notification
 
 
@@ -222,7 +223,9 @@ class LoginView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    # LoggedScopedRateThrottle = mismo scope/tasa que ScopedRateThrottle, pero
+    # deja traza THROTTLED para poder atribuir el origen del 429.
+    throttle_classes = [LoggedScopedRateThrottle]
     throttle_scope = "login"
 
     def post(self, request):

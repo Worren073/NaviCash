@@ -45,15 +45,22 @@ export const SECONDARY_NAV: Record<NavView, readonly NavItem[]> = {
   business: [],
 };
 
-// La bottom-nav intercala el botón "+" tras el segundo elemento.
-// El perfil se mantiene aquí para móvil, aunque en desktop/tablet vive en el TopBar.
+// La bottom-nav móvil muestra exactamente 5 iconos por vista: 4 enlaces + el
+// botón "+" en personal, y 5 enlaces sin "+" en negocio (el "+" vive solo en
+// la vista personal). El perfil se mantiene aquí para móvil, aunque en
+// desktop/tablet vive en el TopBar. Cobranza e Inventario quedan fuera del
+// bottom-nav de negocio: siguen en la sidebar de escritorio y en los accesos
+// rápidos del dashboard de negocio.
 export const BOTTOM_NAV: Record<NavView, readonly NavItem[]> = {
   personal: [
     ...PRIMARY_NAV.personal,
     { to: "/profile", label: "nav.profile", icon: UserIcon },
   ],
   business: [
-    ...PRIMARY_NAV.business,
+    { to: "/business", label: "nav.business", icon: Briefcase, matchEnd: true },
+    { to: "/transactions", label: "nav.transactions", icon: SendHorizontalIcon },
+    { to: "/business/contacts", label: "nav.contacts", icon: Users },
+    { to: "/business/invoices", label: "nav.invoices", icon: FileText },
     { to: "/profile", label: "nav.profile", icon: UserIcon },
   ],
 };

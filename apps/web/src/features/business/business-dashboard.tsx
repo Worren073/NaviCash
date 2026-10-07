@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import {
   ArrowLeftRight,
   ChevronRight,
+  HandCoins,
+  Package,
   PersonStanding,
   Plus,
   ReceiptText,
@@ -200,6 +202,32 @@ export function BusinessDashboard() {
           </Button>
         </Link>
       </div>
+
+      <section>
+        <h2 className="mb-3 text-lg font-semibold text-on-surface">
+          {t("business.dashboard.quickLinks")}
+        </h2>
+        <div className="grid grid-cols-2 gap-2 md:gap-3">
+          <Link
+            to="/business/collection"
+            className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <HandCoins className="h-5 w-5" />
+            </div>
+            <span className="text-sm font-medium text-on-surface">{t("nav.collection")}</span>
+          </Link>
+          <Link
+            to="/business/inventory"
+            className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-600">
+              <Package className="h-5 w-5" />
+            </div>
+            <span className="text-sm font-medium text-on-surface">{t("nav.inventory")}</span>
+          </Link>
+        </div>
+      </section>
 
       <section>
         <div className="mb-4 flex items-center justify-between">

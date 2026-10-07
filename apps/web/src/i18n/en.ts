@@ -29,6 +29,7 @@ export default {
     more: "More",
     loading: "Loading…",
     retry: "Retry",
+    cooldown: "Retry in {{seconds}} s",
     prev: "Previous",
     next: "Next",
     totalBalance: "Total balance",
@@ -205,7 +206,7 @@ export default {
     title: "My business",
     subtitle: "Business account and operations.",
     created: "Business created.",
-dashboard: {
+    dashboard: {
       saldo: "Business balance",
       ingresos: "Month income",
       egresos: "Month expenses",
@@ -216,6 +217,7 @@ dashboard: {
       viewAll: "View operations",
       porCobrar: "Receivable",
       seeInvoices: "View invoices",
+      quickLinks: "Quick links",
     },
     onboarding: {
       title: "Create your business",
