@@ -25,20 +25,20 @@
       },
       "eyes": {
         "left": {
-          "width": 20,
-          "height": 50,
+          "width": 12,
+          "height": 51.75,
           "x": 0,
           "y": -7,
           "angle": 0
         },
         "right": {
-          "width": 20,
-          "height": 50,
+          "width": 12,
+          "height": 51.75,
           "x": 0,
           "y": -7,
           "angle": 0
         },
-        "spacing": 35
+        "spacing": 21
       },
       "perspective": 1,
       "motion": {
@@ -54,20 +54,20 @@
       },
       "eyes": {
         "left": {
-          "width": 22.501171874999997,
-          "height": 42.37773437499999,
+          "width": 13.501,
+          "height": 43.861,
           "x": 0,
           "y": -20.5,
           "angle": 0
         },
         "right": {
-          "width": 22.501171874999997,
-          "height": 42.37773437499999,
+          "width": 13.501,
+          "height": 43.861,
           "x": 0,
           "y": -20.5,
           "angle": 0
         },
-        "spacing": 54.3
+        "spacing": 32.58
       },
       "perspective": 1,
       "motion": {
@@ -83,20 +83,20 @@
       },
       "eyes": {
         "left": {
-          "width": 22.401171875000003,
-          "height": 54.5703125,
+          "width": 13.441,
+          "height": 56.48,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 22.401171875000003,
-          "height": 54.5703125,
+          "width": 13.441,
+          "height": 56.48,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 57.7
+        "spacing": 34.62
       },
       "perspective": 1,
       "motion": {
@@ -112,20 +112,20 @@
       },
       "eyes": {
         "left": {
-          "width": 23.090625000000003,
-          "height": 57.6796875,
+          "width": 21.905,
+          "height": 36.283,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 49.924609375,
-          "height": 12.431640625,
+          "width": 21.905,
+          "height": 36.283,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 56.3
+        "spacing": 33.78
       },
       "perspective": 1,
       "motion": {
@@ -141,20 +141,20 @@
       },
       "eyes": {
         "left": {
-          "width": 22.066796874999994,
-          "height": 39.599218750000006,
+          "width": 13.24,
+          "height": 40.986,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 22.066796874999994,
-          "height": 39.599218750000006,
+          "width": 13.24,
+          "height": 40.986,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 50.900000000000006
+        "spacing": 30.54
       },
       "perspective": 1,
       "motion": {
@@ -170,20 +170,20 @@
       },
       "eyes": {
         "left": {
-          "width": 52.084765625,
-          "height": 51.46715970849806,
+          "width": 31.56,
+          "height": 53.642,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 53.11410881916996,
-          "height": 52.18769994441695,
+          "width": 31.56,
+          "height": 53.642,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 69.5
+        "spacing": 41.7
       },
       "perspective": 1,
       "motion": {
@@ -199,20 +199,20 @@
       },
       "eyes": {
         "left": {
-          "width": 51.68336723153048,
-          "height": 51.74054108796297,
+          "width": 31.01,
+          "height": 53.551,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 51.68336723153048,
-          "height": 51.74054108796297,
+          "width": 31.01,
+          "height": 53.551,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 70.9
+        "spacing": 42.54
       },
       "perspective": 1,
       "motion": {
@@ -228,20 +228,20 @@
       },
       "eyes": {
         "left": {
-          "width": 51.775000000000006,
-          "height": 13.02734375,
+          "width": 31.065,
+          "height": 11.724,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 51.775000000000006,
-          "height": 13.02734375,
+          "width": 31.065,
+          "height": 11.724,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 63.872265625
+        "spacing": 28.742
       },
       "perspective": 1,
       "motion": {
@@ -257,20 +257,20 @@
       },
       "eyes": {
         "left": {
-          "width": 20.908203125,
-          "height": 40.400781249999994,
+          "width": 12.545,
+          "height": 41.814,
           "x": 0,
           "y": 0,
           "angle": -30.865625
         },
         "right": {
-          "width": 20.908203125,
-          "height": 40.400781249999994,
+          "width": 12.545,
+          "height": 41.814,
           "x": 0,
           "y": 0,
           "angle": 28.781640625
         },
-        "spacing": 52.059765625
+        "spacing": 31.236
       },
       "perspective": 1,
       "motion": {
@@ -286,20 +286,20 @@
       },
       "eyes": {
         "left": {
-          "width": 20.605859374999994,
-          "height": 47.769921874999994,
+          "width": 12.364,
+          "height": 49.442,
           "x": 0,
           "y": 0,
           "angle": 23.523046875000002
         },
         "right": {
-          "width": 20.605859374999994,
-          "height": 47.769921874999994,
+          "width": 12.364,
+          "height": 49.442,
           "x": 0,
           "y": 0,
           "angle": -24.042578125000002
         },
-        "spacing": 54.900000000000006
+        "spacing": 32.94
       },
       "perspective": 1,
       "motion": {
@@ -315,20 +315,20 @@
       },
       "eyes": {
         "left": {
-          "width": 42.5,
-          "height": 41.8,
+          "width": 19.38,
+          "height": 33.12,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 22.1,
-          "height": 22.200000000000003,
+          "width": 19.38,
+          "height": 33.12,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 61.7
+        "spacing": 37.02
       },
       "perspective": 1,
       "motion": {
@@ -344,20 +344,20 @@
       },
       "eyes": {
         "left": {
-          "width": 23.836718749999996,
-          "height": 58.130078125,
+          "width": 14.302,
+          "height": 60.165,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 23.836718749999996,
-          "height": 58.130078125,
+          "width": 14.302,
+          "height": 60.165,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 56.8
+        "spacing": 34.08
       },
       "perspective": 1,
       "motion": {
@@ -373,20 +373,20 @@
       },
       "eyes": {
         "left": {
-          "width": 34.20086765973213,
-          "height": 85.33085937499999,
+          "width": 20.521,
+          "height": 87.203,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 34.20086765973213,
-          "height": 83.17775668160692,
+          "width": 20.521,
+          "height": 87.203,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 59.414453124999994
+        "spacing": 35.649
       },
       "perspective": 1,
       "motion": {
@@ -402,20 +402,20 @@
       },
       "eyes": {
         "left": {
-          "width": 56.133984375,
-          "height": 15.5,
+          "width": 33.68,
+          "height": 13.795,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 56.133984375,
-          "height": 15.155468749999997,
+          "width": 33.68,
+          "height": 13.795,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 69.276171875
+        "spacing": 31.175
       },
       "perspective": 1,
       "motion": {
@@ -431,20 +431,20 @@
       },
       "eyes": {
         "left": {
-          "width": 31.25390625,
-          "height": 76.720703125,
+          "width": 18.752,
+          "height": 79.405,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 31.25390625,
-          "height": 76.720703125,
+          "width": 18.752,
+          "height": 79.405,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 68.7
+        "spacing": 41.22
       },
       "perspective": 1,
       "motion": {
@@ -460,20 +460,20 @@
       },
       "eyes": {
         "left": {
-          "width": 24.306250000000006,
-          "height": 59.281640624999994,
+          "width": 21.97,
+          "height": 37.616,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 48.92421875000001,
-          "height": 13.408203125,
+          "width": 21.97,
+          "height": 37.616,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 62.218359375000006
+        "spacing": 37.331
       },
       "perspective": 1,
       "motion": {
@@ -489,20 +489,20 @@
       },
       "eyes": {
         "left": {
-          "width": 22.4609375,
-          "height": 39.820703124999994,
+          "width": 13.477,
+          "height": 41.214,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 22.4609375,
-          "height": 39.820703124999994,
+          "width": 13.477,
+          "height": 41.214,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 53.900000000000006
+        "spacing": 32.34
       },
       "perspective": 1,
       "motion": {
@@ -518,20 +518,20 @@
       },
       "eyes": {
         "left": {
-          "width": 19.602343750000003,
-          "height": 48.63984375,
+          "width": 11.761,
+          "height": 50.342,
           "x": 0,
           "y": 0,
           "angle": -27.606640625
         },
         "right": {
-          "width": 19.602343750000003,
-          "height": 48.63984375,
+          "width": 11.761,
+          "height": 50.342,
           "x": 0,
           "y": 0,
           "angle": 26.1484375
         },
-        "spacing": 55.099999999999994
+        "spacing": 33.06
       },
       "perspective": 1,
       "motion": {
@@ -547,20 +547,20 @@
       },
       "eyes": {
         "left": {
-          "width": 19.045145681988203,
-          "height": 43.370703125000006,
+          "width": 11.427,
+          "height": 44.888,
           "x": 0,
           "y": 0,
           "angle": 26.2921875
         },
         "right": {
-          "width": 19.045145681988203,
-          "height": 43.370703125000006,
+          "width": 11.427,
+          "height": 44.888,
           "x": 0,
           "y": 0,
           "angle": -20.249218750000004
         },
-        "spacing": 51.73124999999999
+        "spacing": 31.039
       },
       "perspective": 1,
       "motion": {
@@ -576,20 +576,20 @@
       },
       "eyes": {
         "left": {
-          "width": 42.1,
-          "height": 41.7,
+          "width": 19.29,
+          "height": 33.017,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 22.200000000000003,
-          "height": 22.099999999999994,
+          "width": 19.29,
+          "height": 33.017,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 60.400000000000006
+        "spacing": 36.24
       },
       "perspective": 1,
       "motion": {
@@ -605,20 +605,20 @@
       },
       "eyes": {
         "left": {
-          "width": 23.045703125000003,
-          "height": 58.685156250000006,
+          "width": 13.827,
+          "height": 60.738,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 23.045703125000003,
-          "height": 58.685156250000006,
+          "width": 13.827,
+          "height": 60.738,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 56.2
+        "spacing": 33.72
       },
       "perspective": 1,
       "motion": {
@@ -634,20 +634,20 @@
       },
       "eyes": {
         "left": {
-          "width": 35.452734375,
-          "height": 79.10429687499999,
+          "width": 21.272,
+          "height": 81.873,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 35.452734375,
-          "height": 79.10429687499999,
+          "width": 21.272,
+          "height": 81.873,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 70.8
+        "spacing": 42.48
       },
       "perspective": 1,
       "motion": {
@@ -663,20 +663,20 @@
       },
       "eyes": {
         "left": {
-          "width": 51.400000000000006,
-          "height": 50.099999999999994,
+          "width": 30.57,
+          "height": 51.491,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 50.5,
-          "height": 49.400000000000006,
+          "width": 30.57,
+          "height": 51.491,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 69
+        "spacing": 41.4
       },
       "perspective": 1,
       "motion": {
@@ -692,20 +692,20 @@
       },
       "eyes": {
         "left": {
-          "width": 55.672265624999994,
-          "height": 14.616015625000003,
+          "width": 33.403,
+          "height": 13.155,
           "x": 0,
           "y": 0,
           "angle": 0
         },
         "right": {
-          "width": 55.672265624999994,
-          "height": 14.616015625000003,
+          "width": 33.403,
+          "height": 13.155,
           "x": 0,
           "y": 0,
           "angle": 0
         },
-        "spacing": 68.416796875
+        "spacing": 30.787
       },
       "perspective": 1,
       "motion": {
@@ -721,20 +721,20 @@
       },
       "eyes": {
         "left": {
-          "width": 23.969921874999997,
-          "height": 55.892968749999994,
+          "width": 23.26,
+          "height": 35.825,
           "x": 0,
           "y": -9.8,
           "angle": 0
         },
         "right": {
-          "width": 53.56328125,
-          "height": 13.333593750000006,
+          "width": 23.26,
+          "height": 35.825,
           "x": 0,
           "y": -9.8,
           "angle": 0
         },
-        "spacing": 59.943749999999994
+        "spacing": 35.966
       },
       "perspective": 1,
       "motion": {
@@ -750,20 +750,20 @@
       },
       "eyes": {
         "left": {
-          "width": 21.5,
-          "height": 32,
+          "width": 13.41,
+          "height": 33.896,
           "x": 0,
           "y": 40,
           "angle": 0
         },
         "right": {
-          "width": 23.200000000000003,
-          "height": 33.5,
+          "width": 13.41,
+          "height": 33.896,
           "x": 0,
           "y": 40,
           "angle": 0
         },
-        "spacing": 51.2
+        "spacing": 30.72
       },
       "perspective": 1,
       "motion": {
@@ -779,20 +779,20 @@
       },
       "eyes": {
         "left": {
-          "width": 27.12656249999999,
-          "height": 63.028125,
+          "width": 16.276,
+          "height": 65.235,
           "x": 0,
           "y": 0,
           "angle": -36.244531249999994
         },
         "right": {
-          "width": 27.12656249999999,
-          "height": 63.028125,
+          "width": 16.276,
+          "height": 65.235,
           "x": 0,
           "y": 0,
           "angle": 27.730078125000002
         },
-        "spacing": 68.7
+        "spacing": 41.22
       },
       "perspective": 1,
       "motion": {
@@ -812,20 +812,20 @@
       },
       "eyes": {
         "left": {
-          "width": 20.605859374999994,
-          "height": 47.769921874999994,
+          "width": 12.364,
+          "height": 49.442,
           "x": 0,
           "y": 0,
           "angle": 23.523046875000002
         },
         "right": {
-          "width": 20.605859374999994,
-          "height": 47.769921874999994,
+          "width": 12.364,
+          "height": 49.442,
           "x": 0,
           "y": 0,
           "angle": -24.042578125000002
         },
-        "spacing": 54.900000000000006
+        "spacing": 32.94
       },
       "perspective": 1,
       "motion": {
