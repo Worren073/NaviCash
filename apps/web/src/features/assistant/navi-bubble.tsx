@@ -44,6 +44,11 @@ function clampY(vh: number, y: number): number {
   return Math.min(Math.max(y, topOffset(false)), vh - BUBBLE_SIZE - BOTTOM_OFFSET);
 }
 
+/** Rango vertical del desktop: bajo la TopBar hasta el borde inferior. */
+function clampYDesktop(vh: number, y: number): number {
+  return Math.min(Math.max(y, topOffset(true)), vh - BUBBLE_SIZE - EDGE_MARGIN);
+}
+
 /** X "pegada" al borde (izquierda o derecha) más cercano a la posición dada. */
 function snapX(vw: number, currentX?: number | null): number {
   const cursor = currentX ?? vw - BUBBLE_SIZE - EDGE_MARGIN;
@@ -92,12 +97,12 @@ function NaviSleepingZzz({ color }: { color: string }) {
 
 /**
  * Burbuja flotante "Navi": un orbe translúcido con ojos que el usuario puede
- * arrastrar en móvil y soltar junto al borde (izquierda/derecha) más cercano.
+ * arrastrar y soltar junto al borde más cercano.
  *
- * En desktop (lg+) queda FIJA en la parte superior derecha, justo debajo de la
- * TopBar, sin arrastre. En móvil la posición vertical se persiste en
- * localStorage (preferencia de UI, no dato sensible) y la horizontal siempre
- * se pega al borde más próximo.
+ * En desktop (lg+) el horizontal se re-pega SIEMPRE al borde derecho, pero el
+ * vertical es libre (cualquier altura) y se persiste; al iniciar se restaura la
+ * altura guardada. En móvil se pega al borde izquierda/derecha más próximo y el
+ * vertical también se persiste.
  *
  * Si el tour está activo (`tourActive`), la burbuja sube sola a la parte
  * superior de su borde para no esconder el globo de texto.
@@ -135,35 +140,37 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  // Posición inicial: desktop fija arriba-derecha; móvil pegada al borde más
-  // cercano (vertical libre y persistida).
+  // Posición inicial: desktop pegada al borde derecho (altura guardada o bajo
+  // la TopBar); móvil pegada al borde más cercano (vertical libre y persistida).
   useEffect(() => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    let saved: { x: number; y: number } | null = null;
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) saved = JSON.parse(raw) as { x: number; y: number };
+    } catch {
+      saved = null;
+    }
     if (isDesktop) {
       x.set(vw - BUBBLE_SIZE - EDGE_MARGIN);
-      y.set(topOffset(true));
+      y.set(clampYDesktop(vh, saved?.y ?? topOffset(true)));
     } else {
-      let saved: { x: number; y: number } | null = null;
-      try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (raw) saved = JSON.parse(raw) as { x: number; y: number };
-      } catch {
-        saved = null;
-      }
       x.set(snapX(vw, saved?.x));
       y.set(clampY(vh, saved?.y ?? vh - BUBBLE_SIZE - BOTTOM_OFFSET));
     }
     setReady(true);
   }, [isDesktop, x, y]);
 
-  // Al redimensionar la ventana, vuelve a pegar la burbuja a su borde.
+  // Al redimensionar la ventana, re-pega el horizontal (derecho en desktop,
+  // borde más próximo en móvil) y clampea el vertical a los nuevos límites.
   useEffect(() => {
     const onResize = () => {
       const vw = window.innerWidth;
+      const vh = window.innerHeight;
       if (isDesktop) {
         x.set(vw - BUBBLE_SIZE - EDGE_MARGIN);
-        y.set(topOffset(true));
+        y.set(clampYDesktop(vh, y.get()));
       } else {
         x.set(snapX(vw, x.get()));
       }
@@ -199,13 +206,11 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
   });
 
   function onPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
-    if (isDesktop) return;
     dragStart.current = { px: e.clientX, py: e.clientY, dx: x.get(), dy: y.get(), moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
-    if (isDesktop) return;
     const s = dragStart.current;
     if (!s) return;
     const deltaX = e.clientX - s.px;
@@ -217,7 +222,7 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
     const vh = window.innerHeight;
     const nextX = Math.min(Math.max(s.dx + deltaX, EDGE_MARGIN), vw - BUBBLE_SIZE - EDGE_MARGIN);
     x.set(nextX);
-    y.set(clampY(vh, s.dy + deltaY));
+    y.set(isDesktop ? clampYDesktop(vh, s.dy + deltaY) : clampY(vh, s.dy + deltaY));
     if (!dragging) setDragging(true);
   }
 
@@ -225,17 +230,21 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
     const s = dragStart.current;
     dragStart.current = null;
     setDragging(false);
-    if (isDesktop) {
-      if (openChat) onOpen();
-      return;
-    }
     if (!s?.moved) {
       if (openChat) onOpen();
       return;
     }
-    // Se pega al borde (izquierda/derecha) más cercano.
-    x.set(snapX(window.innerWidth, x.get()));
-    y.set(clampY(window.innerHeight, y.get()));
+    // Desktop: siempre vuelve al borde derecho (la altura queda libre).
+    // Móvil: se pega al borde (izquierda/derecha) más cercano.
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    if (isDesktop) {
+      x.set(vw - BUBBLE_SIZE - EDGE_MARGIN);
+      y.set(clampYDesktop(vh, y.get()));
+    } else {
+      x.set(snapX(vw, x.get()));
+      y.set(clampY(vh, y.get()));
+    }
     persist();
   }
 
@@ -264,7 +273,7 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
           width: BUBBLE_SIZE,
           height: BUBBLE_SIZE,
           touchAction: "none",
-          cursor: isDesktop ? "default" : dragging ? "grabbing" : "grab",
+          cursor: dragging ? "grabbing" : "grab",
         }}
         className="clip-rounded-full relative block rounded-full shadow-[0_6px_24px_rgba(0,106,97,0.25)] transition-shadow hover:shadow-[0_8px_32px_rgba(0,106,97,0.4)] active:scale-95"
       >
