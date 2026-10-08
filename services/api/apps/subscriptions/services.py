@@ -44,6 +44,7 @@ def renew_subscription(subscription: Subscription, wallet: Wallet, amount: Decim
     tx = Transaction(
         user=subscription.user,
         tipo="pago",
+        origen="subscription",
         monto=amount,
         moneda=wallet.currency,
         concepto=f"Renovación: {subscription.name}",

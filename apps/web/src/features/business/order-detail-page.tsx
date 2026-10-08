@@ -167,6 +167,16 @@ export default function OrderDetailPage() {
                 <span>
                   {t("orders.detail.orderDate")}: {formatDate(order.order_date)}
                 </span>
+                {order.due_date && (
+                  <span>
+                    {t("orders.detail.dueDate")}: {formatDate(order.due_date)}
+                  </span>
+                )}
+                {order.received_at && (
+                  <span>
+                    {t("orders.detail.receivedAt")}: {formatDate(order.received_at)}
+                  </span>
+                )}
               </div>
             </div>
           </div>

@@ -75,6 +75,7 @@ class TransactionWriteSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "tipo",
+            "origen",
             "estado",
             "monto",
             "moneda",
@@ -92,7 +93,14 @@ class TransactionWriteSerializer(serializers.ModelSerializer):
             "fuente_tasa",  # solo lectura de detalle
             "created_at",
         ]
-        read_only_fields = ["monto_usd", "tasa_usd", "fuente_tasa", "created_at", "id"]
+        read_only_fields = [
+            "origen",
+            "monto_usd",
+            "tasa_usd",
+            "fuente_tasa",
+            "created_at",
+            "id",
+        ]
 
     def __init__(self, *args, **kwargs):
         """Acota las querysets de relaciones al usuario de la request."""
@@ -206,6 +214,7 @@ class TransactionReadSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "tipo",
+            "origen",
             "estado",
             "effective_state",
             "is_overdue",

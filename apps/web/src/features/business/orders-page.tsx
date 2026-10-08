@@ -67,6 +67,11 @@ function OrderCard({ order }: { order: Order }) {
         <div className="text-xs text-on-surface-variant">
           {t("orders.list.orderDate")}: {formatDate(order.order_date)}
         </div>
+        {order.due_date && (
+          <div className="text-xs text-on-surface-variant">
+            {t("orders.list.dueDate")}: {formatDate(order.due_date)}
+          </div>
+        )}
       </div>
       <div className="text-right shrink-0">
         <div className="text-sm font-semibold text-on-surface">

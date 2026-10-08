@@ -74,6 +74,7 @@ def complete_shopping_list(
     tx = Transaction(
         user=locked.user,
         tipo="pago",
+        origen="checklist",
         monto=amount,
         moneda=wallet.currency,
         concepto=f"Compra: {locked.name}",

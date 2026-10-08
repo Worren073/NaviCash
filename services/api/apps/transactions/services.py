@@ -31,7 +31,7 @@ from apps.rates.service import (
     get_current_official_rate,
     get_usd_rate_for_conversion,
 )
-from apps.transactions.models import TRANSACTION_STATES, Transaction
+from apps.transactions.models import TRANSACTION_STATES, Category, Transaction
 from apps.wallets.models import Wallet
 from apps.wallets.services import adjust_balance
 
@@ -53,6 +53,27 @@ def compute_usd_equivalent(monto: Decimal, moneda: str) -> dict:
     rate = get_usd_rate_for_conversion()
     monto_usd = convert_to_usd(monto, moneda, rate)
     return {"monto_usd": monto_usd, "tasa_usd": rate, "fuente_tasa": "oficial"}
+
+
+#: Categorías por defecto que se asignan automáticamente a los cobros/pagos
+#: generados por el CRM (ver ``resolve_crm_default_category``).
+CRM_DEFAULT_CATEGORIES = {
+    "cobro": ("Venta", "ingreso"),
+    "pago": ("Otros", "egreso"),
+}
+
+
+def resolve_crm_default_category(user, tipo: str) -> "Category | None":
+    """Busca la categoría por defecto del usuario para operaciones del CRM.
+
+    Cobros → "Venta" (ingreso); pagos → "Otros" (egreso). Devuelve ``None`` si
+    el usuario no tiene esas categorías (las habrá borrado o renombrado), en
+    cuyo caso la operación queda sin categoría.
+    """
+    name, cat_tipo = CRM_DEFAULT_CATEGORIES.get(tipo, (None, None))
+    if name is None:
+        return None
+    return Category.objects.filter(user=user, name=name, tipo=cat_tipo).first()
 
 
 def _apply_to_wallet(tx: Transaction, *, reverse: bool = False) -> None:
@@ -284,6 +305,7 @@ def create_transfer(
     return Transaction.objects.create(
         user_id=source.user_id,
         tipo="transferencia",
+        origen="transfer",
         estado="pagado",
         monto=amount,
         moneda=source.currency,
@@ -310,11 +332,13 @@ def register_transaction(
     wallet: "Wallet | None" = None,
     estado: str = "pagado",
     fecha: "datetime.date | None" = None,
+    origen: str = "manual",
+    category: "Category | None" = None,
 ) -> Transaction:
     """Registra un cobro (ingreso) o pago (egreso) y ajusta la billetera.
 
     Es el punto único de alta de operaciones tipo "registro" sin contacto ni
-    transferencia (usado por el asistente Navi y útil para el API en general).
+    transferencia (usado por el asistente Navi, el CRM y el API en general).
 
     Args:
         user: usuario dueño de la operación.
@@ -324,6 +348,10 @@ def register_transaction(
         concepto: texto corto del concepto.
         wallet: billetera propia y de la misma moneda (opcional).
         estado: ``"pagado"`` aplica el efecto de saldo de inmediato.
+        origen: flujo que genera la operación (por defecto ``manual``).
+        category: categoría a asignar; si es ``None`` y el origen es del CRM,
+            se resuelve la categoría por defecto del usuario (cobro→"Venta",
+            pago→"Otros").
 
     Returns:
         La operación creada (y pagada si ``estado == "pagado"``).
@@ -342,15 +370,20 @@ def register_transaction(
         if wallet.currency != moneda:
             raise BusinessRuleError("La billetera debe usar la misma moneda que la operación.")
 
+    if category is None and origen in {"crm_invoice", "crm_order"}:
+        category = resolve_crm_default_category(user, tipo)
+
     usd_conversion = compute_usd_equivalent(monto, moneda)
     tx = Transaction.objects.create(
         user=user,
         tipo=tipo,
+        origen=origen,
         estado="pendiente",
         monto=monto,
         moneda=moneda,
         concepto=concepto,
         wallet=wallet,
+        category=category,
         fecha=fecha or timezone.localdate(),
         **usd_conversion,
     )

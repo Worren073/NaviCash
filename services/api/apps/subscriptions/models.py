@@ -14,6 +14,7 @@ from decimal import Decimal
 from django.db import models
 from django.utils import timezone
 
+from apps.core.currency import CURRENCY_CHOICES, MONEY_DECIMALS
 from apps.core.models import OwnedModel
 
 #: Estados derivados de la fecha actual.
@@ -59,6 +60,20 @@ class Subscription(OwnedModel):
         verbose_name="Color",
         help_text="Color identificador (hex) del icono y la barra de progreso.",
     )
+    amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        null=True,
+        blank=True,
+        verbose_name="Monto",
+        help_text="Cuota periódica referencial (opcional).",
+    )
+    currency = models.CharField(
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        default="USD",
+        verbose_name="Moneda",
+    )
     start_date = models.DateField(verbose_name="Inicia el")
     end_date = models.DateField(verbose_name="Finaliza el")
 
@@ -73,6 +88,11 @@ class Subscription(OwnedModel):
                 condition=models.Q(end_date__gte=models.F("start_date")),
                 name="subscription_end_gte_start",
                 violation_error_message="La fecha de cierre no puede ser anterior al inicio.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__isnull=True) | models.Q(amount__gt=0),
+                name="subscription_amount_gt_0",
+                violation_error_message="El monto debe ser mayor a cero o estar vacío.",
             ),
         ]
 

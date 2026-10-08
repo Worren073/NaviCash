@@ -217,6 +217,7 @@ def _execute_ledger(user, proposal: ActionProposal) -> str:
             concepto=proposal.concepto,
             wallet=wallet,
             estado="pagado",
+            origen="assistant",
         )
     except BusinessRuleError:
         return (

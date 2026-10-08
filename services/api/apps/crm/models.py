@@ -215,6 +215,14 @@ class InvoiceItem(OwnedModel):
     unit_price = models.DecimalField(
         max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Precio unitario"
     )
+    cost_price = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        null=True,
+        blank=True,
+        verbose_name="Costo de compra",
+        help_text="Costo del producto congelado al emitir la factura.",
+    )
     discount = models.DecimalField(
         max_digits=20,
         decimal_places=MONEY_DECIMALS,
@@ -297,6 +305,17 @@ class Order(OwnedModel):
     )
     number = models.CharField(max_length=20, verbose_name="Número")
     order_date = models.DateField(verbose_name="Fecha del pedido")
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha de vencimiento",
+        help_text="Fecha prevista de pago; en falta, la calcula el contacto (días de crédito).",
+    )
+    received_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Recibido el",
+    )
     status = models.CharField(
         max_length=10,
         choices=ORDER_STATUSES,
@@ -385,6 +404,14 @@ class OrderItem(OwnedModel):
     )
     unit_price = models.DecimalField(
         max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Precio unitario"
+    )
+    cost_price = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        null=True,
+        blank=True,
+        verbose_name="Costo de compra",
+        help_text="Costo del producto congelado al crear el pedido.",
     )
     discount = models.DecimalField(
         max_digits=20,

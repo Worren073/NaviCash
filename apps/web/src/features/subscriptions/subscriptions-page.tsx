@@ -73,7 +73,15 @@ function SubscriptionCard({ sub }: { sub: Subscription }) {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-on-surface">{sub.name}</h3>
-            <p className="text-xs text-on-surface-variant">{formatRange(sub.start_date, sub.end_date)}</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-on-surface-variant">{formatRange(sub.start_date, sub.end_date)}</p>
+              <span
+                className={cn("text-xs font-semibold", sub.amount ? "" : "text-on-surface-variant")}
+                style={sub.amount ? { color } : undefined}
+              >
+                {sub.amount ? formatMoney(sub.amount, sub.currency, { symbol: true }) : t("subscriptions.amountMissing")}
+              </span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
@@ -258,6 +266,8 @@ function NewSubscriptionDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState<string>(SUBSCRIPTION_COLORS[0]);
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState<"USD" | "VES">("USD");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [today30, setToday30] = useState(true);
@@ -270,6 +280,8 @@ function NewSubscriptionDialog() {
       return api.post<Subscription>("/subscriptions", {
         name: name.trim(),
         color,
+        amount: amount.trim() || null,
+        currency,
         start_date: start,
         end_date: end,
       });
@@ -279,6 +291,8 @@ function NewSubscriptionDialog() {
       setOpen(false);
       setName("");
       setColor(SUBSCRIPTION_COLORS[0]);
+      setAmount("");
+      setCurrency("USD");
       setStartDate("");
       setEndDate("");
       setToday30(true);
@@ -371,6 +385,33 @@ function NewSubscriptionDialog() {
                   disabled={today30}
                   required={!today30}
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[1fr_auto] gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="sub-amount">{t("subscriptions.amount")}</Label>
+                <NumericInput
+                  id="sub-amount"
+                  value={amount}
+                  onChange={setAmount}
+                  placeholder={t("subscriptions.amountPlaceholder")}
+                  disabled={create.isPending}
+                />
+                <span className="block text-xs text-on-surface-variant">{t("subscriptions.amountHint")}</span>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sub-currency">{t("subscriptions.currency")}</Label>
+                <select
+                  id="sub-currency"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value as "USD" | "VES")}
+                  disabled={create.isPending}
+                  className="h-11 w-28 min-w-0 rounded-xl border border-glass-border bg-glass-surface backdrop-blur-md px-3 py-2.5 text-base text-on-surface shadow-sm outline-none transition-colors focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 md:text-sm"
+                >
+                  <option value="USD">USD</option>
+                  <option value="VES">Bs.</option>
+                </select>
               </div>
             </div>
 

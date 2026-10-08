@@ -62,6 +62,29 @@ def _compute_item_total(quantity: Decimal, unit_price: Decimal, discount: Decima
     return round_money(quantity * unit_price - discount)
 
 
+def _item_cost_price(row: dict, *, fallback_unit_price: bool = False) -> "Decimal | None":
+    """Costo de compra congelado de una línea de factura o pedido.
+
+    - Producto del catálogo: se toma ``Product.cost_price`` (si lo tiene).
+    - Producto nuevo (pedidos): se toma el ``cost_price`` declarado o, en su
+      defecto, el ``unit_price`` de la línea (mismo criterio que el alta del
+      producto en ``_resolve_new_product``).
+    - Línea sin producto (solo facturas) y sin ``fallback_unit_price``: sin
+      costo congelado (``None``).
+    """
+    product = row.get("product")
+    if product is not None:
+        return getattr(product, "cost_price", None)
+    new_product = row.get("new_product") or {}
+    raw_cost = new_product.get("cost_price")
+    if raw_cost:
+        try:
+            return Decimal(str(raw_cost))
+        except (ValueError, TypeError, ArithmeticError):
+            return None
+    return row.get("unit_price") if fallback_unit_price else None
+
+
 def _derive_status(amount_paid: Decimal, total: Decimal) -> str:
     if amount_paid <= 0:
         return "enviada"
@@ -180,6 +203,7 @@ def create_invoice(
                 "description": row.get("description", ""),
                 "quantity": quantity,
                 "unit_price": unit_price,
+                "cost_price": _item_cost_price(row),
                 "discount": discount,
                 "total": total,
             }
@@ -218,6 +242,7 @@ def create_invoice(
             description=row["description"],
             quantity=row["quantity"],
             unit_price=row["unit_price"],
+            cost_price=row["cost_price"],
             discount=row["discount"],
             total=row["total"],
         )
@@ -234,6 +259,7 @@ def create_invoice(
             wallet=business.wallet,
             estado="pagado",
             fecha=issue_date,
+            origen="crm_invoice",
         )
         InvoicePayment.objects.create(
             user=user,
@@ -288,6 +314,7 @@ def record_invoice_payment(
         wallet=invoice.business.wallet,
         estado="pagado",
         fecha=paid_at.date() if paid_at else timezone.localdate(),
+        origen="crm_invoice",
     )
 
     payment = InvoicePayment.objects.create(
@@ -529,6 +556,7 @@ def create_order(
     items_data: list[dict],
     *,
     order_date: date | None = None,
+    due_date: date | None = None,
     shipping_amount: Decimal | None = None,
     paid_amount: Decimal | None = None,
     notes: str = "",
@@ -543,6 +571,8 @@ def create_order(
             ``unit_price``, opcional ``discount`` y, en excluyente mutuo, un
             ``product`` existente o un ``new_product`` con los datos del alta.
         order_date: fecha del pedido (por defecto hoy).
+        due_date: fecha prevista de pago (por defecto hoy + días de crédito
+            del proveedor).
         shipping_amount: costo de envío que se suma al subtotal (por defecto 0).
         paid_amount: monto pagado al crear el pedido (0 = solo borrador).
         notes: notas libres.
@@ -558,6 +588,9 @@ def create_order(
         raise BusinessRuleError("El pedido debe tener al menos una línea.")
 
     order_date = order_date or timezone.localdate()
+    if due_date is None:
+        days = contact.payment_terms_days or 0
+        due_date = order_date + timedelta(days=days)
     shipping_amount = round_money(shipping_amount or Decimal("0"))
     paid_amount = round_money(paid_amount or Decimal("0"))
 
@@ -585,6 +618,7 @@ def create_order(
                 "description": row.get("description", ""),
                 "quantity": quantity,
                 "unit_price": unit_price,
+                "cost_price": _item_cost_price(row, fallback_unit_price=True),
                 "discount": discount,
                 "total": total,
             }
@@ -602,6 +636,7 @@ def create_order(
         contact=contact,
         number=_next_order_number(business),
         order_date=order_date,
+        due_date=due_date,
         status=_order_status_for_paid(paid_amount),
         subtotal=subtotal,
         shipping_amount=shipping_amount,
@@ -621,6 +656,7 @@ def create_order(
             description=row["description"],
             quantity=row["quantity"],
             unit_price=row["unit_price"],
+            cost_price=row["cost_price"],
             discount=row["discount"],
             total=row["total"],
         )
@@ -635,6 +671,7 @@ def create_order(
             wallet=business.wallet,
             estado="pagado",
             fecha=order_date,
+            origen="crm_order",
         )
         OrderPayment.objects.create(
             user=user,
@@ -689,6 +726,7 @@ def record_order_payment(
         wallet=order.business.wallet,
         estado="pagado",
         fecha=paid_at.date() if paid_at else timezone.localdate(),
+        origen="crm_order",
     )
 
     payment = OrderPayment.objects.create(
@@ -749,7 +787,8 @@ def receive_order(order: Order) -> Order:
         raise BusinessRuleError("Este pedido ya fue recibido o anulado.")
     _restock(order)
     order.status = "recibido"
-    order.save(update_fields=["status", "updated_at"])
+    order.received_at = timezone.now()
+    order.save(update_fields=["status", "received_at", "updated_at"])
     return order
 
 

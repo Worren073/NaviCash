@@ -46,6 +46,17 @@ TRANSFER_RATE_SOURCES = [
     ("manual", "Tasa personalizada"),
 ]
 
+#: Origen de la operación: qué flujo la generó.
+TRANSACTION_ORIGINS = [
+    ("manual", "Manual"),
+    ("crm_invoice", "CRM: factura"),
+    ("crm_order", "CRM: pedido"),
+    ("assistant", "Asistente Navi"),
+    ("subscription", "Mensualidad"),
+    ("checklist", "Lista de compras"),
+    ("transfer", "Transferencia"),
+]
+
 #: Estados persistentes de la operación (Pendiente/Pagado/Cancelado).
 #: "Retrasado" es un estado derivado (ver ``is_overdue``).
 TRANSACTION_STATES = [
@@ -121,6 +132,13 @@ class Transaction(OwnedModel):
     """
 
     tipo = models.CharField(max_length=13, choices=TRANSACTION_TYPES, verbose_name="Tipo")
+    origen = models.CharField(
+        max_length=12,
+        choices=TRANSACTION_ORIGINS,
+        default="manual",
+        verbose_name="Origen",
+        help_text="Flujo que generó la operación (manual, CRM, asistente, etc.).",
+    )
     estado = models.CharField(
         max_length=12, choices=TRANSACTION_STATES, default="pendiente", verbose_name="Estado"
     )

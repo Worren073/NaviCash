@@ -29,6 +29,8 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "color",
+            "amount",
+            "currency",
             "start_date",
             "end_date",
             "progress_percent",
@@ -40,6 +42,12 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+    def validate_amount(self, value):
+        """Opción nullable: si hay monto debe ser una cantidad válida (> 0)."""
+        if value is not None and not is_valid_amount(value):
+            raise serializers.ValidationError("El monto debe ser mayor a 0.01.")
+        return value
 
     def validate(self, attrs: dict) -> dict:
         """El cierre debe ser posterior o igual al inicio."""

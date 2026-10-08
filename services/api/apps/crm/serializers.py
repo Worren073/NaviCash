@@ -117,8 +117,8 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InvoiceItem
-        fields = ["id", "product", "description", "quantity", "unit_price", "discount", "total"]
-        read_only_fields = ["id", "product", "total"]
+        fields = ["id", "product", "description", "quantity", "unit_price", "cost_price", "discount", "total"]
+        read_only_fields = ["id", "product", "cost_price", "total"]
 
 
 class InvoiceItemWriteSerializer(serializers.ModelSerializer):
@@ -341,6 +341,8 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
 
     def update(self, instance: Invoice, validated_data: dict) -> Invoice:
         """Permite editar solo facturas en borrador; reemplaza las líneas."""
+        from apps.crm.services import _item_cost_price
+
         if instance.status != "borrador":
             raise serializers.ValidationError(
                 {"status": "Solo se pueden editar facturas en borrador."}
@@ -365,6 +367,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
                     description=row["description"],
                     quantity=row["quantity"],
                     unit_price=row["unit_price"],
+                    cost_price=_item_cost_price(row),
                     discount=row.get("discount", Decimal("0")),
                     total=row["total"],
                 )
@@ -389,10 +392,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "description",
             "quantity",
             "unit_price",
+            "cost_price",
             "discount",
             "total",
         ]
-        read_only_fields = ["id", "product", "new_product", "total"]
+        read_only_fields = ["id", "product", "new_product", "cost_price", "total"]
 
 
 class OrderItemWriteSerializer(serializers.ModelSerializer):
@@ -502,6 +506,8 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "contact",
             "number",
             "order_date",
+            "due_date",
+            "received_at",
             "status",
             "payment_state",
             "subtotal",
@@ -532,6 +538,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
     contact = serializers.PrimaryKeyRelatedField(queryset=BusinessContact.objects.none())
     items = OrderItemWriteSerializer(many=True)
     order_date = serializers.DateField(required=False)
+    due_date = serializers.DateField(required=False, allow_null=True)
     shipping_amount = serializers.DecimalField(
         max_digits=20, decimal_places=2, required=False, default=Decimal("0")
     )
@@ -546,6 +553,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
             "business",
             "contact",
             "order_date",
+            "due_date",
             "shipping_amount",
             "paid_amount",
             "notes",
@@ -600,6 +608,12 @@ class OrderWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"contact": "El contacto debe ser un proveedor."}
             )
+        order_date = attrs.get("order_date") or getattr(self.instance, "order_date", None)
+        due_date = attrs.get("due_date")
+        if due_date and order_date and due_date < order_date:
+            raise serializers.ValidationError(
+                {"due_date": "El vencimiento no puede ser anterior a la fecha del pedido."}
+            )
         return attrs
 
     def create(self, validated_data: dict) -> Order:
@@ -612,6 +626,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
             contact=validated_data["contact"],
             items_data=items,
             order_date=validated_data.get("order_date"),
+            due_date=validated_data.get("due_date"),
             shipping_amount=validated_data.get("shipping_amount"),
             paid_amount=validated_data.get("paid_amount"),
             notes=validated_data.get("notes", ""),
@@ -619,6 +634,8 @@ class OrderWriteSerializer(serializers.ModelSerializer):
 
     def update(self, instance: Order, validated_data: dict) -> Order:
         """Permite editar solo pedidos en borrador; reemplaza las líneas."""
+        from apps.crm.services import _item_cost_price
+
         if instance.status != "borrador":
             raise serializers.ValidationError(
                 {"status": "Solo se pueden editar pedidos en borrador."}
@@ -627,6 +644,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
         items = validated_data.pop("items", None)
         instance.contact = validated_data.get("contact", instance.contact)
         instance.order_date = validated_data.get("order_date", instance.order_date)
+        instance.due_date = validated_data.get("due_date", instance.due_date)
         instance.shipping_amount = validated_data.get(
             "shipping_amount", instance.shipping_amount
         )
@@ -645,6 +663,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
                     description=row["description"],
                     quantity=row["quantity"],
                     unit_price=row["unit_price"],
+                    cost_price=_item_cost_price(row, fallback_unit_price=True),
                     discount=row.get("discount", Decimal("0")),
                     total=row["total"],
                 )

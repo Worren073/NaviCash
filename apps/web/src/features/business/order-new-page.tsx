@@ -80,6 +80,7 @@ export default function OrderNewPage() {
   const [debouncedSupplierSearch, setDebouncedSupplierSearch] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState<string>("");
   const [orderDate, setOrderDate] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [shippingAmount, setShippingAmount] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
   const [notes, setNotes] = useState("");
@@ -176,8 +177,10 @@ export default function OrderNewPage() {
     if (paid < 0) return t("orders.form.errors.invalidPaid");
     if (paid > total) return t("orders.form.errors.paidOverTotal");
     if (paid > 0 && paid > walletSaldo) return t("orders.form.errors.insufficient");
+    if (dueDate && orderDate && dueDate < orderDate)
+      return t("orders.form.errors.dueBeforeOrder");
     return null;
-  }, [selectedSupplier, items, catalogue, shipping, paid, total, walletSaldo, t]);
+  }, [selectedSupplier, items, catalogue, shipping, paid, total, walletSaldo, dueDate, orderDate, t]);
 
   const create = useMutation({
     mutationFn: () => {
@@ -196,6 +199,7 @@ export default function OrderNewPage() {
           return { ...base, product: r.product };
         }),
         ...(orderDate ? { order_date: orderDate } : {}),
+        ...(dueDate ? { due_date: dueDate } : {}),
         ...(shippingAmount ? { shipping_amount: shippingAmount } : {}),
         ...(paidAmount ? { paid_amount: paidAmount } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
@@ -293,12 +297,23 @@ export default function OrderNewPage() {
           )}
         </div>
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-on-surface">
-            {t("orders.form.orderDate")}
-          </span>
-          <Input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-on-surface">
+              {t("orders.form.orderDate")}
+            </span>
+            <Input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-on-surface">
+              {t("orders.form.dueDate")}
+            </span>
+            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <span className="mt-1 block text-xs text-on-surface-variant">
+              {t("orders.form.dueDateHint")}
+            </span>
+          </label>
+        </div>
       </section>
 
       <section className="space-y-3">
