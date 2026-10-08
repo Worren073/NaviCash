@@ -3,6 +3,7 @@
 - ``GET  /api/business``: perfil del negocio (200) o 404 si no existe.
 - ``POST /api/business``: lo crea (201); 409 si ya existe.
 - ``GET  /api/business/summary``: métricas del dashboard (404 sin negocio).
+- ``GET  /api/business/analytics``: analíticas financieras del negocio.
 """
 
 from __future__ import annotations
@@ -14,7 +15,11 @@ from rest_framework.views import APIView
 
 from apps.business.models import Business
 from apps.business.serializers import BusinessCreateSerializer, BusinessSerializer
-from apps.business.services import build_business_summary, create_business
+from apps.business.services import (
+    build_business_analytics,
+    build_business_summary,
+    create_business,
+)
 from apps.transactions.serializers import TransactionReadSerializer
 
 
@@ -70,3 +75,31 @@ class BusinessSummaryView(APIView):
         summary = build_business_summary(business)
         recent = TransactionReadSerializer(summary.pop("recent"), many=True).data
         return Response({**summary, "recent": recent})
+
+
+class BusinessAnalyticsView(APIView):
+    """Analíticas del tablero financiero del negocio (solo su cuenta)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request) -> Response:
+        """GET /api/business/analytics?months=6|12 -> tablero completo.
+
+        ``months`` define la ventana de la serie P&L (admite 3-24; por defecto
+        12). Si el usuario no tiene negocio devuelve 404.
+        """
+        business = (
+            Business.objects.filter(user=request.user).select_related("wallet").first()
+        )
+        if business is None:
+            return Response(
+                {"detail": "No tienes un negocio creado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        raw = request.query_params.get("months", "12")
+        try:
+            months = int(raw)
+        except (TypeError, ValueError):
+            months = 12
+        months = max(3, min(24, months))
+        return Response(build_business_analytics(business, months=months))

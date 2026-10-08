@@ -109,6 +109,9 @@ export default defineConfig(({ command, mode }) => {
             if (id.includes("i18next") || id.includes("react-i18next")) return "i18n";
             if (id.includes("motion") || id.includes("@motionone")) return "motion";
             if (id.includes("lucide")) return "lucide";
+            if (id.includes("recharts") || id.includes("d3-") || id.includes("react-smooth")) {
+              return "recharts";
+            }
             if (id.includes("radix")) return "radix";
             if (
               id.includes("react-dom") ||

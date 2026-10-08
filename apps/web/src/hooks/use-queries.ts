@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiErrorClass } from "@/lib/api";
 import type {
   Business,
+  BusinessAnalytics,
   BusinessContact,
   BusinessSummary,
   Checklist,
@@ -34,6 +35,7 @@ export const queryKeys = {
   checklists: ["checklists"] as const,
   business: ["business"] as const,
   businessSummary: ["business-summary"] as const,
+  businessAnalytics: ["business-analytics"] as const,
   businessContacts: ["business-contacts"] as const,
   invoices: ["invoices"] as const,
   orders: ["orders"] as const,
@@ -107,6 +109,14 @@ export function useBusinessSummary() {
   return useQuery({
     queryKey: queryKeys.businessSummary,
     queryFn: ({ signal }) => api.get<BusinessSummary>("/business/summary", { signal }),
+  });
+}
+
+export function useBusinessAnalytics(months: number) {
+  return useQuery({
+    queryKey: [...queryKeys.businessAnalytics, months],
+    queryFn: ({ signal }) =>
+      api.get<BusinessAnalytics>(`/business/analytics?months=${months}`, { signal }),
   });
 }
 

@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney, formatRelativeEvent } from "@/lib/format";
 import { TrendSparkline } from "@/features/dashboard/trend-sparkline";
+import { CardGlow } from "@/components/ui/card-glow";
 import type { Transaction } from "@/lib/types";
 
 function TxIcon({ concepto }: { concepto: string }) {
@@ -95,11 +96,15 @@ export function BusinessDashboard() {
 
   return (
     <div className="space-y-8">
-      <div className="pattern-noise glass-panel-elevated clip-rounded-4xl relative overflow-hidden rounded-[2rem] p-6">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
+      <div className="pattern-noise clip-rounded-4xl relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-navi to-sky-300 p-6">
+        <CardGlow color="#7ed6ec" />
+        <div className="navi-shimmer" />
+        <span className="navi-sparkle-dot" style={{ right: "28%", top: "30%", animationDelay: "0s" }} />
+        <span className="navi-sparkle-dot" style={{ right: "12%", top: "55%", animationDelay: "0.7s" }} />
+        <span className="navi-sparkle-dot" style={{ right: "45%", top: "20%", animationDelay: "1.4s" }} />
         <div className="relative z-10">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+            <span className="text-xs font-semibold uppercase tracking-wider text-navi-ink/70">
               {t("business.dashboard.saldo")}
             </span>
             <Badge variant="secondary">{data?.currency}</Badge>
@@ -108,7 +113,7 @@ export function BusinessDashboard() {
             {isLoading ? (
               <Skeleton className="h-10 w-40" />
             ) : (
-              <span className="text-4xl font-bold tracking-tight text-on-surface">
+              <span className="text-4xl font-bold tracking-tight text-navi-ink">
                 {hideBalances
                   ? "••••"
                   : formatMoney(data?.saldo ?? 0, data?.currency, { symbol: true })}

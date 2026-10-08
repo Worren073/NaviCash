@@ -46,6 +46,50 @@ export interface BusinessSummary {
   recent: Transaction[];
 }
 
+export interface BusinessAnalyticsPnlRow {
+  month: string;
+  income: number;
+  expense: number;
+  net: number;
+}
+
+export interface BusinessAnalyticsCategory {
+  label: string;
+  value: number;
+}
+
+export interface BusinessAnalyticsAging {
+  bucket: "0_30" | "31_60" | "61_90" | "90";
+  value: number;
+}
+
+export interface BusinessAnalyticsTop {
+  label: string;
+  value: number;
+}
+
+export interface BusinessAnalyticsKpis {
+  incomePeriod: number;
+  expensePeriod: number;
+  marginPct: number | null;
+  receivable: number;
+  payable: number;
+  overdue: number;
+  inventoryValue: number;
+}
+
+export interface BusinessAnalytics {
+  currency: Currency;
+  months: number;
+  pnl: BusinessAnalyticsPnlRow[];
+  incomeCategories: BusinessAnalyticsCategory[];
+  expenseCategories: BusinessAnalyticsCategory[];
+  aging: BusinessAnalyticsAging[];
+  topClients: BusinessAnalyticsTop[];
+  topSuppliers: BusinessAnalyticsTop[];
+  kpis: BusinessAnalyticsKpis;
+}
+
 export interface BusinessContact {
   id: string;
   business: string;
@@ -204,6 +248,8 @@ export interface Order {
   contact: BusinessContact;
   number: string;
   order_date: string;
+  due_date: string | null;
+  received_at: string | null;
   status: OrderStatus;
   payment_state: OrderPaymentState;
   subtotal: string;
@@ -407,6 +453,8 @@ export interface Subscription {
   id: string;
   name: string;
   color: string;
+  amount: string | null;
+  currency: string;
   start_date: string;
   end_date: string;
   progress_percent: string;

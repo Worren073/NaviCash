@@ -74,6 +74,10 @@
   --color-error-container: #ffdad6;
   --color-on-error-container: #410002;
 
+  /* Navi (azul de la mascota del asistente) */
+  --color-navi: #7ed6ec;
+  --color-navi-ink: #383e47;
+
   /* Vidrio (glass) */
   --color-glass-surface: rgba(255, 255, 255, 0.8);
   --color-glass-border: rgba(0, 0, 0, 0.08);
@@ -160,6 +164,78 @@
 
 @utility clip-rounded-full {
   clip-path: inset(0 round 50%);
+}
+
+/* ==========================================================================
+   Textura de grano y destellos "Navi" para tarjetas temáticas
+   ========================================================================== */
+
+/* Grano sutil (SVG feTurbulence) sobre superficies Navi */
+@utility pattern-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+}
+
+/* Barrido diagonal de luz blanca que cruza la tarjeta cada pocos segundos */
+.navi-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  &::after {
+    content: "";
+    position: absolute;
+    top: -20%;
+    left: -30%;
+    width: 60%;
+    height: 140%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.75),
+      transparent
+    );
+    animation: navi-shimmer 3.4s ease-in-out infinite;
+  }
+}
+
+/* Punto de destello que sube y parpadea (3 con delays escalonados) */
+.navi-sparkle-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  animation: navi-sparkle 2.2s ease-in-out infinite;
+}
+
+@keyframes navi-shimmer {
+  0%,
+  100% {
+    transform: translateX(-160%) rotate(18deg);
+    opacity: 0;
+  }
+  30%,
+  70% {
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(320%) rotate(18deg);
+  }
+}
+
+@keyframes navi-sparkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-18px) scale(1.2);
+  }
 }
 
 /* ==========================================================================
