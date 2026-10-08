@@ -936,6 +936,12 @@
           "transition": "smooth"
         },
         {
+          "expression": "small-attentive",
+          "holdMs": 5200,
+          "transitionMs": 500,
+          "transition": "smooth"
+        },
+        {
           "expression": "neutral",
           "holdMs": 5200,
           "transitionMs": 500,
