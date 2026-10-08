@@ -230,10 +230,10 @@
   }
 }
 
-/* Z de sueño que salen de la esquina superior izquierda del orbe de Navi. */
+/* Z de sueño que salen del lado derecho del orbe de Navi. */
 .navi-zzz {
   position: absolute;
-  left: 4px;
+  right: 4px;
   top: 4px;
   z-index: 5;
   font-weight: 700;
@@ -245,14 +245,14 @@
 }
 
 .navi-zzz-2 {
-  left: 11px;
+  right: 11px;
   top: -1px;
   font-size: 7px;
   animation-delay: 0.45s;
 }
 
 .navi-zzz-3 {
-  left: 17px;
+  right: 17px;
   top: -4px;
   font-size: 6px;
   animation-delay: 0.9s;
