@@ -34,7 +34,7 @@ export function NaviAvatar({
 }: NaviAvatarProps) {
   const { expression, blink, transitionMs } = useAvatarAnimation({
     definition,
-    animation: animation ?? (thinking ? "thinking" : "idle"),
+    animation: animation ?? (thinking ? "thinking" : "searching"),
     static: isStatic,
   });
 

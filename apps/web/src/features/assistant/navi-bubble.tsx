@@ -56,7 +56,7 @@ interface NaviBubbleProps {
   hasUnread?: boolean;
   /**
    * Animación explícita del avatar (sueño/saludo). Sin ella Navi usa su
-   * comportamiento automático ("idle").
+   * comportamiento automático ("searching").
    */
   animation?: AnimationKey;
   /** Globo del tour guiado de Navi, anclado a la burbuja (hijo del wrapper). */

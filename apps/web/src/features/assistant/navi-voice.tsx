@@ -73,7 +73,7 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
         ? "thinking"
         : phase === "speaking"
           ? "happy"
-          : "idle";
+          : "searching";
 
   useEffect(() => {
     phaseRef.current = phase;

@@ -11,7 +11,7 @@ type Mood = "sleeping" | "shy" | "awake";
  * Ciclo de vida del avatar de Navi (burbuja + chat):
  * - Al cargar duerme ("sleeping").
  * - Al abrir el chat se despierta y saluda con "shy" unos segundos y luego
- *   vuelve a "awake" (auto: "thinking" mientras piensa, "idle" en reposo).
+ *   vuelve a "awake" (auto: "thinking" mientras piensa, "searching" en reposo).
  * - Al cerrar queda "awake"; tras `SLEEP_AFTER_MS` sin abrirlo, duerme otra vez.
  *
  * Devuelve la animación explícita o `undefined` para usar el comportamiento
