@@ -269,12 +269,12 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
         className="clip-rounded-full relative block rounded-full shadow-[0_6px_24px_rgba(0,106,97,0.25)] transition-shadow hover:shadow-[0_8px_32px_rgba(0,106,97,0.4)] active:scale-95"
       >
         <NaviAvatar size={BUBBLE_SIZE} animation={animation} />
-        {animation === "sleeping" && <NaviSleepingZzz color="#7ed6ec" />}
         {/* Punto de atención si hay novedades */}
         {hasUnread && (
           <span className="absolute -right-0.5 -top-0.5 z-10 h-3 w-3 rounded-full bg-status-delayed ring-2 ring-white/60" />
         )}
       </motion.button>
+      {animation === "sleeping" && <NaviSleepingZzz color="#7ed6ec" />}
       {tour ? cloneElement(tour, { side }) : null}
     </motion.div>
   );
