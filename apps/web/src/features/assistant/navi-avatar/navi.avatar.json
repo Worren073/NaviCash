@@ -936,7 +936,7 @@
           "transition": "smooth"
         },
         {
-          "expression": "curious-left",
+          "expression": "neutral",
           "holdMs": 5200,
           "transitionMs": 500,
           "transition": "smooth"
