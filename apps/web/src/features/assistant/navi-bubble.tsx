@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const BUBBLE_SIZE = 48;
 const STORAGE_KEY = "navi.bubble.pos";
 // Margen a los bordes al "pegarse" a la izquierda/derecha.
-const EDGE_MARGIN = 8;
+const EDGE_MARGIN = 16;
 // Espacio reservado para que el BottomNav no tape la burbuja en móvil.
 const BOTTOM_OFFSET = 96;
 // Alto de la TopBar (móvil 3.125rem / desktop 3.5rem) + separación de 12px.
@@ -56,7 +56,7 @@ interface NaviBubbleProps {
   hasUnread?: boolean;
   /**
    * Animación explícita del avatar (sueño/saludo). Sin ella Navi usa su
-   * comportamiento automático ("searching").
+   * comportamiento automático ("idle").
    */
   animation?: AnimationKey;
   /** Globo del tour guiado de Navi, anclado a la burbuja (hijo del wrapper). */
@@ -68,6 +68,26 @@ interface NaviBubbleProps {
    * borde donde esté para que el globo de texto quede visible.
    */
   tourActive?: boolean;
+}
+
+/**
+ * Z de sueño que emergen de la esquina superior izquierda del orbe mientras
+ * Navi duerme. `aria-hidden` porque son puramente decorativas.
+ */
+function NaviSleepingZzz({ color }: { color: string }) {
+  return (
+    <>
+      <span className="navi-zzz navi-zzz-1" style={{ color }} aria-hidden="true">
+        Z
+      </span>
+      <span className="navi-zzz navi-zzz-2" style={{ color }} aria-hidden="true">
+        Z
+      </span>
+      <span className="navi-zzz navi-zzz-3" style={{ color }} aria-hidden="true">
+        Z
+      </span>
+    </>
+  );
 }
 
 /**
@@ -246,9 +266,10 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
           touchAction: "none",
           cursor: isDesktop ? "default" : dragging ? "grabbing" : "grab",
         }}
-        className="clip-rounded-full block rounded-full shadow-[0_6px_24px_rgba(0,106,97,0.25)] transition-shadow hover:shadow-[0_8px_32px_rgba(0,106,97,0.4)] active:scale-95"
+        className="clip-rounded-full relative block rounded-full shadow-[0_6px_24px_rgba(0,106,97,0.25)] transition-shadow hover:shadow-[0_8px_32px_rgba(0,106,97,0.4)] active:scale-95"
       >
         <NaviAvatar size={BUBBLE_SIZE} animation={animation} />
+        {animation === "sleeping" && <NaviSleepingZzz color="#7ed6ec" />}
         {/* Punto de atención si hay novedades */}
         {hasUnread && (
           <span className="absolute -right-0.5 -top-0.5 z-10 h-3 w-3 rounded-full bg-status-delayed ring-2 ring-white/60" />

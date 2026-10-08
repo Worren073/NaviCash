@@ -230,6 +230,48 @@
   }
 }
 
+/* Z de sueño que salen de la esquina superior izquierda del orbe de Navi. */
+.navi-zzz {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  z-index: 5;
+  font-weight: 700;
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  animation: navi-zzz 1.3s ease-out infinite;
+}
+
+.navi-zzz-2 {
+  left: 11px;
+  top: -1px;
+  font-size: 7px;
+  animation-delay: 0.45s;
+}
+
+.navi-zzz-3 {
+  left: 17px;
+  top: -4px;
+  font-size: 6px;
+  animation-delay: 0.9s;
+}
+
+@keyframes navi-zzz {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px) scale(1.1);
+  }
+}
+
 /* Desenfoque de la página mientras carga contenido */
 @utility page-loading-blur {
   position: relative;
