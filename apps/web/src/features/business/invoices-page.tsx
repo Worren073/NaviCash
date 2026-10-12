@@ -6,6 +6,7 @@ import { Plus, ReceiptText, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/segmented";
 import { useInvoices } from "@/hooks/use-queries";
@@ -135,8 +136,10 @@ export default function InvoicesPage() {
         </p>
       ) : (
         <div className="space-y-2">
-          {invoices.map((inv) => (
-            <InvoiceCard key={inv.id} invoice={inv} />
+          {invoices.map((inv, index) => (
+            <Reveal key={inv.id} delay={Math.min(index, 6) * 0.1}>
+              <InvoiceCard invoice={inv} />
+            </Reveal>
           ))}
         </div>
       )}

@@ -6,6 +6,7 @@ import { Plus, Search, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/segmented";
 import { useOrders } from "@/hooks/use-queries";
@@ -153,8 +154,10 @@ export default function OrdersPage() {
         </p>
       ) : (
         <div className="space-y-2">
-          {orders.map((order) => (
-            <OrderCard key={order.id} order={order} />
+          {orders.map((order, index) => (
+            <Reveal key={order.id} delay={Math.min(index, 6) * 0.1}>
+              <OrderCard order={order} />
+            </Reveal>
           ))}
         </div>
       )}

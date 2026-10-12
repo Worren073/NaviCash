@@ -28,6 +28,7 @@ import {
 import { useBusinessAnalytics } from "@/hooks/use-queries";
 import { useHideBalances } from "@/hooks/use-hide-balances";
 import { Button } from "@/components/ui/button";
+import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/segmented";
 import { formatCompact, formatMoney } from "@/lib/format";
@@ -312,59 +313,74 @@ export default function AnalyticsPage() {
       ) : (
         <>
           <section className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4 md:gap-3">
-            <KpiCard
-              label={t("analytics.kpis.incomePeriod")}
-              icon={<TrendingUp className="h-4 w-4" />}
-              value={money(kpis?.incomePeriod)}
-              accent="var(--color-income)"
-              hidden={hidden}
-            />
-            <KpiCard
-              label={t("analytics.kpis.expensePeriod")}
-              icon={<TrendingDown className="h-4 w-4" />}
-              value={money(kpis?.expensePeriod)}
-              accent="var(--color-expense)"
-              hidden={hidden}
-            />
-            <KpiCard
-              label={t("analytics.kpis.margin")}
-              icon={<Percent className="h-4 w-4" />}
-              value={marginValue}
-              accent="var(--color-navi)"
-              hidden={hidden}
-            />
-            <KpiCard
-              label={t("analytics.kpis.receivable")}
-              icon={<HandCoins className="h-4 w-4" />}
-              value={money(kpis?.receivable)}
-              accent="var(--color-primary)"
-              hidden={hidden}
-            />
-            <KpiCard
-              label={t("analytics.kpis.payable")}
-              icon={<Wallet className="h-4 w-4" />}
-              value={money(kpis?.payable)}
-              accent="var(--color-primary-fixed)"
-              hidden={hidden}
-            />
-            <KpiCard
-              label={t("analytics.kpis.overdue")}
-              icon={<AlertTriangle className="h-4 w-4" />}
-              value={money(kpis?.overdue)}
-              accent="var(--color-expense)"
-              hidden={hidden}
-            />
-            <KpiCard
-              label={t("analytics.kpis.inventory")}
-              icon={<Boxes className="h-4 w-4" />}
-              value={money(kpis?.inventoryValue)}
-              accent="#22d3ee"
-              hidden={hidden}
-            />
+            <Reveal delay={0}>
+              <KpiCard
+                label={t("analytics.kpis.incomePeriod")}
+                icon={<TrendingUp className="h-4 w-4" />}
+                value={money(kpis?.incomePeriod)}
+                accent="var(--color-income)"
+                hidden={hidden}
+              />
+            </Reveal>
+            <Reveal delay={0.1}>
+              <KpiCard
+                label={t("analytics.kpis.expensePeriod")}
+                icon={<TrendingDown className="h-4 w-4" />}
+                value={money(kpis?.expensePeriod)}
+                accent="var(--color-expense)"
+                hidden={hidden}
+              />
+            </Reveal>
+            <Reveal delay={0.2}>
+              <KpiCard
+                label={t("analytics.kpis.margin")}
+                icon={<Percent className="h-4 w-4" />}
+                value={marginValue}
+                accent="var(--color-navi)"
+                hidden={hidden}
+              />
+            </Reveal>
+            <Reveal delay={0.3}>
+              <KpiCard
+                label={t("analytics.kpis.receivable")}
+                icon={<HandCoins className="h-4 w-4" />}
+                value={money(kpis?.receivable)}
+                accent="var(--color-primary)"
+                hidden={hidden}
+              />
+            </Reveal>
+            <Reveal delay={0.4}>
+              <KpiCard
+                label={t("analytics.kpis.payable")}
+                icon={<Wallet className="h-4 w-4" />}
+                value={money(kpis?.payable)}
+                accent="var(--color-primary-fixed)"
+                hidden={hidden}
+              />
+            </Reveal>
+            <Reveal delay={0.5}>
+              <KpiCard
+                label={t("analytics.kpis.overdue")}
+                icon={<AlertTriangle className="h-4 w-4" />}
+                value={money(kpis?.overdue)}
+                accent="var(--color-expense)"
+                hidden={hidden}
+              />
+            </Reveal>
+            <Reveal delay={0.6}>
+              <KpiCard
+                label={t("analytics.kpis.inventory")}
+                icon={<Boxes className="h-4 w-4" />}
+                value={money(kpis?.inventoryValue)}
+                accent="#22d3ee"
+                hidden={hidden}
+              />
+            </Reveal>
           </section>
 
-          <ChartCard title={t("analytics.pnlTitle")} empty={!hasData}>
-            <div className="h-72 w-full min-w-0">
+          <Reveal>
+            <ChartCard title={t("analytics.pnlTitle")} empty={!hasData}>
+              <div className="h-72 w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={pnlData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" vertical={false} />
@@ -408,28 +424,32 @@ export default function AnalyticsPage() {
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-          </ChartCard>
+            </ChartCard>
+            </Reveal>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <ChartCard
-              title={t("analytics.categoriesTitle")}
-              right={
-                <Segmented
-                  layoutId="seg-analytics-cat"
-                  size="sm"
-                  options={[
-                    { value: "income", label: t("analytics.categoriesIncome") },
-                    { value: "expense", label: t("analytics.categoriesExpense") },
-                  ]}
-                  value={catMode}
-                  onChange={setCatMode}
-                />
-              }
-            >
-              <Donut data={cats} currency={currency} hidden={hidden} />
-            </ChartCard>
+            <Reveal>
+              <ChartCard
+                title={t("analytics.categoriesTitle")}
+                right={
+                  <Segmented
+                    layoutId="seg-analytics-cat"
+                    size="sm"
+                    options={[
+                      { value: "income", label: t("analytics.categoriesIncome") },
+                      { value: "expense", label: t("analytics.categoriesExpense") },
+                    ]}
+                    value={catMode}
+                    onChange={setCatMode}
+                  />
+                }
+              >
+                <Donut data={cats} currency={currency} hidden={hidden} />
+              </ChartCard>
+            </Reveal>
 
-            <ChartCard title={t("analytics.agingTitle")} empty={aging.every((r) => r.value === 0)}>
+            <Reveal delay={0.15}>
+              <ChartCard title={t("analytics.agingTitle")} empty={aging.every((r) => r.value === 0)}>
               <div className="flex h-64 min-w-0 items-center">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={aging} layout="vertical" margin={{ top: 4, right: 24, left: 0, bottom: 4 }}>
@@ -456,11 +476,13 @@ export default function AnalyticsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </ChartCard>
+              </ChartCard>
+            </Reveal>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <ChartCard title={t("analytics.topClientsTitle")} empty={clients.length === 0}>
+            <Reveal>
+              <ChartCard title={t("analytics.topClientsTitle")} empty={clients.length === 0}>
               <div className="h-64 min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={clients} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
@@ -495,8 +517,10 @@ export default function AnalyticsPage() {
                 </ResponsiveContainer>
               </div>
             </ChartCard>
+            </Reveal>
 
-            <ChartCard title={t("analytics.topSuppliersTitle")} empty={suppliers.length === 0}>
+            <Reveal delay={0.15}>
+              <ChartCard title={t("analytics.topSuppliersTitle")} empty={suppliers.length === 0}>
               <div className="h-64 min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={suppliers} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
@@ -530,7 +554,8 @@ export default function AnalyticsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </ChartCard>
+              </ChartCard>
+            </Reveal>
           </div>
         </>
       )}

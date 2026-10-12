@@ -8,6 +8,7 @@ import { FolderClosed, Package, Pencil, Plus, Scale, Search, ShoppingCart, Trash
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -350,20 +351,21 @@ export default function InventoryPage() {
         </p>
       ) : (
         <div className="space-y-2">
-          {products.map((p) => {
+          {products.map((p, index) => {
             const categoryName = categories.find((c) => c.id === p.category)?.name;
             return (
-              <ProductCard
-                key={p.id}
-                product={p}
-                categoryName={categoryName}
-                onEdit={() => {
-                  setEditing(p);
-                  setFormOpen(true);
-                }}
-                onAdjust={() => setAdjusting(p)}
-                onDelete={() => setDeleting(p)}
-              />
+              <Reveal key={p.id} delay={Math.min(index, 6) * 0.1}>
+                <ProductCard
+                  product={p}
+                  categoryName={categoryName}
+                  onEdit={() => {
+                    setEditing(p);
+                    setFormOpen(true);
+                  }}
+                  onAdjust={() => setAdjusting(p)}
+                  onDelete={() => setDeleting(p)}
+                />
+              </Reveal>
             );
           })}
         </div>

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { Segmented } from "@/components/ui/segmented";
@@ -353,13 +354,14 @@ export default function BusinessContactsPage() {
         </p>
       ) : (
         <div className="space-y-2">
-          {contacts.map((c) => (
-            <ContactCard
-              key={c.id}
-              contact={c}
-              onEdit={openEdit}
-              onDelete={setDeleteContact}
-            />
+          {contacts.map((c, index) => (
+            <Reveal key={c.id} delay={Math.min(index, 6) * 0.1}>
+              <ContactCard
+                contact={c}
+                onEdit={openEdit}
+                onDelete={setDeleteContact}
+              />
+            </Reveal>
           ))}
         </div>
       )}

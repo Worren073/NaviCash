@@ -10,6 +10,7 @@ import { queryKeys } from "@/hooks/use-queries";
 import { useNavView } from "@/features/navigation/nav-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlurLoading } from "@/components/ui/blur-loading";
 import { formatMoney, formatRelativeEvent } from "@/lib/format";
@@ -273,8 +274,10 @@ export default function TransactionsPage() {
           </p>
         ) : (
           <div className="space-y-2">
-            {results.map((tx) => (
-              <TxCard key={tx.id} tx={tx} />
+            {results.map((tx, index) => (
+              <Reveal key={tx.id} delay={Math.min(index, 6) * 0.1}>
+                <TxCard tx={tx} />
+              </Reveal>
             ))}
           </div>
         )}
