@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useReducedMotion } from "motion/react";
 import {
   Bar,
   BarChart,
@@ -27,6 +28,7 @@ import {
 
 import { useBusinessAnalytics } from "@/hooks/use-queries";
 import { useHideBalances } from "@/hooks/use-hide-balances";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -100,14 +102,18 @@ function KpiCard({
   label,
   icon,
   value,
+  format,
   accent,
   hidden,
+  delay = 0,
 }: {
   label: string;
   icon: ReactNode;
-  value: string;
+  value: number | null;
+  format: (value: number) => string;
   accent: string;
   hidden: boolean;
+  delay?: number;
 }) {
   return (
     <div className="glass-panel clip-rounded-lg flex min-h-28 flex-col justify-between rounded-lg p-4">
@@ -121,7 +127,7 @@ function KpiCard({
         </div>
       </div>
       <div className="text-2xl font-semibold text-on-surface">
-        {hidden ? "••••" : value}
+        {hidden ? "••••" : value == null ? "—" : <AnimatedNumber value={value} format={format} delay={delay} />}
       </div>
     </div>
   );
@@ -199,7 +205,15 @@ function Donut({
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-xs text-on-surface-variant">{t("analytics.total")}</span>
           <span className="text-lg font-bold text-on-surface">
-            {hidden ? "••••" : formatMoney(total, currency, { symbol: true })}
+            {hidden ? (
+              "••••"
+            ) : (
+              <AnimatedNumber
+                value={total}
+                format={(n) => formatMoney(n, currency, { symbol: true })}
+                delay={0.2}
+              />
+            )}
           </span>
         </div>
       </div>
@@ -218,7 +232,15 @@ function Donut({
                 {total > 0 ? `${Math.round((c.value / total) * 100)}%` : ""}
               </span>
               <span className="font-medium text-on-surface">
-                {hidden ? "••••" : formatCompact(c.value, currency)}
+                {hidden ? (
+                  "••••"
+                ) : (
+                  <AnimatedNumber
+                    value={c.value}
+                    format={(n) => formatCompact(n, currency)}
+                    delay={Math.min(i, 5) * 0.06}
+                  />
+                )}
               </span>
             </span>
           </li>
@@ -230,6 +252,7 @@ function Donut({
 
 export default function AnalyticsPage() {
   const { t } = useTranslation();
+  const reduce = useReducedMotion();
   const [months, setMonths] = useState<"6" | "12">("12");
   const [catMode, setCatMode] = useState<"income" | "expense">("income");
   const { data, isLoading, isError, refetch } = useBusinessAnalytics(Number(months));
@@ -260,13 +283,9 @@ export default function AnalyticsPage() {
       (data?.topClients?.length ?? 0) > 0 ||
       (data?.topSuppliers?.length ?? 0) > 0);
 
-  const marginValue =
-    kpis?.marginPct == null
-      ? "—"
-      : `${new Intl.NumberFormat("es-VE", { maximumFractionDigits: 1 }).format(kpis.marginPct)}%`;
-
-  const money = (amount?: number) =>
-    amount == null ? "—" : formatMoney(amount, currency, { symbol: true });
+  const moneyFormat = (amount: number) => formatMoney(amount, currency, { symbol: true });
+  const pctFormat = (amount: number) =>
+    `${new Intl.NumberFormat("es-VE", { maximumFractionDigits: 1 }).format(amount)}%`;
 
   if (isError) {
     return (
@@ -317,63 +336,77 @@ export default function AnalyticsPage() {
               <KpiCard
                 label={t("analytics.kpis.incomePeriod")}
                 icon={<TrendingUp className="h-4 w-4" />}
-                value={money(kpis?.incomePeriod)}
+                value={kpis?.incomePeriod ?? null}
+                format={moneyFormat}
                 accent="var(--color-income)"
                 hidden={hidden}
+                delay={0.1}
               />
             </Reveal>
             <Reveal delay={0.1}>
               <KpiCard
                 label={t("analytics.kpis.expensePeriod")}
                 icon={<TrendingDown className="h-4 w-4" />}
-                value={money(kpis?.expensePeriod)}
+                value={kpis?.expensePeriod ?? null}
+                format={moneyFormat}
                 accent="var(--color-expense)"
                 hidden={hidden}
+                delay={0.12}
               />
             </Reveal>
             <Reveal delay={0.2}>
               <KpiCard
                 label={t("analytics.kpis.margin")}
                 icon={<Percent className="h-4 w-4" />}
-                value={marginValue}
+                value={kpis?.marginPct ?? null}
+                format={pctFormat}
                 accent="var(--color-navi)"
                 hidden={hidden}
+                delay={0.14}
               />
             </Reveal>
             <Reveal delay={0.3}>
               <KpiCard
                 label={t("analytics.kpis.receivable")}
                 icon={<HandCoins className="h-4 w-4" />}
-                value={money(kpis?.receivable)}
+                value={kpis?.receivable ?? null}
+                format={moneyFormat}
                 accent="var(--color-primary)"
                 hidden={hidden}
+                delay={0.16}
               />
             </Reveal>
             <Reveal delay={0.4}>
               <KpiCard
                 label={t("analytics.kpis.payable")}
                 icon={<Wallet className="h-4 w-4" />}
-                value={money(kpis?.payable)}
+                value={kpis?.payable ?? null}
+                format={moneyFormat}
                 accent="var(--color-primary-fixed)"
                 hidden={hidden}
+                delay={0.18}
               />
             </Reveal>
             <Reveal delay={0.5}>
               <KpiCard
                 label={t("analytics.kpis.overdue")}
                 icon={<AlertTriangle className="h-4 w-4" />}
-                value={money(kpis?.overdue)}
+                value={kpis?.overdue ?? null}
+                format={moneyFormat}
                 accent="var(--color-expense)"
                 hidden={hidden}
+                delay={0.2}
               />
             </Reveal>
             <Reveal delay={0.6}>
               <KpiCard
                 label={t("analytics.kpis.inventory")}
                 icon={<Boxes className="h-4 w-4" />}
-                value={money(kpis?.inventoryValue)}
+                value={kpis?.inventoryValue ?? null}
+                format={moneyFormat}
                 accent="#22d3ee"
                 hidden={hidden}
+                delay={0.22}
               />
             </Reveal>
           </section>
@@ -399,19 +432,39 @@ export default function AnalyticsPage() {
                     width={70}
                   />
                   <Tooltip content={<ChartTooltip currency={currency} />} />
-                  <Bar
+                  <Line
+                    type="monotone"
                     dataKey="income"
                     name={t("analytics.pnlIncome")}
-                    fill="var(--color-income)"
-                    radius={[6, 6, 0, 0]}
-                    maxBarSize={26}
+                    stroke="var(--color-income)"
+                    strokeWidth={3}
+                    dot={{ r: 3, fill: "var(--color-income)", stroke: "var(--color-income)" }}
+                    activeDot={{ r: 5 }}
+                    style={{
+                      filter:
+                        "drop-shadow(0 0 4px var(--color-income)) drop-shadow(0 0 9px var(--color-income))",
+                    }}
+                    isAnimationActive={!reduce}
+                    animationDuration={1600}
+                    animationEasing="ease-in-out"
+                    animationBegin={0}
                   />
-                  <Bar
+                  <Line
+                    type="monotone"
                     dataKey="expense"
                     name={t("analytics.pnlExpense")}
-                    fill="var(--color-expense)"
-                    radius={[6, 6, 0, 0]}
-                    maxBarSize={26}
+                    stroke="var(--color-expense)"
+                    strokeWidth={3}
+                    dot={{ r: 3, fill: "var(--color-expense)", stroke: "var(--color-expense)" }}
+                    activeDot={{ r: 5 }}
+                    style={{
+                      filter:
+                        "drop-shadow(0 0 4px var(--color-expense)) drop-shadow(0 0 9px var(--color-expense))",
+                    }}
+                    isAnimationActive={!reduce}
+                    animationDuration={1600}
+                    animationEasing="ease-in-out"
+                    animationBegin={120}
                   />
                   <Line
                     type="monotone"
