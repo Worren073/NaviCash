@@ -34,7 +34,7 @@ class GoalViewSet(viewsets.ModelViewSet):
         """
         return SavingsGoal.objects.filter(user=self.request.user).prefetch_related(
             "contributions", "linked_accounts"
-        )
+        ).order_by("-created_at")
 
     def get_serializer_class(self):
         """Escritura vs lectura según la acción."""

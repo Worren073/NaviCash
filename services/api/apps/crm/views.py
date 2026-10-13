@@ -74,7 +74,7 @@ class BusinessContactViewSet(viewsets.ModelViewSet):
                     }
                 )
             qs = qs.filter(tax_id__istartswith=f"{prefix}-")
-        return qs.order_by("name")
+        return qs.order_by("-created_at")
 
     def perform_destroy(self, instance: BusinessContact) -> None:
         """Bloquea borrar contactos con facturas o pedidos asociados.
@@ -125,7 +125,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         inv_status = self.request.query_params.get("status")
         if inv_status:
             qs = qs.filter(status=inv_status)
-        return qs.order_by("-issue_date")
+        return qs.order_by("-issue_date", "-created_at")
 
     def _read_response(self, instance, status_code: int = 200):
         """Serializa con el serializer de lectura (más campos computados)."""
@@ -228,7 +228,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order_status = self.request.query_params.get("status")
         if order_status:
             qs = qs.filter(status=order_status)
-        return qs.order_by("-order_date")
+        return qs.order_by("-order_date", "-created_at")
 
     def _read_response(self, instance, status_code: int = 200):
         """Serializa con el serializer de lectura (más campos computados)."""
@@ -370,7 +370,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         active = self.request.query_params.get("active")
         if active in ("true", "false"):
             qs = qs.filter(is_active=active == "true")
-        return qs.order_by("name")
+        return qs.order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
         try:

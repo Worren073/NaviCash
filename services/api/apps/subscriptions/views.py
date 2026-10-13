@@ -29,7 +29,9 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Mensualidades del usuario, con derivados calculados."""
-        return Subscription.objects.filter(user=self.request.user)
+        return Subscription.objects.filter(user=self.request.user).order_by(
+            "-created_at"
+        )
 
     def create(self, request, *args, **kwargs):
         """Crea la mensualidad y devuelve su detalle con progreso."""
