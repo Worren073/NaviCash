@@ -167,6 +167,24 @@ def _delete_lock_key(user: User) -> str:
     return f"delete_failed:{user.pk}"
 
 
+def _lockout_retry_after(lock_key: str) -> int:
+    """Segundos restantes de un bloqueo, para la cabecera ``Retry-After``.
+
+    Usa el TTL real de la caché (Redis en producción) para que el frontend
+    cuente atrás con precisión. Si el backend no expone ``ttl`` (p. ej.
+    ``LocMemCache`` en tests) cae a la ventana completa configurada.
+    """
+    ttl = getattr(cache, "ttl", None)
+    if callable(ttl):
+        try:
+            remaining = ttl(lock_key)
+        except Exception:  # noqa: BLE001 - caché sin soporte o entrada ausente
+            remaining = None
+        if isinstance(remaining, int) and remaining > 0:
+            return remaining
+    return settings.LOGIN_LOCKOUT_MINUTES * 60
+
+
 class RegisterView(APIView):
     """Crea una cuenta nueva y envía el correo de verificación.
 
@@ -250,6 +268,7 @@ class LoginView(APIView):
                         "Espera unos minutos e intenta de nuevo."
                     },
                     status=status.HTTP_429_TOO_MANY_REQUESTS,
+                    headers={"Retry-After": str(_lockout_retry_after(lock_key))},
                 )
 
         try:
@@ -551,6 +570,7 @@ class DeleteAccountView(APIView):
                     "Espera unos minutos e intenta de nuevo."
                 },
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={"Retry-After": str(_lockout_retry_after(lock_key))},
             )
         try:
             serializer = DeleteAccountSerializer(data=request.data, user=request.user)

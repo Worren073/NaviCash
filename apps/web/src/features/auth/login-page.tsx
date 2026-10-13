@@ -72,7 +72,17 @@ export default function LoginPage() {
         // 429: se deshabilita el envío durante la espera que pidió el servidor
         // y se muestra su mensaje (trae el motivo real cuando procede del API;
         // el del borde de la infraestructura ya viene traducido por api.ts).
-        if (err.status === 429) setCooldown(err.retryAfter ?? 30);
+        if (err.status === 429) {
+          if (err.code === "throttled_edge") {
+            // El 429 nace del borde, sin `detail`: el servicio free se durmió.
+            // Se da una espera algo mayor (el arranque tarda ~1 min) y se
+            // despierta la API en segundo plano con una sonda sin throttle.
+            setCooldown(err.retryAfter ?? 45);
+            void api.get("/health").catch(() => {});
+          } else {
+            setCooldown(err.retryAfter ?? 30);
+          }
+        }
         setError(err.message);
       } else setError(t("errors.generic"));
     },

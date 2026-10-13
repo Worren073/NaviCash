@@ -618,6 +618,25 @@ class TestAuthFlow:
         )
         assert resp.status_code == 429
 
+    def test_login_lockout_devuelve_retry_after(self) -> None:
+        """El 429 del lockout trae Retry-After para que el botón cuente atrás."""
+        from django.conf import settings
+        from django.core.cache import cache
+        from rest_framework.test import APIClient
+
+        from apps.accounts.views import _login_lock_key
+
+        user = UserFactory(email="retry@example.com")
+        # Bloquea la cuenta sin gastar el throttle de login (5/min), de modo
+        # que el 429 provenga del lockout y no del throttle de DRF.
+        cache.set(_login_lock_key(user), settings.MAX_FAILED_LOGIN_ATTEMPTS, timeout=60)
+        client = APIClient()
+        resp = client.post(
+            self.LOGIN_URL, {"email": "retry@example.com", "password": "test-password-123"}
+        )
+        assert resp.status_code == 429
+        assert int(resp.headers["Retry-After"]) > 0
+
     def test_login_success_clears_failed_counter(self) -> None:
         """Un login correcto resetea el contador de intentos fallidos."""
         from django.conf import settings

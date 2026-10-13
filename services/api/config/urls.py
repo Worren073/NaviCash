@@ -8,7 +8,11 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 
+from apps.core.views import health
+
 urlpatterns = [
+    # Sonda de salud (sin auth ni throttle): keep-alive externo / diagnóstico.
+    path("api/health", health),
     # API de NaviCash (/api/auth, /api/rates, /api/wallets, ...)
     path("api/", include("apps.accounts.urls")),
     path("api/", include("apps.rates.urls")),

@@ -148,14 +148,28 @@ function normalizeError(status: number, payload: unknown, retryAfter?: number): 
   // El 429 puede venir del throttle/lockout de Django (con `detail`) o del
   // borde (Cloudflare/Render) con un cuerpo no JSON: en ambos casos hay que
   // dar un mensaje entendible en vez de "Error inesperado (429)".
-  const throttledMessage =
-    retryAfter !== undefined
+  const payloadObj =
+    payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+  const hasApiDetail = Boolean(
+    payloadObj &&
+      ((typeof payloadObj.detail === "string" && payloadObj.detail.trim().length > 0) ||
+        (typeof payloadObj.message === "string" && payloadObj.message.trim().length > 0)),
+  );
+  // 429 sin `detail`/`message` de la API = 429 del borde: casi siempre el
+  // servicio free se durmió y está arrancando (Render). Mensaje y código
+  // propios para que el login dispare el "ping de despertar".
+  const isEdgeThrottle = status === 429 && !hasApiDetail;
+
+  const throttledMessage = isEdgeThrottle
+    ? "El servicio está arrancando. Espera unos segundos e inténtalo de nuevo."
+    : retryAfter !== undefined
       ? `Demasiados intentos. Vuelve a intentarlo en ${retryAfter} s.`
       : "Demasiados intentos. Espera unos segundos antes de reintentar.";
   const fallback = status === 429 ? throttledMessage : `Error inesperado (${status}).`;
+  const throttleCode = isEdgeThrottle ? "throttled_edge" : "throttled";
 
-  if (payload && typeof payload === "object") {
-    const p = payload as Record<string, unknown>;
+  if (payloadObj) {
+    const p = payloadObj;
     const message =
       typeof p.detail === "string" && p.detail.trim().length > 0
         ? p.detail
@@ -170,12 +184,12 @@ function normalizeError(status: number, payload: unknown, retryAfter?: number): 
     }
     return {
       message,
-      code: typeof p.code === "string" ? p.code : status === 429 ? "throttled" : undefined,
+      code: typeof p.code === "string" ? p.code : status === 429 ? throttleCode : undefined,
       fieldErrors,
       retryAfter: status === 429 ? retryAfter : undefined,
     };
   }
-  return { message: fallback, code: status === 429 ? "throttled" : undefined, retryAfter };
+  return { message: fallback, code: status === 429 ? throttleCode : undefined, retryAfter };
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
