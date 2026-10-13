@@ -141,6 +141,7 @@ export interface Invoice {
   contact: BusinessContact;
   number: string;
   issue_date: string;
+  issued_at: string | null;
   due_date: string;
   status: InvoiceStatus;
   subtotal: string;
@@ -161,6 +162,7 @@ export interface InvoiceDraft {
   contact: string;
   items: { product?: string; description: string; quantity: string; unit_price: string; discount?: string }[];
   issue_date?: string;
+  issued_at?: string;
   due_date?: string;
   tax_amount?: string;
   paid_amount?: string;
@@ -248,6 +250,7 @@ export interface Order {
   contact: BusinessContact;
   number: string;
   order_date: string;
+  ordered_at: string | null;
   due_date: string | null;
   received_at: string | null;
   status: OrderStatus;

@@ -128,6 +128,12 @@ class Invoice(OwnedModel):
     )
     number = models.CharField(max_length=20, verbose_name="Número")
     issue_date = models.DateField(verbose_name="Fecha de emisión")
+    issued_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Emitida el",
+        help_text="Fecha y hora reales de emisión (las del dispositivo que la creó).",
+    )
     due_date = models.DateField(verbose_name="Fecha de vencimiento")
     status = models.CharField(
         max_length=10,
@@ -305,6 +311,12 @@ class Order(OwnedModel):
     )
     number = models.CharField(max_length=20, verbose_name="Número")
     order_date = models.DateField(verbose_name="Fecha del pedido")
+    ordered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Registrado el",
+        help_text="Fecha y hora reales del pedido (las del dispositivo que lo creó).",
+    )
     due_date = models.DateField(
         null=True,
         blank=True,

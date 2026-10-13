@@ -46,6 +46,15 @@ export function formatDate(iso: string): string {
   }).format(d);
 }
 
+/** Valor para `<input type="datetime-local">` con la fecha/hora local del dispositivo. */
+export function toDateTimeLocalValue(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
+
 /** "Today, 10:45 AM" -> fecha relativa corta para listas de actividad. */
 export function formatRelativeEvent(iso: string): string {
   if (!iso) return "";

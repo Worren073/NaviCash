@@ -391,7 +391,7 @@ export default {
       affiliateHint:
         "Registra al cliente con esta cédula para facturarle de inmediato.",
       affiliateSave: "Afiliar y usar",
-      issueDate: "Fecha de emisión",
+      issueDate: "Fecha y hora de emisión",
       dueDate: "Vencimiento",
       dueAuto: "Se calcula con los días de crédito del cliente",
       items: "Productos",
@@ -507,7 +507,7 @@ export default {
       searchSupplier: "Nombre del proveedor",
       changeSupplier: "Cambiar",
       noSuppliers: "Crea un proveedor en Clientes para poder hacer pedidos.",
-      orderDate: "Fecha de pedido",
+      orderDate: "Fecha y hora del pedido",
       dueDate: "Fecha de pago (opcional)",
       dueDateHint: "Por defecto: la fecha del pedido más los días de crédito del proveedor.",
       items: "Productos",

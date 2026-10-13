@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -148,6 +148,7 @@ def create_invoice(
     items_data: list[dict],
     *,
     issue_date: date | None = None,
+    issued_at: datetime | None = None,
     due_date: date | None = None,
     tax_amount: Decimal | None = None,
     paid_amount: Decimal | None = None,
@@ -162,6 +163,8 @@ def create_invoice(
         items_data: lista de dicts con ``description``, ``quantity``,
             ``unit_price`` y opcional ``discount``.
         issue_date: fecha de emisión (por defecto hoy).
+        issued_at: fecha y hora reales de emisión enviadas por el cliente
+            (por defecto ``None``, se guarda como ``NULL``).
         due_date: fecha de vencimiento (por defecto hoy + días de crédito del contacto).
         tax_amount: impuesto manual (por defecto 0).
         paid_amount: monto pagado al crear la factura (0 = crédito, >= total = contado).
@@ -223,6 +226,7 @@ def create_invoice(
         contact=contact,
         number=_next_invoice_number(business),
         issue_date=issue_date,
+        issued_at=issued_at,
         due_date=due_date,
         status=status,
         subtotal=subtotal,
@@ -556,6 +560,7 @@ def create_order(
     items_data: list[dict],
     *,
     order_date: date | None = None,
+    ordered_at: datetime | None = None,
     due_date: date | None = None,
     shipping_amount: Decimal | None = None,
     paid_amount: Decimal | None = None,
@@ -571,6 +576,8 @@ def create_order(
             ``unit_price``, opcional ``discount`` y, en excluyente mutuo, un
             ``product`` existente o un ``new_product`` con los datos del alta.
         order_date: fecha del pedido (por defecto hoy).
+        ordered_at: fecha y hora reales del pedido enviadas por el cliente
+            (por defecto ``None``, se guarda como ``NULL``).
         due_date: fecha prevista de pago (por defecto hoy + días de crédito
             del proveedor).
         shipping_amount: costo de envío que se suma al subtotal (por defecto 0).
@@ -636,6 +643,7 @@ def create_order(
         contact=contact,
         number=_next_order_number(business),
         order_date=order_date,
+        ordered_at=ordered_at,
         due_date=due_date,
         status=_order_status_for_paid(paid_amount),
         subtotal=subtotal,

@@ -167,7 +167,7 @@ export function InvoiceDetail({ id }: { id: string }) {
             </div>
             <div className="flex flex-wrap gap-x-4 text-sm text-on-surface-variant">
               <span>
-                {t("invoices.detail.issueDate")}: {formatDate(invoice.issue_date)}
+                {t("invoices.detail.issueDate")}: {formatDate(invoice.issued_at ?? invoice.issue_date)}
               </span>
               <span>
                 {t("invoices.detail.dueDate")}: {formatDate(invoice.due_date)}

@@ -19,7 +19,7 @@ import {
   useProductCategories,
   useProducts,
 } from "@/hooks/use-queries";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, toDateTimeLocalValue } from "@/lib/format";
 import type { Order, OrderLineDraft, OrderNewProduct } from "@/lib/types";
 
 interface ItemRow {
@@ -79,7 +79,7 @@ export default function OrderNewPage() {
   const [supplierSearch, setSupplierSearch] = useState("");
   const [debouncedSupplierSearch, setDebouncedSupplierSearch] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState<string>("");
-  const [orderDate, setOrderDate] = useState("");
+  const [orderDate, setOrderDate] = useState(() => toDateTimeLocalValue());
   const [dueDate, setDueDate] = useState("");
   const [shippingAmount, setShippingAmount] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
@@ -177,7 +177,7 @@ export default function OrderNewPage() {
     if (paid < 0) return t("orders.form.errors.invalidPaid");
     if (paid > total) return t("orders.form.errors.paidOverTotal");
     if (paid > 0 && paid > walletSaldo) return t("orders.form.errors.insufficient");
-    if (dueDate && orderDate && dueDate < orderDate)
+    if (dueDate && orderDate && dueDate < orderDate.slice(0, 10))
       return t("orders.form.errors.dueBeforeOrder");
     return null;
   }, [selectedSupplier, items, catalogue, shipping, paid, total, walletSaldo, dueDate, orderDate, t]);
@@ -198,7 +198,12 @@ export default function OrderNewPage() {
           }
           return { ...base, product: r.product };
         }),
-        ...(orderDate ? { order_date: orderDate } : {}),
+        ...(orderDate
+          ? {
+              order_date: orderDate.slice(0, 10),
+              ordered_at: new Date(orderDate).toISOString(),
+            }
+          : {}),
         ...(dueDate ? { due_date: dueDate } : {}),
         ...(shippingAmount ? { shipping_amount: shippingAmount } : {}),
         ...(paidAmount ? { paid_amount: paidAmount } : {}),
@@ -302,7 +307,11 @@ export default function OrderNewPage() {
             <span className="mb-1 block text-sm font-medium text-on-surface">
               {t("orders.form.orderDate")}
             </span>
-            <Input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+            <Input
+              type="datetime-local"
+              value={orderDate}
+              onChange={(e) => setOrderDate(e.target.value)}
+            />
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-on-surface">

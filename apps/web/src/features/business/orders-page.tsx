@@ -44,7 +44,7 @@ function OrderCard({ order, onOpen }: { order: Order; onOpen: () => void }) {
         </div>
         <div className="mt-1 truncate text-sm text-on-surface-variant">{order.contact.name}</div>
         <div className="text-xs text-on-surface-variant">
-          {t("orders.list.orderDate")}: {formatDate(order.order_date)}
+          {t("orders.list.orderDate")}: {formatDate(order.ordered_at ?? order.order_date)}
         </div>
         {order.due_date && (
           <div className="text-xs text-on-surface-variant">

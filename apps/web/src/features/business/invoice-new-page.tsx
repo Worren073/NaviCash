@@ -20,7 +20,7 @@ import { NumericInput } from "@/components/ui/numeric-input";
 import { Segmented } from "@/components/ui/segmented";
 import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys, useBusinessContacts, useProducts } from "@/hooks/use-queries";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, toDateTimeLocalValue } from "@/lib/format";
 import { TAX_ID_TYPES, formatTaxId, isValidTaxId, taxIdSearchTerm, type TaxIdType } from "@/lib/tax-id";
 import type { BusinessContact, Invoice } from "@/lib/types";
 import {
@@ -74,7 +74,7 @@ export default function InvoiceNewPage() {
   const { data: productsData } = useProducts();
   const catalogue = useMemo(() => productsData?.results ?? [], [productsData]);
 
-  const [issueDate, setIssueDate] = useState("");
+  const [issueDate, setIssueDate] = useState(() => toDateTimeLocalValue());
   const [dueDate, setDueDate] = useState("");
   const [taxAmount, setTaxAmount] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
@@ -131,7 +131,7 @@ export default function InvoiceNewPage() {
     if (tax < 0) return t("invoices.form.errors.invalidTax");
     if (paid < 0) return t("invoices.form.errors.invalidPaid");
     if (paid > total) return t("invoices.form.errors.paidOverTotal");
-    if (dueDate && issueDate && dueDate < issueDate)
+    if (dueDate && issueDate && dueDate < issueDate.slice(0, 10))
       return t("invoices.form.errors.invalidDate");
     return null;
   }, [selectedContact, items, catalogue, tax, paid, total, dueDate, issueDate, t]);
@@ -174,7 +174,12 @@ export default function InvoiceNewPage() {
           ...(r.product ? { product: r.product } : {}),
           ...(r.discount ? { discount: r.discount } : {}),
         })),
-        ...(issueDate ? { issue_date: issueDate } : {}),
+        ...(issueDate
+          ? {
+              issue_date: issueDate.slice(0, 10),
+              issued_at: new Date(issueDate).toISOString(),
+            }
+          : {}),
         ...(dueDate ? { due_date: dueDate } : {}),
         ...(taxAmount ? { tax_amount: taxAmount } : {}),
         ...(paidAmount ? { paid_amount: paidAmount } : {}),
@@ -313,7 +318,11 @@ export default function InvoiceNewPage() {
             <span className="mb-1 block text-sm font-medium text-on-surface">
               {t("invoices.form.issueDate")}
             </span>
-            <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+            <Input
+              type="datetime-local"
+              value={issueDate}
+              onChange={(e) => setIssueDate(e.target.value)}
+            />
           </label>
 
           <label className="block">

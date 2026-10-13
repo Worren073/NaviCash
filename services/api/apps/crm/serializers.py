@@ -198,6 +198,7 @@ class InvoiceReadSerializer(serializers.ModelSerializer):
             "contact",
             "number",
             "issue_date",
+            "issued_at",
             "due_date",
             "status",
             "subtotal",
@@ -243,6 +244,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
     contact = serializers.PrimaryKeyRelatedField(queryset=BusinessContact.objects.none())
     items = InvoiceItemWriteSerializer(many=True)
     issue_date = serializers.DateField(required=False)
+    issued_at = serializers.DateTimeField(required=False, allow_null=True)
     due_date = serializers.DateField(required=False)
     paid_amount = serializers.DecimalField(
         max_digits=20, decimal_places=2, required=False, default=Decimal("0")
@@ -255,6 +257,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
             "business",
             "contact",
             "issue_date",
+            "issued_at",
             "due_date",
             "tax_amount",
             "paid_amount",
@@ -333,6 +336,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
             contact=validated_data["contact"],
             items_data=items,
             issue_date=validated_data.get("issue_date"),
+            issued_at=validated_data.get("issued_at"),
             due_date=validated_data.get("due_date"),
             tax_amount=validated_data.get("tax_amount"),
             paid_amount=validated_data.get("paid_amount"),
@@ -351,6 +355,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
         items = validated_data.pop("items", None)
         instance.contact = validated_data.get("contact", instance.contact)
         instance.issue_date = validated_data.get("issue_date", instance.issue_date)
+        instance.issued_at = validated_data.get("issued_at", instance.issued_at)
         instance.due_date = validated_data.get("due_date", instance.due_date)
         instance.tax_amount = validated_data.get("tax_amount", instance.tax_amount)
         instance.notes = validated_data.get("notes", instance.notes)
@@ -506,6 +511,7 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "contact",
             "number",
             "order_date",
+            "ordered_at",
             "due_date",
             "received_at",
             "status",
@@ -538,6 +544,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
     contact = serializers.PrimaryKeyRelatedField(queryset=BusinessContact.objects.none())
     items = OrderItemWriteSerializer(many=True)
     order_date = serializers.DateField(required=False)
+    ordered_at = serializers.DateTimeField(required=False, allow_null=True)
     due_date = serializers.DateField(required=False, allow_null=True)
     shipping_amount = serializers.DecimalField(
         max_digits=20, decimal_places=2, required=False, default=Decimal("0")
@@ -553,6 +560,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
             "business",
             "contact",
             "order_date",
+            "ordered_at",
             "due_date",
             "shipping_amount",
             "paid_amount",
@@ -626,6 +634,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
             contact=validated_data["contact"],
             items_data=items,
             order_date=validated_data.get("order_date"),
+            ordered_at=validated_data.get("ordered_at"),
             due_date=validated_data.get("due_date"),
             shipping_amount=validated_data.get("shipping_amount"),
             paid_amount=validated_data.get("paid_amount"),
@@ -644,6 +653,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
         items = validated_data.pop("items", None)
         instance.contact = validated_data.get("contact", instance.contact)
         instance.order_date = validated_data.get("order_date", instance.order_date)
+        instance.ordered_at = validated_data.get("ordered_at", instance.ordered_at)
         instance.due_date = validated_data.get("due_date", instance.due_date)
         instance.shipping_amount = validated_data.get(
             "shipping_amount", instance.shipping_amount

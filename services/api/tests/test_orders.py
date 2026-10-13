@@ -84,6 +84,16 @@ class TestOrders:
         data.update(overrides)
         return data
 
+    def test_create_order_ordered_at(self, api_client, business, supplier) -> None:
+        """ordered_at guarda la fecha/hora real del pedido enviada por el cliente."""
+        payload = self._new_product_payload(supplier, ordered_at="2026-10-13T14:30:00Z")
+        resp = api_client.post(self.URL, payload, format="json")
+        assert resp.status_code == 201, resp.data
+        assert resp.data["ordered_at"] == "2026-10-13T14:30:00Z"
+        order = Order.objects.get(id=resp.data["id"])
+        assert order.ordered_at is not None
+        assert order.ordered_at.strftime("%Y-%m-%dT%H:%M:%S") == "2026-10-13T14:30:00"
+
     def test_create_order_borrador(self, api_client, business, supplier, product) -> None:
         """POST crea un pedido PO-00001 en borrador con envio en el total."""
         resp = api_client.post(

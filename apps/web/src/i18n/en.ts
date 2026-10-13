@@ -392,7 +392,7 @@ export default {
       affiliateHint:
         "Register the customer with this ID to invoice them right away.",
       affiliateSave: "Register and use",
-      issueDate: "Issue date",
+      issueDate: "Issue date & time",
       dueDate: "Due date",
       dueAuto: "Calculated from the customer's credit days",
       items: "Products",
@@ -508,7 +508,7 @@ export default {
       searchSupplier: "Supplier name",
       changeSupplier: "Change",
       noSuppliers: "Create a supplier in Contacts to place orders.",
-      orderDate: "Order date",
+      orderDate: "Order date & time",
       dueDate: "Due date (optional)",
       dueDateHint: "By default: the order date plus the supplier's credit days.",
       items: "Products",

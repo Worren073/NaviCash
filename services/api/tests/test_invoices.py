@@ -79,6 +79,19 @@ class TestInvoices:
         assert resp.data["total"] == "262.50"
         assert resp.data["due_date"] == "2026-10-16"
 
+    def test_create_invoice_issued_at(self, api_client, business, contact) -> None:
+        """issued_at guarda la fecha/hora real de emisión enviada por el cliente."""
+        resp = api_client.post(
+            self.URL,
+            self._payload(contact, issued_at="2026-10-13T14:30:00Z"),
+            format="json",
+        )
+        assert resp.status_code == 201, resp.data
+        assert resp.data["issued_at"] == "2026-10-13T14:30:00Z"
+        invoice = Invoice.objects.get(id=resp.data["id"])
+        assert invoice.issued_at is not None
+        assert invoice.issued_at.strftime("%Y-%m-%dT%H:%M:%S") == "2026-10-13T14:30:00"
+
     def test_create_invoice_full_paid(self, api_client, business, contact) -> None:
         """paid_amount == total: factura pagada y el cobro acredita la billetera."""
         wallet = Wallet.objects.get(business=business)

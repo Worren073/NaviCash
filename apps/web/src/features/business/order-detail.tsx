@@ -155,7 +155,7 @@ export function OrderDetail({ id }: { id: string }) {
             </div>
             <div className="flex flex-wrap gap-x-4 text-sm text-on-surface-variant">
               <span>
-                {t("orders.detail.orderDate")}: {formatDate(order.order_date)}
+                {t("orders.detail.orderDate")}: {formatDate(order.ordered_at ?? order.order_date)}
               </span>
               {order.due_date && (
                 <span>
