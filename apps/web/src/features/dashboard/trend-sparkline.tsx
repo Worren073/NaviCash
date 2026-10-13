@@ -1,3 +1,4 @@
+import { motion, useReducedMotion } from "motion/react";
 import { useId } from "react";
 
 type Trend = "up" | "down";
@@ -6,6 +7,8 @@ interface TrendSparklineProps {
   trend: Trend;
   color: string;
   className?: string;
+  /** Dibuja el trazo de izquierda a derecha al entrar en pantalla. */
+  animate?: boolean;
 }
 
 const UP_POINTS: ReadonlyArray<readonly [number, number]> = [
@@ -62,8 +65,10 @@ function smoothPath(points: ReadonlyArray<readonly [number, number]>): string {
   return d;
 }
 
-export function TrendSparkline({ trend, color, className }: TrendSparklineProps) {
+export function TrendSparkline({ trend, color, className, animate = false }: TrendSparklineProps) {
   const id = useId();
+  const reduce = useReducedMotion();
+  const draw = animate && !reduce;
   const points = trend === "up" ? UP_POINTS : DOWN_POINTS;
   const line = smoothPath(points);
   const area = `${line} L 60 36 L 0 36 Z`;
@@ -85,8 +90,15 @@ export function TrendSparkline({ trend, color, className }: TrendSparklineProps)
           <feGaussianBlur stdDeviation="2.2" />
         </filter>
       </defs>
-      <path d={area} fill={`url(#trend-fill-${uid})`} />
-      <path
+      <motion.path
+        d={area}
+        fill={`url(#trend-fill-${uid})`}
+        initial={draw ? { opacity: 0 } : undefined}
+        whileInView={draw ? { opacity: 1 } : undefined}
+        viewport={{ once: true }}
+        transition={draw ? { duration: 1.2, delay: 0.2, ease: "easeOut" } : undefined}
+      />
+      <motion.path
         d={line}
         fill="none"
         stroke={color}
@@ -95,8 +107,12 @@ export function TrendSparkline({ trend, color, className }: TrendSparklineProps)
         strokeLinejoin="round"
         filter={`url(#trend-glow-${uid})`}
         opacity={0.75}
+        initial={draw ? { pathLength: 0 } : undefined}
+        whileInView={draw ? { pathLength: 1 } : undefined}
+        viewport={{ once: true }}
+        transition={draw ? { duration: 1.7, ease: "easeInOut" } : undefined}
       />
-      <path
+      <motion.path
         d={line}
         fill="none"
         stroke={color}
@@ -104,6 +120,10 @@ export function TrendSparkline({ trend, color, className }: TrendSparklineProps)
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
+        initial={draw ? { pathLength: 0 } : undefined}
+        whileInView={draw ? { pathLength: 1 } : undefined}
+        viewport={{ once: true }}
+        transition={draw ? { duration: 1.7, ease: "easeInOut" } : undefined}
       />
     </svg>
   );

@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
   ArrowLeftRight,
+  BarChart3,
   ChevronRight,
   HandCoins,
   Package,
@@ -20,6 +21,8 @@ import { useHideBalances } from "@/hooks/use-hide-balances";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { AnimatedNumber } from "@/components/ui/animated-number";
+import { Reveal } from "@/components/ui/reveal";
 import { formatMoney, formatRelativeEvent } from "@/lib/format";
 import { TrendSparkline } from "@/features/dashboard/trend-sparkline";
 import { CardGlow } from "@/components/ui/card-glow";
@@ -94,219 +97,247 @@ export function BusinessDashboard() {
     .reduce((sum, or) => sum + Number(or.balance_due), 0);
   const walletCurrency = data?.currency ?? "USD";
 
+  const money = (value: number) => formatMoney(value, walletCurrency, { symbol: true });
+
   return (
     <div className="space-y-8">
-      <div className="pattern-noise clip-rounded-4xl relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-navi to-sky-300 p-6">
-        <CardGlow color="#7ed6ec" />
-        <div className="navi-shimmer" />
-        <span className="navi-sparkle-dot" style={{ right: "28%", top: "30%", animationDelay: "0s" }} />
-        <span className="navi-sparkle-dot" style={{ right: "12%", top: "55%", animationDelay: "0.7s" }} />
-        <span className="navi-sparkle-dot" style={{ right: "45%", top: "20%", animationDelay: "1.4s" }} />
-        <div className="relative z-10">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-navi-ink/70">
-              {t("business.dashboard.saldo")}
-            </span>
-            <Badge variant="secondary">{data?.currency}</Badge>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            {isLoading ? (
-              <Skeleton className="h-10 w-40" />
-            ) : (
-              <span className="text-4xl font-bold tracking-tight text-navi-ink">
-                {hideBalances
-                  ? "••••"
-                  : formatMoney(data?.saldo ?? 0, data?.currency, { symbol: true })}
+      <Reveal>
+        <div className="pattern-noise clip-rounded-4xl relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-navi to-sky-300 p-6">
+          <CardGlow color="#7ed6ec" />
+          <div className="navi-shimmer" />
+          <span className="navi-sparkle-dot" style={{ right: "28%", top: "30%", animationDelay: "0s" }} />
+          <span className="navi-sparkle-dot" style={{ right: "12%", top: "55%", animationDelay: "0.7s" }} />
+          <span className="navi-sparkle-dot" style={{ right: "45%", top: "20%", animationDelay: "1.4s" }} />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-navi-ink/70">
+                {t("business.dashboard.saldo")}
               </span>
-            )}
+              <Badge variant="secondary">{data?.currency}</Badge>
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              {isLoading ? (
+                <Skeleton className="h-10 w-40" />
+              ) : (
+                <span className="text-4xl font-bold tracking-tight text-navi-ink">
+                  {hideBalances ? (
+                    "••••"
+                  ) : (
+                    <AnimatedNumber value={Number(data?.saldo ?? 0)} format={money} delay={0.15} />
+                  )}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </Reveal>
 
       <section className="grid grid-cols-2 gap-2 md:gap-3">
-        <div className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 md:min-h-40">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-income/20">
-              <TrendingUp className="h-4 w-4 text-income-text" />
+        <Reveal delay={0.08}>
+          <div className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 md:min-h-40">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-income/20">
+                <TrendingUp className="h-4 w-4 text-income-text" />
+              </div>
+              <span className="text-xs font-semibold text-on-surface-variant">
+                {t("business.dashboard.ingresos")}
+              </span>
             </div>
-            <span className="text-xs font-semibold text-on-surface-variant">
-              {t("business.dashboard.ingresos")}
-            </span>
+            <div>
+              {isLoading ? (
+                <Skeleton className="h-7 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-semibold text-on-surface">
+                    {hideBalances ? (
+                      "••••"
+                    ) : (
+                      <AnimatedNumber value={Number(data?.ingresos_mes ?? 0)} format={money} delay={0.22} />
+                    )}
+                  </div>
+                  <div className="text-xs text-on-surface-variant">{t("business.dashboard.thisMonth")}</div>
+                </>
+              )}
+            </div>
+            <TrendSparkline trend="up" color="var(--color-income)" className="h-8 w-full" animate />
           </div>
-          <div>
-            {isLoading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="text-2xl font-semibold text-on-surface">
-                  {hideBalances
-                    ? "••••"
-                    : formatMoney(data?.ingresos_mes ?? 0, data?.currency, { symbol: true })}
-                </div>
-                <div className="text-xs text-on-surface-variant">{t("business.dashboard.thisMonth")}</div>
-              </>
-            )}
-          </div>
-          <TrendSparkline trend="up" color="var(--color-income)" className="h-8 w-full" />
-        </div>
+        </Reveal>
 
-        <div className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 md:min-h-40">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-expense/20">
-              <TrendingDown className="h-4 w-4 text-expense" />
+        <Reveal delay={0.16}>
+          <div className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 md:min-h-40">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-expense/20">
+                <TrendingDown className="h-4 w-4 text-expense" />
+              </div>
+              <span className="text-xs font-semibold text-on-surface-variant">
+                {t("business.dashboard.egresos")}
+              </span>
             </div>
-            <span className="text-xs font-semibold text-on-surface-variant">
-              {t("business.dashboard.egresos")}
-            </span>
+            <div>
+              {isLoading ? (
+                <Skeleton className="h-7 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-semibold text-on-surface">
+                    {hideBalances ? (
+                      "••••"
+                    ) : (
+                      <AnimatedNumber value={Number(data?.egresos_mes ?? 0)} format={money} delay={0.3} />
+                    )}
+                  </div>
+                  <div className="text-xs text-on-surface-variant">{t("business.dashboard.thisMonth")}</div>
+                </>
+              )}
+            </div>
+            <TrendSparkline trend="down" color="var(--color-expense)" className="h-8 w-full" animate />
           </div>
-          <div>
-            {isLoading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="text-2xl font-semibold text-on-surface">
-                  {hideBalances
-                    ? "••••"
-                    : formatMoney(data?.egresos_mes ?? 0, data?.currency, { symbol: true })}
-                </div>
-                <div className="text-xs text-on-surface-variant">{t("business.dashboard.thisMonth")}</div>
-              </>
-            )}
-          </div>
-          <TrendSparkline trend="down" color="var(--color-expense)" className="h-8 w-full" />
-        </div>
+        </Reveal>
       </section>
 
-      <Link
-        to="/business/invoices"
-        className="glass-panel clip-rounded-lg flex min-h-28 items-center justify-between rounded-lg p-4 transition-transform hover:-translate-y-0.5"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-            <ReceiptText className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-on-surface">{t("business.dashboard.porCobrar")}</div>
+      <section className="grid grid-cols-2 gap-2 md:gap-3">
+        <Reveal delay={0.24}>
+          <Link
+            to="/business/invoices"
+            className="glass-panel clip-rounded-lg flex h-full min-h-32 flex-col justify-between gap-2 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <ReceiptText className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 text-xs font-medium text-on-surface md:text-sm">
+                {t("business.dashboard.porCobrar")}
+              </div>
+            </div>
             {invoices.isLoading ? (
-              <Skeleton className="mt-1 h-6 w-24" />
+              <Skeleton className="h-6 w-24" />
             ) : (
-              <div className="text-xl font-semibold text-on-surface">
-                {hideBalances
-                  ? "••••"
-                  : formatMoney(receivable, walletCurrency, { symbol: true })}
+              <div className="text-lg font-semibold text-on-surface md:text-xl">
+                {hideBalances ? "••••" : <AnimatedNumber value={receivable} format={money} delay={0.38} />}
               </div>
             )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1 text-sm text-primary">
-          {t("business.dashboard.seeInvoices")}
-          <ChevronRight className="h-4 w-4" />
-        </div>
-      </Link>
+            <div className="flex items-center gap-1 text-xs text-primary md:text-sm">
+              {t("business.dashboard.seeInvoices")}
+              <ChevronRight className="h-4 w-4" />
+            </div>
+          </Link>
+        </Reveal>
 
-      <Link
-        to="/business/orders"
-        className="glass-panel clip-rounded-lg flex min-h-28 items-center justify-between rounded-lg p-4 transition-transform hover:-translate-y-0.5"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-expense/15 text-expense">
-            <ShoppingCart className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-on-surface">{t("orders.porPagar")}</div>
+        <Reveal delay={0.32}>
+          <Link
+            to="/business/orders"
+            className="glass-panel clip-rounded-lg flex h-full min-h-32 flex-col justify-between gap-2 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-expense/15 text-expense">
+                <ShoppingCart className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 text-xs font-medium text-on-surface md:text-sm">
+                {t("orders.porPagar")}
+              </div>
+            </div>
             {orders.isLoading ? (
-              <Skeleton className="mt-1 h-6 w-24" />
+              <Skeleton className="h-6 w-24" />
             ) : (
-              <div className="text-xl font-semibold text-on-surface">
-                {hideBalances
-                  ? "••••"
-                  : formatMoney(payable, walletCurrency, { symbol: true })}
+              <div className="text-lg font-semibold text-on-surface md:text-xl">
+                {hideBalances ? "••••" : <AnimatedNumber value={payable} format={money} delay={0.46} />}
               </div>
             )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1 text-sm text-primary">
-          {t("orders.seeOrders")}
-          <ChevronRight className="h-4 w-4" />
-        </div>
-      </Link>
+            <div className="flex items-center gap-1 text-xs text-primary md:text-sm">
+              {t("orders.seeOrders")}
+              <ChevronRight className="h-4 w-4" />
+            </div>
+          </Link>
+        </Reveal>
+      </section>
 
-      <div className="flex flex-col gap-2">
+      <Reveal delay={0.4} className="flex flex-col gap-2 md:flex-row">
         <Link to="/operations/new" className="w-full md:w-64">
           <Button variant="glow" size="lg" className="w-full gap-2">
             <Plus className="h-5 w-5" />
             {t("business.dashboard.newOperation")}
           </Button>
         </Link>
-      </div>
+        <Link to="/business/analytics" className="w-full md:w-64">
+          <Button variant="outline" size="lg" className="w-full gap-2">
+            <BarChart3 className="h-5 w-5" />
+            {t("nav.analytics")}
+          </Button>
+        </Link>
+      </Reveal>
 
-      <section>
-        <h2 className="mb-3 text-lg font-semibold text-on-surface">
-          {t("business.dashboard.quickLinks")}
-        </h2>
-        <div className="grid grid-cols-2 gap-2 md:gap-3">
-          <Link
-            to="/business/collection"
-            className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-              <HandCoins className="h-5 w-5" />
-            </div>
-            <span className="text-sm font-medium text-on-surface">{t("nav.collection")}</span>
-          </Link>
-          <Link
-            to="/business/inventory"
-            className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-600">
-              <Package className="h-5 w-5" />
-            </div>
-            <span className="text-sm font-medium text-on-surface">{t("nav.inventory")}</span>
-          </Link>
-          <Link
-            to="/business/orders"
-            className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-expense/15 text-expense">
-              <ShoppingCart className="h-5 w-5" />
-            </div>
-            <span className="text-sm font-medium text-on-surface">{t("nav.orders")}</span>
-          </Link>
-        </div>
-      </section>
+      <Reveal delay={0.48}>
+        <section>
+          <h2 className="mb-3 text-lg font-semibold text-on-surface">
+            {t("business.dashboard.quickLinks")}
+          </h2>
+          <div className="grid grid-cols-2 gap-2 md:gap-3">
+            <Link
+              to="/business/collection"
+              className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+            >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <HandCoins className="h-5 w-5" />
+              </div>
+              <span className="text-sm font-medium text-on-surface">{t("nav.collection")}</span>
+            </Link>
+            <Link
+              to="/business/inventory"
+              className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+            >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-600">
+                <Package className="h-5 w-5" />
+              </div>
+              <span className="text-sm font-medium text-on-surface">{t("nav.inventory")}</span>
+            </Link>
+            <Link
+              to="/business/orders"
+              className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+            >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-expense/15 text-expense">
+                <ShoppingCart className="h-5 w-5" />
+              </div>
+              <span className="text-sm font-medium text-on-surface">{t("nav.orders")}</span>
+            </Link>
+          </div>
+        </section>
+      </Reveal>
 
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-semibold text-on-surface">{t("business.dashboard.recent")}</h2>
-          <Link
-            to="/transactions"
-            className="text-sm text-primary transition-opacity hover:opacity-80"
-          >
-            {t("business.dashboard.viewAll")} <ChevronRight className="inline h-4 w-4" />
-          </Link>
-        </div>
+      <Reveal delay={0.56}>
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-2xl font-semibold text-on-surface">{t("business.dashboard.recent")}</h2>
+            <Link
+              to="/transactions"
+              className="text-sm text-primary transition-opacity hover:opacity-80"
+            >
+              {t("business.dashboard.viewAll")} <ChevronRight className="inline h-4 w-4" />
+            </Link>
+          </div>
 
-        {isError ? (
-          <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
-            {t("errors.generic")}
-          </p>
-        ) : isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : (data?.recent?.length ?? 0) === 0 ? (
-          <div className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
-            {t("business.dashboard.noRecent")}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {(data?.recent ?? []).map((tx) => (
-              <TxRow key={tx.id} tx={tx} />
-            ))}
-          </div>
-        )}
-      </section>
+          {isError ? (
+            <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
+              {t("errors.generic")}
+            </p>
+          ) : isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : (data?.recent?.length ?? 0) === 0 ? (
+            <div className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
+              {t("business.dashboard.noRecent")}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(data?.recent ?? []).map((tx, index) => (
+                <Reveal key={tx.id} delay={Math.min(index, 6) * 0.06} y={10}>
+                  <TxRow tx={tx} />
+                </Reveal>
+              ))}
+            </div>
+          )}
+        </section>
+      </Reveal>
     </div>
   );
 }
