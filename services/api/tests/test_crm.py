@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
 from apps.business.services import create_business
-from apps.crm.models import BusinessContact
+from apps.crm.models import BusinessContact, Invoice, Order
 from factories import UserFactory
 
 
@@ -121,6 +122,47 @@ class TestBusinessContact:
         resp = api_client.delete(f"{self.URL}{contact.id}/")
         assert resp.status_code == 204
         assert not BusinessContact.objects.filter(pk=contact.pk).exists()
+
+    def test_delete_contact_with_invoice_blocked(self, api_client, business) -> None:
+        """Un contacto con facturas no se borra: 400 legible (no 500)."""
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=business, name="Con factura", type="cliente"
+        )
+        Invoice.objects.create(
+            user=api_client.user,
+            business=business,
+            contact=contact,
+            number="F-001",
+            issue_date=date.today(),
+            due_date=date.today(),
+            subtotal=Decimal("10.00"),
+            total=Decimal("10.00"),
+            balance_due=Decimal("10.00"),
+        )
+        resp = api_client.delete(f"{self.URL}{contact.id}/")
+        assert resp.status_code == 400
+        assert "facturas o pedidos" in str(resp.data)
+        assert BusinessContact.objects.filter(pk=contact.pk).exists()
+
+    def test_delete_contact_with_order_blocked(self, api_client, business) -> None:
+        """Un contacto con pedidos no se borra: 400 legible (no 500)."""
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=business, name="Con pedido", type="proveedor"
+        )
+        Order.objects.create(
+            user=api_client.user,
+            business=business,
+            contact=contact,
+            number="P-001",
+            order_date=date.today(),
+            subtotal=Decimal("10.00"),
+            total=Decimal("10.00"),
+            balance_due=Decimal("10.00"),
+        )
+        resp = api_client.delete(f"{self.URL}{contact.id}/")
+        assert resp.status_code == 400
+        assert "facturas o pedidos" in str(resp.data)
+        assert BusinessContact.objects.filter(pk=contact.pk).exists()
 
     def test_cannot_access_other_user_contact(self, api_client, business) -> None:
         """Un usuario no puede ver/editar/borrar contactos ajenos."""

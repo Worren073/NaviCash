@@ -76,6 +76,21 @@ class BusinessContactViewSet(viewsets.ModelViewSet):
             qs = qs.filter(tax_id__istartswith=f"{prefix}-")
         return qs.order_by("name")
 
+    def perform_destroy(self, instance: BusinessContact) -> None:
+        """Bloquea borrar contactos con facturas o pedidos asociados.
+
+        ``Invoice.contact`` y ``Order.contact`` son ``PROTECT``: sin esta guarda
+        el ``ProtectedError`` del motor escaparía como un 500. Aquí se traduce a
+        un 400 legible antes de tocar la base de datos.
+        """
+        if instance.invoices.exists() or instance.orders.exists():
+            raise ValidationError(
+                "No se puede eliminar un contacto con facturas o pedidos "
+                "asociados. Edita esos documentos para reasignar el contacto "
+                "primero."
+            )
+        instance.delete()
+
 
 class InvoiceViewSet(viewsets.ModelViewSet):
     """Facturación y cuentas por cobrar del negocio."""
