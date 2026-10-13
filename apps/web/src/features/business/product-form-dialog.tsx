@@ -5,13 +5,13 @@ import { sileo } from "sileo";
 
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  SidePanel,
+  SidePanelContent,
+  SidePanelDescription,
+  SidePanelFooter,
+  SidePanelHeader,
+  SidePanelTitle,
+} from "@/components/ui/side-panel";
 import { Input } from "@/components/ui/input";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Segmented } from "@/components/ui/segmented";
@@ -113,16 +113,16 @@ export function ProductFormDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>
+    <SidePanel open={open} onOpenChange={onOpenChange}>
+      <SidePanelContent>
+        <SidePanelHeader>
+          <SidePanelTitle>
             {product ? t("inventory.editTitle") : t("inventory.createTitle")}
-          </DialogTitle>
-          <DialogDescription>
+          </SidePanelTitle>
+          <SidePanelDescription>
             {product ? "" : t("inventory.initialStockHint")}
-          </DialogDescription>
-        </DialogHeader>
+          </SidePanelDescription>
+        </SidePanelHeader>
         <div className="space-y-4">
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-on-surface">
@@ -249,7 +249,7 @@ export function ProductFormDialog({
 
           {validationError && <p className="text-sm text-destructive">{validationError}</p>}
         </div>
-        <DialogFooter>
+        <SidePanelFooter>
           <Button
             variant="ghost"
             onClick={() => onOpenChange(false)}
@@ -264,8 +264,8 @@ export function ProductFormDialog({
           >
             {mutation.isPending ? t("common.loading") : t("common.save")}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SidePanelFooter>
+      </SidePanelContent>
+    </SidePanel>
   );
 }

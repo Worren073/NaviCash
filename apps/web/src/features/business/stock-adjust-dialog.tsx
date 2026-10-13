@@ -5,13 +5,13 @@ import { sileo } from "sileo";
 
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  SidePanel,
+  SidePanelContent,
+  SidePanelDescription,
+  SidePanelFooter,
+  SidePanelHeader,
+  SidePanelTitle,
+} from "@/components/ui/side-panel";
 import { Input } from "@/components/ui/input";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { api, ApiErrorClass } from "@/lib/api";
@@ -71,16 +71,16 @@ export function StockAdjustDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{t("inventory.adjustTitle")}</DialogTitle>
-          <DialogDescription>
+    <SidePanel open={open} onOpenChange={onOpenChange}>
+      <SidePanelContent>
+        <SidePanelHeader>
+          <SidePanelTitle>{t("inventory.adjustTitle")}</SidePanelTitle>
+          <SidePanelDescription>
             {product
               ? `${product.name} · ${t("inventory.stock")}: ${product.stock_quantity}`
               : ""}
-          </DialogDescription>
-        </DialogHeader>
+          </SidePanelDescription>
+        </SidePanelHeader>
         <div className="space-y-4">
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-on-surface">
@@ -108,7 +108,7 @@ export function StockAdjustDialog({
           </label>
           {validationError && <p className="text-sm text-destructive">{validationError}</p>}
         </div>
-        <DialogFooter>
+        <SidePanelFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={adjust.isPending}>
             {t("common.cancel")}
           </Button>
@@ -119,8 +119,8 @@ export function StockAdjustDialog({
           >
             {adjust.isPending ? t("common.loading") : t("inventory.adjust")}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SidePanelFooter>
+      </SidePanelContent>
+    </SidePanel>
   );
 }

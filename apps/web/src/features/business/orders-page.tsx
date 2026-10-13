@@ -4,60 +4,38 @@ import { Link } from "react-router-dom";
 import { Plus, Search, ShoppingCart } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/segmented";
+import { SidePanel, SidePanelContent, SidePanelTitle } from "@/components/ui/side-panel";
 import { useOrders } from "@/hooks/use-queries";
 import { formatMoney, formatDate } from "@/lib/format";
-import type { Order, OrderPaymentState, OrderStatus } from "@/lib/types";
+import type { Order } from "@/lib/types";
+import { ORDER_STATUS_OPTIONS, OrderStatusCluster } from "./order-badges";
+import { OrderDetail } from "./order-detail";
 
-export const ORDER_STATUS_OPTIONS: Array<{ value: OrderStatus | ""; label: string }> = [
-  { value: "", label: "orders.statuses.all" },
-  { value: "borrador", label: "orders.statuses.borrador" },
-  { value: "en_camino", label: "orders.statuses.en_camino" },
-  { value: "recibido", label: "orders.statuses.recibido" },
-  { value: "anulado", label: "orders.statuses.anulado" },
-];
+export {
+  ORDER_STATUS_OPTIONS,
+  OrderPaymentBadge,
+  OrderStatusBadge,
+  OrderStatusCluster,
+} from "./order-badges";
 
-const STATUS_VARIANT: Record<OrderStatus, "secondary" | "pending" | "success" | "warning" | "outline"> = {
-  borrador: "secondary",
-  en_camino: "pending",
-  recibido: "warning",
-  anulado: "outline",
-};
-
-export function OrderStatusBadge({ status }: { status: OrderStatus }) {
-  const { t } = useTranslation();
-  return <Badge variant={STATUS_VARIANT[status]}>{t(`orders.statuses.${status}`)}</Badge>;
-}
-
-export function OrderPaymentBadge({ paymentState }: { paymentState: OrderPaymentState }) {
-  const { t } = useTranslation();
-  if (paymentState === "none") return null;
-  return (
-    <Badge variant={paymentState === "paid" ? "success" : "pending"}>
-      {t(paymentState === "paid" ? "orders.statuses.paid" : "orders.statuses.partial")}
-    </Badge>
-  );
-}
-
-export function OrderStatusCluster({ order }: { order: Order }) {
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
-      <OrderStatusBadge status={order.status} />
-      <OrderPaymentBadge paymentState={order.payment_state} />
-    </span>
-  );
-}
-
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, onOpen }: { order: Order; onOpen: () => void }) {
   const { t } = useTranslation();
   return (
-    <Link
-      to={`/business/orders/${order.id}`}
-      className="glass-panel clip-rounded-lg flex items-center justify-between gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="glass-panel clip-rounded-lg flex cursor-pointer items-center justify-between gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -82,7 +60,7 @@ function OrderCard({ order }: { order: Order }) {
           {t("orders.list.balance")}: {formatMoney(order.balance_due, order.currency)}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -91,6 +69,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [selected, setSelected] = useState<Order | null>(null);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300);
@@ -156,11 +135,18 @@ export default function OrdersPage() {
         <div className="space-y-2">
           {orders.map((order, index) => (
             <Reveal key={order.id} delay={Math.min(index, 6) * 0.1}>
-              <OrderCard order={order} />
+              <OrderCard order={order} onOpen={() => setSelected(order)} />
             </Reveal>
           ))}
         </div>
       )}
+
+      <SidePanel open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+        <SidePanelContent>
+          {selected && <SidePanelTitle className="sr-only">{selected.number}</SidePanelTitle>}
+          {selected && <OrderDetail id={selected.id} />}
+        </SidePanelContent>
+      </SidePanel>
     </div>
   );
 }

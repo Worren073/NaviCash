@@ -4,47 +4,33 @@ import { Link } from "react-router-dom";
 import { Plus, ReceiptText, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/segmented";
+import { SidePanel, SidePanelContent, SidePanelTitle } from "@/components/ui/side-panel";
 import { useInvoices } from "@/hooks/use-queries";
 import { formatMoney, formatDate } from "@/lib/format";
-import type { Invoice, InvoiceStatus } from "@/lib/types";
+import type { Invoice } from "@/lib/types";
+import { INVOICE_STATUS_OPTIONS, InvoiceStatusBadge } from "./invoice-badges";
+import { InvoiceDetail } from "./invoice-detail";
 
-export const INVOICE_STATUS_OPTIONS: Array<{ value: InvoiceStatus | ""; label: string }> = [
-  { value: "", label: "invoices.statuses.all" },
-  { value: "borrador", label: "invoices.statuses.borrador" },
-  { value: "enviada", label: "invoices.statuses.enviada" },
-  { value: "parcial", label: "invoices.statuses.parcial" },
-  { value: "pagada", label: "invoices.statuses.pagada" },
-  { value: "vencida", label: "invoices.statuses.vencida" },
-  { value: "anulada", label: "invoices.statuses.anulada" },
-];
+export { INVOICE_STATUS_OPTIONS, InvoiceStatusBadge } from "./invoice-badges";
 
-const STATUS_VARIANT: Record<InvoiceStatus, "secondary" | "pending" | "warning" | "success" | "delayed" | "outline"> = {
-  borrador: "secondary",
-  enviada: "pending",
-  parcial: "warning",
-  pagada: "success",
-  vencida: "delayed",
-  anulada: "outline",
-};
-
-export function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
+function InvoiceCard({ invoice, onOpen }: { invoice: Invoice; onOpen: () => void }) {
   const { t } = useTranslation();
   return (
-    <Badge variant={STATUS_VARIANT[status]}>{t(`invoices.statuses.${status}`)}</Badge>
-  );
-}
-
-function InvoiceCard({ invoice }: { invoice: Invoice }) {
-  const { t } = useTranslation();
-  return (
-    <Link
-      to={`/business/invoices/${invoice.id}`}
-      className="glass-panel clip-rounded-lg flex items-center justify-between gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="glass-panel clip-rounded-lg flex cursor-pointer items-center justify-between gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -64,7 +50,7 @@ function InvoiceCard({ invoice }: { invoice: Invoice }) {
           {t("invoices.list.balance")}: {formatMoney(invoice.balance_due, invoice.currency)}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -73,6 +59,7 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [selected, setSelected] = useState<Invoice | null>(null);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300);
@@ -138,11 +125,18 @@ export default function InvoicesPage() {
         <div className="space-y-2">
           {invoices.map((inv, index) => (
             <Reveal key={inv.id} delay={Math.min(index, 6) * 0.1}>
-              <InvoiceCard invoice={inv} />
+              <InvoiceCard invoice={inv} onOpen={() => setSelected(inv)} />
             </Reveal>
           ))}
         </div>
       )}
+
+      <SidePanel open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+        <SidePanelContent>
+          {selected && <SidePanelTitle className="sr-only">{selected.number}</SidePanelTitle>}
+          {selected && <InvoiceDetail id={selected.id} />}
+        </SidePanelContent>
+      </SidePanel>
     </div>
   );
 }

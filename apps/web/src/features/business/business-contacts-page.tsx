@@ -15,13 +15,13 @@ import { sileo } from "sileo";
 
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  SidePanel,
+  SidePanelContent,
+  SidePanelDescription,
+  SidePanelFooter,
+  SidePanelHeader,
+  SidePanelTitle,
+} from "@/components/ui/side-panel";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Reveal } from "@/components/ui/reveal";
@@ -84,16 +84,29 @@ function sanitizeTaxNumber(raw: string, taxType: TaxIdType): string {
 
 function ContactCard({
   contact,
+  onOpen,
   onEdit,
   onDelete,
 }: {
   contact: BusinessContact;
+  onOpen: (c: BusinessContact) => void;
   onEdit: (c: BusinessContact) => void;
   onDelete: (c: BusinessContact) => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="glass-panel clip-rounded-lg flex items-start justify-between gap-3 rounded-lg p-4">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(contact)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(contact);
+        }
+      }}
+      className="glass-panel clip-rounded-lg flex cursor-pointer items-start justify-between gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+    >
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-on-surface">{contact.name}</span>
@@ -147,7 +160,10 @@ function ContactCard({
           size="icon"
           variant="ghost"
           className="h-8 w-8"
-          onClick={() => onEdit(contact)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(contact);
+          }}
           aria-label={t("common.edit")}
         >
           <Pencil className="h-4 w-4" />
@@ -156,7 +172,10 @@ function ContactCard({
           size="icon"
           variant="ghost"
           className="h-8 w-8 text-error"
-          onClick={() => onDelete(contact)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(contact);
+          }}
           aria-label={t("common.delete")}
         >
           <Trash2 className="h-4 w-4" />
@@ -358,6 +377,7 @@ export default function BusinessContactsPage() {
             <Reveal key={c.id} delay={Math.min(index, 6) * 0.1}>
               <ContactCard
                 contact={c}
+                onOpen={openEdit}
                 onEdit={openEdit}
                 onDelete={setDeleteContact}
               />
@@ -366,16 +386,16 @@ export default function BusinessContactsPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>
+      <SidePanel open={dialogOpen} onOpenChange={setDialogOpen}>
+        <SidePanelContent>
+          <SidePanelHeader>
+            <SidePanelTitle>
               {t(editing ? "contacts.editTitle" : "contacts.createTitle")}
-            </DialogTitle>
-            <DialogDescription>{t("contacts.formHint")}</DialogDescription>
-          </DialogHeader>
+            </SidePanelTitle>
+            <SidePanelDescription>{t("contacts.formHint")}</SidePanelDescription>
+          </SidePanelHeader>
           <ContactForm value={form} onChange={setForm} />
-          <DialogFooter>
+          <SidePanelFooter>
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>
               {t("common.cancel")}
             </Button>
@@ -386,9 +406,9 @@ export default function BusinessContactsPage() {
             >
               {save.isPending ? t("common.loading") : t("common.save")}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SidePanelFooter>
+        </SidePanelContent>
+      </SidePanel>
 
       <ConfirmDeleteDialog
         open={Boolean(deleteContact)}

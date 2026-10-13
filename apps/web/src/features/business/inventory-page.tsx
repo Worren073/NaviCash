@@ -11,13 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Reveal } from "@/components/ui/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  SidePanel,
+  SidePanelContent,
+  SidePanelDescription,
+  SidePanelFooter,
+  SidePanelHeader,
+  SidePanelTitle,
+} from "@/components/ui/side-panel";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { api, ApiErrorClass } from "@/lib/api";
 import {
@@ -72,12 +72,12 @@ function CategoryManagerDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{t("inventory.categoriesTitle")}</DialogTitle>
-          <DialogDescription />
-        </DialogHeader>
+    <SidePanel open={open} onOpenChange={onOpenChange}>
+      <SidePanelContent>
+        <SidePanelHeader>
+          <SidePanelTitle>{t("inventory.categoriesTitle")}</SidePanelTitle>
+          <SidePanelDescription />
+        </SidePanelHeader>
         <div className="space-y-4">
           <div className="flex gap-2">
             <Input
@@ -128,32 +128,45 @@ function CategoryManagerDialog({
             </div>
           )}
         </div>
-        <DialogFooter>
+        <SidePanelFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t("common.close")}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SidePanelFooter>
+      </SidePanelContent>
+    </SidePanel>
   );
 }
 
 function ProductCard({
   product,
   categoryName,
+  onOpen,
   onEdit,
   onAdjust,
   onDelete,
 }: {
   product: Product;
   categoryName?: string;
+  onOpen: () => void;
   onEdit: () => void;
   onAdjust: () => void;
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="glass-panel clip-rounded-lg flex items-center justify-between gap-3 rounded-lg p-4">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="glass-panel clip-rounded-lg flex cursor-pointer items-center justify-between gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+    >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
@@ -190,13 +203,37 @@ function ProductCard({
           </div>
         </div>
         <div className="flex gap-1">
-          <Button variant="ghost" size="sm" onClick={onAdjust} aria-label={t("inventory.adjust")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdjust();
+            }}
+            aria-label={t("inventory.adjust")}
+          >
             <Scale className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onEdit} aria-label={t("common.edit")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            aria-label={t("common.edit")}
+          >
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onDelete} aria-label={t("common.delete")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            aria-label={t("common.delete")}
+          >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -358,6 +395,10 @@ export default function InventoryPage() {
                 <ProductCard
                   product={p}
                   categoryName={categoryName}
+                  onOpen={() => {
+                    setEditing(p);
+                    setFormOpen(true);
+                  }}
                   onEdit={() => {
                     setEditing(p);
                     setFormOpen(true);
