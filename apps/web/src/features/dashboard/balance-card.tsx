@@ -1,13 +1,20 @@
 import { useTranslation } from "react-i18next";
+import { motion, useReducedMotion } from "motion/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlurLoading } from "@/components/ui/blur-loading";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { CurrencyDollarIcon } from "@/components/icons";
+import { formatMoney } from "@/lib/format";
 
 interface BalanceCardProps {
   label: string;
   symbol: string;
   amount: string | null;
   isLoading: boolean;
+  /** Valor numérico para animar de 0 al total (si no, se muestra `amount`). */
+  amountValue?: number;
+  /** Moneda del `amountValue` (sin símbolo). */
+  amountCurrency?: string;
   equivalentLabel?: string;
   equivalentValue?: string | null;
   tone?: "default" | "flag" | "green";
@@ -29,6 +36,8 @@ export function BalanceCard({
   symbol,
   amount,
   isLoading,
+  amountValue,
+  amountCurrency = "USD",
   equivalentLabel,
   equivalentValue,
   tone = "default",
@@ -39,6 +48,15 @@ export function BalanceCard({
   hideAmounts = false,
 }: BalanceCardProps) {
   const { t } = useTranslation();
+  const reduce = useReducedMotion();
+  // Variantes para el escalonado del carrusel (el padre provee el estado).
+  // Con `prefers-reduced-motion` no se anima: la card queda visible.
+  const variants = reduce
+    ? undefined
+    : {
+        hidden: { opacity: 0, y: 16 },
+        show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" as const } },
+      };
   const glow =
     tone === "flag"
       ? [
@@ -67,7 +85,10 @@ export function BalanceCard({
             "bg-primary/30",
           ];
   return (
-    <section className="glass-panel clip-rounded-xl relative w-[92%] shrink-0 snap-center overflow-hidden rounded-xl p-6 md:w-full">
+    <motion.section
+      variants={variants}
+      className="glass-panel clip-rounded-xl relative w-[92%] shrink-0 snap-center overflow-hidden rounded-xl p-6 md:w-full"
+    >
       <div
         className={`absolute inset-0 opacity-50 ${
           tone === "flag"
@@ -93,7 +114,17 @@ export function BalanceCard({
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-semibold text-primary">{symbol}</span>
               <span className="text-4xl font-bold tracking-tight text-on-surface">
-                {hideAmounts ? HIDDEN : amount ?? "0.00"}
+                {hideAmounts ? (
+                  HIDDEN
+                ) : amountValue != null ? (
+                  <AnimatedNumber
+                    value={amountValue}
+                    format={(n) => formatMoney(n, amountCurrency)}
+                    delay={0.15}
+                  />
+                ) : (
+                  amount ?? "0.00"
+                )}
               </span>
             </div>
           )}
@@ -136,6 +167,6 @@ export function BalanceCard({
           )}
         </div>
       </BlurLoading>
-    </section>
+    </motion.section>
   );
 }

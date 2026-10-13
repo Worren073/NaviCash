@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { motion } from "motion/react";
 import {
   ArrowDown,
   ArrowLeftRight,
@@ -22,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { BlurLoading } from "@/components/ui/blur-loading";
+import { AnimatedNumber } from "@/components/ui/animated-number";
+import { Reveal } from "@/components/ui/reveal";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
 import { useVoiceChat } from "@/features/assistant/voice-chat-context";
 import { BalanceCard } from "@/features/dashboard/balance-card";
@@ -139,17 +142,27 @@ export default function DashboardPage() {
     <div className="space-y-8">
       {/* Balance Header (carrusel) */}
       <div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-            {t("dashboard.balances")}
-          </span>
-          <BalanceVisibilityToggle hidden={hideBalances} onToggle={toggleBalances} />
-        </div>
-        <div className="mt-3 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide md:grid md:grid-cols-3 md:gap-3 md:overflow-visible md:pb-0">
+        <Reveal>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              {t("dashboard.balances")}
+            </span>
+            <BalanceVisibilityToggle hidden={hideBalances} onToggle={toggleBalances} />
+          </div>
+        </Reveal>
+        <motion.div
+          className="mt-3 flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide md:grid md:grid-cols-3 md:gap-3 md:overflow-visible md:pb-0"
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "0px 0px -12% 0px" }}
+          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
+        >
           <BalanceCard
             label={t("dashboard.totalBalance")}
             symbol="$"
             amount={isLoading ? null : formatMoney(totalUsd, "USD")}
+            amountValue={isLoading ? undefined : totalUsd}
+            amountCurrency="USD"
             isLoading={isLoading}
             equivalentLabel={t("dashboard.totalBs")}
             equivalentValue={
@@ -167,6 +180,8 @@ export default function DashboardPage() {
             label={t("dashboard.vesBalance")}
             symbol="Bs"
             amount={isLoading ? null : formatMoney(vesVes, "VES")}
+            amountValue={isLoading ? undefined : vesVes}
+            amountCurrency="VES"
             isLoading={isLoading}
             equivalentLabel={t("dashboard.usdEquivalent")}
             equivalentValue={
@@ -181,6 +196,8 @@ export default function DashboardPage() {
             label={t("dashboard.usdBalance")}
             symbol="$"
             amount={isLoading ? null : formatMoney(usdUsd, "USD")}
+            amountValue={isLoading ? undefined : usdUsd}
+            amountCurrency="USD"
             isLoading={isLoading}
             equivalentLabel={t("dashboard.totalBs")}
             equivalentValue={
@@ -191,252 +208,302 @@ export default function DashboardPage() {
             tone="green"
             hideAmounts={hideBalances}
           />
-        </div>
+        </motion.div>
       </div>
 
       {/* Accesos rápidos */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Link
-          to="/savings"
-          className="glass-panel clip-rounded-lg flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
-        >
-          <PiggyBank className="h-5 w-5 text-emerald-500" />
-          <span className="text-sm font-semibold text-on-surface">
-            {t("menu.savings")}
-          </span>
-        </Link>
-        <Link
-          to="/subscriptions"
-          className="glass-panel clip-rounded-lg flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
-        >
-          <CalendarRange className="h-5 w-5 text-primary" />
-          <span className="text-sm font-semibold text-on-surface">
-            {t("menu.subscriptions")}
-          </span>
-        </Link>
-        <Link
-          to="/checklists"
-          className="glass-panel clip-rounded-lg flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
-        >
-          <ListChecks className="h-5 w-5 text-sky-500" />
-          <span className="text-sm font-semibold text-on-surface">
-            {t("menu.checklists")}
-          </span>
-        </Link>
-        <button
-          type="button"
-          onClick={openVoice}
-          aria-label={t("assistant.voice.title")}
-          className="glass-panel clip-rounded-lg col-span-2 flex items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99] md:col-span-1"
-        >
-          <NaviAvatar size={28} static className="shrink-0" />
-          <span className="text-sm font-semibold text-on-surface">
-            {t("assistant.voice.title")}
-          </span>
-        </button>
+        <Reveal className="h-full">
+          <Link
+            to="/savings"
+            className="glass-panel clip-rounded-lg flex h-full w-full items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          >
+            <PiggyBank className="h-5 w-5 text-emerald-500" />
+            <span className="text-sm font-semibold text-on-surface">
+              {t("menu.savings")}
+            </span>
+          </Link>
+        </Reveal>
+        <Reveal delay={0.06} className="h-full">
+          <Link
+            to="/subscriptions"
+            className="glass-panel clip-rounded-lg flex h-full w-full items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          >
+            <CalendarRange className="h-5 w-5 text-primary" />
+            <span className="text-sm font-semibold text-on-surface">
+              {t("menu.subscriptions")}
+            </span>
+          </Link>
+        </Reveal>
+        <Reveal delay={0.12} className="h-full">
+          <Link
+            to="/checklists"
+            className="glass-panel clip-rounded-lg flex h-full w-full items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          >
+            <ListChecks className="h-5 w-5 text-sky-500" />
+            <span className="text-sm font-semibold text-on-surface">
+              {t("menu.checklists")}
+            </span>
+          </Link>
+        </Reveal>
+        <Reveal delay={0.18} className="col-span-2 h-full md:col-span-1">
+          <button
+            type="button"
+            onClick={openVoice}
+            aria-label={t("assistant.voice.title")}
+            className="glass-panel clip-rounded-lg flex h-full w-full items-center justify-center gap-2 rounded-lg p-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          >
+            <NaviAvatar size={28} static className="shrink-0" />
+            <span className="text-sm font-semibold text-on-surface">
+              {t("assistant.voice.title")}
+            </span>
+          </button>
+        </Reveal>
       </div>
 
       {/* Total en Ahorros (compacto) */}
-      <Link to="/savings" className="block">
-        <section className="glass-panel clip-rounded-xl relative overflow-hidden rounded-xl border border-glass-border px-5 py-4 transition-transform hover:scale-[1.01] active:scale-[0.99]">
-          <div className="pointer-events-none absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-primary/10 to-transparent" />
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-              {t("dashboard.totalSavings")}
-            </span>
-            <Badge variant="secondary">{t("savings.title")}</Badge>
-          </div>
-          <div className="mt-1">
-            {isLoading ? (
-              <Skeleton className="h-7 w-32" />
-            ) : (
-              <span className="text-2xl font-bold tracking-tight text-on-surface">
-                {hideBalances
-                  ? "••••"
-                  : formatMoney(savingsUsd, "USD", { symbol: true })}
+      <Reveal>
+        <Link to="/savings" className="block">
+          <section className="glass-panel clip-rounded-xl relative overflow-hidden rounded-xl border border-glass-border px-5 py-4 transition-transform hover:scale-[1.01] active:scale-[0.99]">
+            <div className="pointer-events-none absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-primary/10 to-transparent" />
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+                {t("dashboard.totalSavings")}
               </span>
-            )}
-          </div>
-        </section>
-      </Link>
+              <Badge variant="secondary">{t("savings.title")}</Badge>
+            </div>
+            <div className="mt-1">
+              {isLoading ? (
+                <Skeleton className="h-7 w-32" />
+              ) : (
+                <span className="text-2xl font-bold tracking-tight text-on-surface">
+                  {hideBalances ? (
+                    "••••"
+                  ) : (
+                    <AnimatedNumber
+                      value={savingsUsd}
+                      format={(n) => formatMoney(n, "USD", { symbol: true })}
+                      delay={0.15}
+                    />
+                  )}
+                </span>
+              )}
+            </div>
+          </section>
+        </Link>
+      </Reveal>
 
       {/* Totales del mes */}
       <BlurLoading loading={isLoading}>
         <section className="grid grid-cols-2 gap-2 md:gap-3">
-          <Link
-            to="/transactions?tipo=cobro&estado=pagado"
-            className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:min-h-40"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-income/20">
-                <TrendingUp className="h-4 w-4 text-income-text" />
+          <Reveal className="h-full">
+            <Link
+              to="/transactions?tipo=cobro&estado=pagado"
+              className="glass-panel clip-rounded-lg flex h-full min-h-32 flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:min-h-40"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-income/20">
+                  <TrendingUp className="h-4 w-4 text-income-text" />
+                </div>
+                <span className="text-xs font-semibold text-on-surface-variant">
+                  {t("dashboard.collectedThisMonth")}
+                </span>
               </div>
-              <span className="text-xs font-semibold text-on-surface-variant">
-                {t("dashboard.collectedThisMonth")}
-              </span>
-            </div>
-            <div>
-              {isLoading ? (
-                <Skeleton className="h-7 w-24" />
-              ) : (
-                <>
-                  <div className="text-2xl font-semibold text-on-surface">
-                    {formatCompact(Number(data?.collected_month ?? 0), "USD")}
-                  </div>
-                  <div className="text-xs text-on-surface-variant">
-                    {t("dashboard.thisMonth")}
-                  </div>
-                </>
-              )}
-            </div>
-            <TrendSparkline
-              trend="up"
-              color="var(--color-income)"
-              className="h-8 w-full"
-            />
-          </Link>
+              <div>
+                {isLoading ? (
+                  <Skeleton className="h-7 w-24" />
+                ) : (
+                  <>
+                    <div className="text-2xl font-semibold text-on-surface">
+                      <AnimatedNumber
+                        value={Number(data?.collected_month ?? 0)}
+                        format={(n) => formatCompact(n, "USD")}
+                        delay={0.18}
+                      />
+                    </div>
+                    <div className="text-xs text-on-surface-variant">
+                      {t("dashboard.thisMonth")}
+                    </div>
+                  </>
+                )}
+              </div>
+              <TrendSparkline
+                trend="up"
+                color="var(--color-income)"
+                className="h-8 w-full"
+                animate
+              />
+            </Link>
+          </Reveal>
 
-          <Link
-            to="/transactions?tipo=pago&estado=pagado"
-            className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:min-h-40"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-expense/20">
-                <TrendingDown className="h-4 w-4 text-expense" />
+          <Reveal delay={0.08} className="h-full">
+            <Link
+              to="/transactions?tipo=pago&estado=pagado"
+              className="glass-panel clip-rounded-lg flex h-full min-h-32 flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:min-h-40"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-expense/20">
+                  <TrendingDown className="h-4 w-4 text-expense" />
+                </div>
+                <span className="text-xs font-semibold text-on-surface-variant">
+                  {t("dashboard.spentThisMonth")}
+                </span>
               </div>
-              <span className="text-xs font-semibold text-on-surface-variant">
-                {t("dashboard.spentThisMonth")}
-              </span>
-            </div>
-            <div>
-              {isLoading ? (
-                <Skeleton className="h-7 w-24" />
-              ) : (
-                <>
-                  <div className="text-2xl font-semibold text-on-surface">
-                    {formatCompact(Number(data?.spent_month ?? 0), "USD")}
-                  </div>
-                  <div className="text-xs text-on-surface-variant">
-                    {t("dashboard.thisMonth")}
-                  </div>
-                </>
-              )}
-            </div>
-            <TrendSparkline
-              trend="down"
-              color="var(--color-expense)"
-              className="h-8 w-full"
-            />
-          </Link>
+              <div>
+                {isLoading ? (
+                  <Skeleton className="h-7 w-24" />
+                ) : (
+                  <>
+                    <div className="text-2xl font-semibold text-on-surface">
+                      <AnimatedNumber
+                        value={Number(data?.spent_month ?? 0)}
+                        format={(n) => formatCompact(n, "USD")}
+                        delay={0.2}
+                      />
+                    </div>
+                    <div className="text-xs text-on-surface-variant">
+                      {t("dashboard.thisMonth")}
+                    </div>
+                  </>
+                )}
+              </div>
+              <TrendSparkline
+                trend="down"
+                color="var(--color-expense)"
+                className="h-8 w-full"
+                animate
+              />
+            </Link>
+          </Reveal>
         </section>
       </BlurLoading>
 
       {/* Quick Stats Bento */}
       <BlurLoading loading={isLoading}>
         <section className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
-        <Link
-          to="/transactions?tipo=cobro&estado=pendiente"
-          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-income/20">
-              <ArrowDown className="h-4 w-4 text-income-text" />
-            </div>
-            <span className="rounded-full bg-income/10 px-2 py-0.5 text-xs font-semibold text-income-text">
-              {t("common.toCollect")}
-            </span>
-          </div>
-          <div>
-            {isLoading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="text-2xl font-semibold text-on-surface">
-                  {formatCompact(Number(data?.to_receive ?? 0), "USD")}
+          <Reveal className="h-full">
+            <Link
+              to="/transactions?tipo=cobro&estado=pendiente"
+              className="glass-panel clip-rounded-lg flex h-full aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-income/20">
+                  <ArrowDown className="h-4 w-4 text-income-text" />
                 </div>
-                <div className="text-xs text-on-surface-variant">
-                  {t("dashboard.incoming", {
-                    count: data?.count_to_receive ?? 0,
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        </Link>
+                <span className="rounded-full bg-income/10 px-2 py-0.5 text-xs font-semibold text-income-text">
+                  {t("common.toCollect")}
+                </span>
+              </div>
+              <div>
+                {isLoading ? (
+                  <Skeleton className="h-7 w-24" />
+                ) : (
+                  <>
+                    <div className="text-2xl font-semibold text-on-surface">
+                      <AnimatedNumber
+                        value={Number(data?.to_receive ?? 0)}
+                        format={(n) => formatCompact(n, "USD")}
+                        delay={0.15}
+                      />
+                    </div>
+                    <div className="text-xs text-on-surface-variant">
+                      {t("dashboard.incoming", {
+                        count: data?.count_to_receive ?? 0,
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </Link>
+          </Reveal>
 
-        <Link
-          to="/transactions?tipo=pago&estado=pendiente"
-          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-expense/20">
-              <ArrowUp className="h-4 w-4 text-expense" />
-            </div>
-            <span className="rounded-full bg-expense/10 px-2 py-0.5 text-xs font-semibold text-expense">
-              {t("common.toPay")}
-            </span>
-          </div>
-          <div>
-            {isLoading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="text-2xl font-semibold text-on-surface">
-                  {formatCompact(Number(data?.to_pay ?? 0), "USD")}
+          <Reveal delay={0.06} className="h-full">
+            <Link
+              to="/transactions?tipo=pago&estado=pendiente"
+              className="glass-panel clip-rounded-lg flex h-full aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-expense/20">
+                  <ArrowUp className="h-4 w-4 text-expense" />
                 </div>
-                <div className="text-xs text-on-surface-variant">
-                  {t("dashboard.outgoing", {
-                    count: data?.count_to_pay ?? 0,
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        </Link>
+                <span className="rounded-full bg-expense/10 px-2 py-0.5 text-xs font-semibold text-expense">
+                  {t("common.toPay")}
+                </span>
+              </div>
+              <div>
+                {isLoading ? (
+                  <Skeleton className="h-7 w-24" />
+                ) : (
+                  <>
+                    <div className="text-2xl font-semibold text-on-surface">
+                      <AnimatedNumber
+                        value={Number(data?.to_pay ?? 0)}
+                        format={(n) => formatCompact(n, "USD")}
+                        delay={0.18}
+                      />
+                    </div>
+                    <div className="text-xs text-on-surface-variant">
+                      {t("dashboard.outgoing", {
+                        count: data?.count_to_pay ?? 0,
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </Link>
+          </Reveal>
 
-        <Link
-          to="/transactions?estado=retrasado"
-          className="glass-panel clip-rounded-lg flex aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-status-delayed/20">
-              <TriangleAlert className="h-4 w-4 text-delayed-text" />
-            </div>
-            <span className="rounded-full bg-status-delayed/10 px-2 py-0.5 text-xs font-semibold text-delayed-text">
-              {t("common.delayed")}
-            </span>
-          </div>
-          <div>
-            {isLoading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="text-2xl font-semibold text-on-surface">
-                  {formatCompact(Number(data?.overdue ?? 0), "USD")}
+          <Reveal delay={0.12} className="h-full">
+            <Link
+              to="/transactions?estado=retrasado"
+              className="glass-panel clip-rounded-lg flex h-full aspect-[4/3] flex-col justify-between rounded-lg p-4 transition-transform hover:scale-[1.01] active:scale-[0.99] md:aspect-auto"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-status-delayed/20">
+                  <TriangleAlert className="h-4 w-4 text-delayed-text" />
                 </div>
-                <div className="text-xs text-on-surface-variant">
-                  {t("dashboard.overdueSubtitle")}
-                </div>
-              </>
-            )}
-          </div>
-        </Link>
+                <span className="rounded-full bg-status-delayed/10 px-2 py-0.5 text-xs font-semibold text-delayed-text">
+                  {t("common.delayed")}
+                </span>
+              </div>
+              <div>
+                {isLoading ? (
+                  <Skeleton className="h-7 w-24" />
+                ) : (
+                  <>
+                    <div className="text-2xl font-semibold text-on-surface">
+                      <AnimatedNumber
+                        value={Number(data?.overdue ?? 0)}
+                        format={(n) => formatCompact(n, "USD")}
+                        delay={0.21}
+                      />
+                    </div>
+                    <div className="text-xs text-on-surface-variant">
+                      {t("dashboard.overdueSubtitle")}
+                    </div>
+                  </>
+                )}
+              </div>
+            </Link>
+          </Reveal>
         </section>
       </BlurLoading>
 
       {/* Upcoming / Próximos vencimientos */}
       <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-semibold text-on-surface">
-            {t("dashboard.recentActivity")}
-          </h2>
-          <Link
-            to="/transactions"
-            className="text-sm text-primary transition-opacity hover:opacity-80"
-          >
-            {t("common.viewAll")} <ChevronRight className="inline h-4 w-4" />
-          </Link>
-        </div>
+        <Reveal>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-2xl font-semibold text-on-surface">
+              {t("dashboard.recentActivity")}
+            </h2>
+            <Link
+              to="/transactions"
+              className="text-sm text-primary transition-opacity hover:opacity-80"
+            >
+              {t("common.viewAll")} <ChevronRight className="inline h-4 w-4" />
+            </Link>
+          </div>
+        </Reveal>
 
         {isError ? (
           <div className="glass-panel clip-rounded-lg rounded-lg p-6 text-center">
@@ -453,7 +520,11 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {(data?.recent ?? []).map((tx) => <TxRow key={tx.id} tx={tx} />)}
+            {(data?.recent ?? []).map((tx, index) => (
+              <Reveal key={tx.id} delay={Math.min(index, 6) * 0.06} y={10}>
+                <TxRow tx={tx} />
+              </Reveal>
+            ))}
             {(data?.recent ?? []).length === 0 && (
               <div className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
                 {t("dashboard.noRecent")}

@@ -133,7 +133,7 @@ export function BusinessDashboard() {
       </Reveal>
 
       <section className="grid grid-cols-2 gap-2 md:gap-3">
-        <Reveal delay={0.08}>
+        <Reveal>
           <div className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 md:min-h-40">
             <div className="flex items-center justify-between gap-2">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-income/20">
@@ -152,7 +152,7 @@ export function BusinessDashboard() {
                     {hideBalances ? (
                       "••••"
                     ) : (
-                      <AnimatedNumber value={Number(data?.ingresos_mes ?? 0)} format={money} delay={0.22} />
+                      <AnimatedNumber value={Number(data?.ingresos_mes ?? 0)} format={money} delay={0.15} />
                     )}
                   </div>
                   <div className="text-xs text-on-surface-variant">{t("business.dashboard.thisMonth")}</div>
@@ -163,7 +163,7 @@ export function BusinessDashboard() {
           </div>
         </Reveal>
 
-        <Reveal delay={0.16}>
+        <Reveal delay={0.08}>
           <div className="glass-panel clip-rounded-lg flex min-h-32 flex-col justify-between rounded-lg p-4 md:min-h-40">
             <div className="flex items-center justify-between gap-2">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-expense/20">
@@ -182,7 +182,7 @@ export function BusinessDashboard() {
                     {hideBalances ? (
                       "••••"
                     ) : (
-                      <AnimatedNumber value={Number(data?.egresos_mes ?? 0)} format={money} delay={0.3} />
+                      <AnimatedNumber value={Number(data?.egresos_mes ?? 0)} format={money} delay={0.2} />
                     )}
                   </div>
                   <div className="text-xs text-on-surface-variant">{t("business.dashboard.thisMonth")}</div>
@@ -195,7 +195,7 @@ export function BusinessDashboard() {
       </section>
 
       <section className="grid grid-cols-2 gap-2 md:gap-3">
-        <Reveal delay={0.24}>
+        <Reveal>
           <Link
             to="/business/invoices"
             className="glass-panel clip-rounded-lg flex h-full min-h-32 flex-col justify-between gap-2 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
@@ -212,7 +212,7 @@ export function BusinessDashboard() {
               <Skeleton className="h-6 w-24" />
             ) : (
               <div className="text-lg font-semibold text-on-surface md:text-xl">
-                {hideBalances ? "••••" : <AnimatedNumber value={receivable} format={money} delay={0.38} />}
+                {hideBalances ? "••••" : <AnimatedNumber value={receivable} format={money} delay={0.15} />}
               </div>
             )}
             <div className="flex items-center gap-1 text-xs text-primary md:text-sm">
@@ -222,7 +222,7 @@ export function BusinessDashboard() {
           </Link>
         </Reveal>
 
-        <Reveal delay={0.32}>
+        <Reveal delay={0.08}>
           <Link
             to="/business/orders"
             className="glass-panel clip-rounded-lg flex h-full min-h-32 flex-col justify-between gap-2 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
@@ -239,7 +239,7 @@ export function BusinessDashboard() {
               <Skeleton className="h-6 w-24" />
             ) : (
               <div className="text-lg font-semibold text-on-surface md:text-xl">
-                {hideBalances ? "••••" : <AnimatedNumber value={payable} format={money} delay={0.46} />}
+                {hideBalances ? "••••" : <AnimatedNumber value={payable} format={money} delay={0.2} />}
               </div>
             )}
             <div className="flex items-center gap-1 text-xs text-primary md:text-sm">
@@ -250,60 +250,70 @@ export function BusinessDashboard() {
         </Reveal>
       </section>
 
-      <Reveal delay={0.4} className="flex flex-col gap-2 md:flex-row">
-        <Link to="/operations/new" className="w-full md:w-64">
-          <Button variant="glow" size="lg" className="w-full gap-2">
-            <Plus className="h-5 w-5" />
-            {t("business.dashboard.newOperation")}
-          </Button>
-        </Link>
-        <Link to="/business/analytics" className="w-full md:w-64">
-          <Button variant="outline" size="lg" className="w-full gap-2">
-            <BarChart3 className="h-5 w-5" />
-            {t("nav.analytics")}
-          </Button>
-        </Link>
-      </Reveal>
+      <div className="flex flex-col gap-2 md:flex-row">
+        <Reveal className="w-full md:w-64">
+          <Link to="/operations/new">
+            <Button variant="glow" size="lg" className="w-full gap-2">
+              <Plus className="h-5 w-5" />
+              {t("business.dashboard.newOperation")}
+            </Button>
+          </Link>
+        </Reveal>
+        <Reveal delay={0.08} className="w-full md:w-64">
+          <Link to="/business/analytics">
+            <Button variant="outline" size="lg" className="w-full gap-2">
+              <BarChart3 className="h-5 w-5" />
+              {t("nav.analytics")}
+            </Button>
+          </Link>
+        </Reveal>
+      </div>
 
-      <Reveal delay={0.48}>
-        <section>
+      <section>
+        <Reveal>
           <h2 className="mb-3 text-lg font-semibold text-on-surface">
             {t("business.dashboard.quickLinks")}
           </h2>
-          <div className="grid grid-cols-2 gap-2 md:gap-3">
+        </Reveal>
+        <div className="grid grid-cols-2 gap-2 md:gap-3">
+          <Reveal className="h-full">
             <Link
               to="/business/collection"
-              className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+              className="glass-panel clip-rounded-lg flex h-full items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
             >
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                 <HandCoins className="h-5 w-5" />
               </div>
               <span className="text-sm font-medium text-on-surface">{t("nav.collection")}</span>
             </Link>
+          </Reveal>
+          <Reveal delay={0.06} className="h-full">
             <Link
               to="/business/inventory"
-              className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+              className="glass-panel clip-rounded-lg flex h-full items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
             >
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-600">
                 <Package className="h-5 w-5" />
               </div>
               <span className="text-sm font-medium text-on-surface">{t("nav.inventory")}</span>
             </Link>
+          </Reveal>
+          <Reveal delay={0.12} className="h-full">
             <Link
               to="/business/orders"
-              className="glass-panel clip-rounded-lg flex items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+              className="glass-panel clip-rounded-lg flex h-full items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
             >
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-expense/15 text-expense">
                 <ShoppingCart className="h-5 w-5" />
               </div>
               <span className="text-sm font-medium text-on-surface">{t("nav.orders")}</span>
             </Link>
-          </div>
-        </section>
-      </Reveal>
+          </Reveal>
+        </div>
+      </section>
 
-      <Reveal delay={0.56}>
-        <section>
+      <section>
+        <Reveal>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-2xl font-semibold text-on-surface">{t("business.dashboard.recent")}</h2>
             <Link
@@ -313,31 +323,31 @@ export function BusinessDashboard() {
               {t("business.dashboard.viewAll")} <ChevronRight className="inline h-4 w-4" />
             </Link>
           </div>
+        </Reveal>
 
-          {isError ? (
-            <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
-              {t("errors.generic")}
-            </p>
-          ) : isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          ) : (data?.recent?.length ?? 0) === 0 ? (
-            <div className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
-              {t("business.dashboard.noRecent")}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {(data?.recent ?? []).map((tx, index) => (
-                <Reveal key={tx.id} delay={Math.min(index, 6) * 0.06} y={10}>
-                  <TxRow tx={tx} />
-                </Reveal>
-              ))}
-            </div>
-          )}
-        </section>
-      </Reveal>
+        {isError ? (
+          <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
+            {t("errors.generic")}
+          </p>
+        ) : isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        ) : (data?.recent?.length ?? 0) === 0 ? (
+          <div className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">
+            {t("business.dashboard.noRecent")}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {(data?.recent ?? []).map((tx, index) => (
+              <Reveal key={tx.id} delay={Math.min(index, 6) * 0.06} y={10}>
+                <TxRow tx={tx} />
+              </Reveal>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
