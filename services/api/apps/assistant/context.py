@@ -4,8 +4,9 @@ Es la ÚNICA puerta de entrada del modelo LLM a los datos del usuario. Produce
 un dict JSONizable con el estado agregado de su dominio financiero, sin exponer
 credenciales, tokens, emails de contacto ni datos de otros usuarios.
 
-Reutiliza los servicios existentes (overview, savings, subscriptions) para no
-duplicar lógica de agregación.
+Según la vista activa (``view``): ``"personal"`` usa el resumen personal;
+``"business"`` delega en ``business_context.build_business_context`` (módulo de
+negocios). Reutiliza los servicios existentes para no duplicar la agregación.
 """
 
 from __future__ import annotations
@@ -24,16 +25,24 @@ from apps.subscriptions.models import Subscription
 from apps.transactions.models import Transaction
 
 
-def build_context(user, today: date | None = None) -> dict:
+def build_context(user, today: date | None = None, view: str = "personal") -> dict:
     """Resumen agregado del dominio del usuario para el contexto del asistente.
 
     Args:
         user: usuario autenticado.
         today: fecha de corte (inyectable en tests; por defecto hoy local).
+        view: vista activa de la UI. ``"business"`` construye el contexto del
+            negocio (sin datos personales); cualquier otro valor usa el contexto
+            personal.
 
     Returns:
         Dict plano, JSON-friendly, con el estado financiero del usuario.
     """
+    if view == "business":
+        from apps.assistant.business_context import build_business_context
+
+        return build_business_context(user, today)
+
     today = today or timezone.localdate()
     summary = build_summary(user, today)
 
@@ -124,6 +133,7 @@ def build_context(user, today: date | None = None) -> dict:
     mem = memory_context(user)
 
     return {
+        "view": "personal",
         "base_currency": user.base_currency,
         "rate": str(rate_value) if rate_value is not None else None,
         "euro_rate": str(euro_value) if euro_value is not None else None,

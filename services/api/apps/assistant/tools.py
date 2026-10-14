@@ -223,6 +223,84 @@ TOOLS = [
 ]
 
 # ---------------------------------------------------------------------------
+# Definición de tools de NEGOCIO (formato OpenAI function calling, solo lectura)
+# ---------------------------------------------------------------------------
+
+TOOLS_BUSINESS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_business_cashflow",
+            "description": (
+                "Flujo de caja del negocio: saldo actual, ingresos y egresos del "
+                "mes, KPIs (ingresos/egresos del período, margen %) y la serie "
+                "mensual de P&L."
+            ),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_receivables",
+            "description": (
+                "Cuentas por cobrar del negocio: total por cobrar, cartera "
+                "vencida, antigüedad (aging) y facturas abiertas con sus saldos."
+            ),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_payables",
+            "description": (
+                "Cuentas por pagar del negocio: total por pagar y pedidos con "
+                "saldo pendiente."
+            ),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_inventory",
+            "description": (
+                "Inventario del negocio: número de productos, valor total a "
+                "costo y productos de mayor valor."
+            ),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_low_stock",
+            "description": (
+                "Productos del negocio con existencias en o por debajo de su "
+                "umbral de alerta (stock bajo)."
+            ),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_top_clients",
+            "description": (
+                "Mejores clientes y proveedores del negocio por monto pagado en "
+                "el período."
+            ),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_open_invoices",
+            "description": (
+                "Facturas abiertas del negocio (por cobrar), incluyendo las "
+                "vencidas y sus días de atraso."
+            ),
+        },
+    },
+]
+
+# ---------------------------------------------------------------------------
 # Ejecutor principal
 # ---------------------------------------------------------------------------
 
@@ -246,6 +324,13 @@ def execute_tool(name: str, args: dict, context: dict) -> dict:
         "check_afford": _exec_afford,
         "register_transaction": _exec_register_preview,
         "create_transfer": _exec_transfer_preview,
+        "get_business_cashflow": _exec_business_cashflow,
+        "get_receivables": _exec_receivables,
+        "get_payables": _exec_payables,
+        "get_inventory": _exec_inventory,
+        "get_low_stock": _exec_low_stock,
+        "get_top_clients": _exec_top_clients,
+        "get_open_invoices": _exec_open_invoices,
     }
     handler = dispatch.get(name)
     if handler is None:
@@ -347,6 +432,96 @@ def _exec_afford(args: dict, context: dict) -> dict:
         "available": f"{total:,.2f} {moneda}",
         "wallets": matching_wallets,
     }
+
+
+# ---------------------------------------------------------------------------
+# Tools de NEGOCIO (solo lectura del context)
+# ---------------------------------------------------------------------------
+
+
+def _no_business() -> dict:
+    """Respuesta estándar cuando el usuario no tiene negocio creado."""
+    return {
+        "error": "no_business",
+        "message": "El usuario no tiene un negocio creado en NaviCash.",
+    }
+
+
+def _exec_business_cashflow(args: dict, context: dict) -> dict:
+    """Flujo de caja del negocio (saldo, mes actual, KPIs y serie P&L)."""
+    if not context.get("business"):
+        return _no_business()
+    kpis = context.get("kpis") or {}
+    return {
+        "saldo": context.get("saldo"),
+        "currency": context.get("currency"),
+        "ingresos_mes": context.get("ingresos_mes"),
+        "egresos_mes": context.get("egresos_mes"),
+        "income_period": kpis.get("incomePeriod"),
+        "expense_period": kpis.get("expensePeriod"),
+        "margin_pct": kpis.get("marginPct"),
+        "pnl": context.get("pnl") or [],
+        "income_categories": context.get("income_categories") or [],
+        "expense_categories": context.get("expense_categories") or [],
+    }
+
+
+def _exec_receivables(args: dict, context: dict) -> dict:
+    """Cuentas por cobrar (total, vencido, aging y facturas abiertas)."""
+    if not context.get("business"):
+        return _no_business()
+    kpis = context.get("kpis") or {}
+    return {
+        "receivable": kpis.get("receivable"),
+        "overdue": kpis.get("overdue"),
+        "currency": context.get("currency"),
+        "aging": context.get("aging") or [],
+        "open_invoices": context.get("open_invoices") or {},
+    }
+
+
+def _exec_payables(args: dict, context: dict) -> dict:
+    """Cuentas por pagar (total y pedidos con saldo pendiente)."""
+    if not context.get("business"):
+        return _no_business()
+    kpis = context.get("kpis") or {}
+    return {
+        "payable": kpis.get("payable"),
+        "currency": context.get("currency"),
+        "pending_orders": context.get("pending_orders") or {},
+    }
+
+
+def _exec_inventory(args: dict, context: dict) -> dict:
+    """Inventario del negocio (número de productos, valor y top por valor)."""
+    if not context.get("business"):
+        return _no_business()
+    return {"inventory": context.get("inventory") or {}}
+
+
+def _exec_low_stock(args: dict, context: dict) -> dict:
+    """Productos con stock bajo."""
+    if not context.get("business"):
+        return _no_business()
+    return {"low_stock": context.get("low_stock") or []}
+
+
+def _exec_top_clients(args: dict, context: dict) -> dict:
+    """Mejores clientes y proveedores del período."""
+    if not context.get("business"):
+        return _no_business()
+    return {
+        "top_clients": context.get("top_clients") or [],
+        "top_suppliers": context.get("top_suppliers") or [],
+        "currency": context.get("currency"),
+    }
+
+
+def _exec_open_invoices(args: dict, context: dict) -> dict:
+    """Facturas abiertas (por cobrar) con vencidas y días de atraso."""
+    if not context.get("business"):
+        return _no_business()
+    return {"open_invoices": context.get("open_invoices") or {}}
 
 
 # ---------------------------------------------------------------------------

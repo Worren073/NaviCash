@@ -5,6 +5,7 @@ import { Send, X, Mic } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { useAssistant } from "@/hooks/use-assistant";
+import { useNavView } from "@/features/navigation/nav-view";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
 import type { AnimationKey } from "@/features/assistant/navi-avatar/types";
 import { useVoiceChat } from "@/features/assistant/voice-chat-context";
@@ -26,6 +27,7 @@ interface AssistantChatProps {
  */
 export function AssistantChat({ open, onClose, avatarAnimation }: AssistantChatProps) {
   const { t } = useTranslation();
+  const { view } = useNavView();
   const { messages, thinking, send } = useAssistant();
   const { openVoice } = useVoiceChat();
   const [draft, setDraft] = useState("");
@@ -63,7 +65,12 @@ export function AssistantChat({ open, onClose, avatarAnimation }: AssistantChatP
                 <div className="flex items-center gap-3 border-b border-glass-border px-4 py-3">
                   <NaviAvatar size={40} thinking={thinking} animation={avatarAnimation} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-on-surface">{t("assistant.name")}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-on-surface">{t("assistant.name")}</span>
+                      <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">
+                        {t(view === "business" ? "nav.business" : "nav.personal")}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1 text-xs text-on-surface-variant">
                       {thinking ? (
                         <>
@@ -88,9 +95,11 @@ export function AssistantChat({ open, onClose, avatarAnimation }: AssistantChatP
                   </button>
                 </div>
 
-                {/* Aviso legal: Navi no es asesor financiero */}
+                {/* Aviso legal: Navi no es asesor financiero (personal) / es asesor orientativo (negocio) */}
                 <div className="border-b border-glass-border bg-glass-surface px-4 py-2">
-                  <p className="text-xs leading-snug text-on-surface-variant">{t("assistant.disclaimer")}</p>
+                  <p className="text-xs leading-snug text-on-surface-variant">
+                    {t(view === "business" ? "assistant.disclaimerBusiness" : "assistant.disclaimer")}
+                  </p>
                 </div>
 
                 {/* Mensajes */}

@@ -3,9 +3,10 @@ import { useTranslation } from "react-i18next";
 
 import { useQuery } from "@tanstack/react-query";
 import { useOverview, useSubscriptions, useWallets, queryKeys } from "@/hooks/use-queries";
+import { useNavView } from "@/features/navigation/nav-view";
 import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
-import type { SavingsGoal } from "@/lib/types";
+import type { BusinessAnalytics, BusinessSummary, SavingsGoal } from "@/lib/types";
 
 export interface AssistantMessage {
   id: string;
@@ -16,6 +17,7 @@ export interface AssistantMessage {
 export interface AssistantReply {
   text: string;
   session_id: string;
+  view?: "personal" | "business";
 }
 
 let nextId = 0;
@@ -34,6 +36,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export function useAssistant() {
   const { t } = useTranslation();
+  const { view } = useNavView();
   const overview = useOverview();
   const wallets = useWallets();
   const subscriptions = useSubscriptions();
@@ -43,10 +46,27 @@ export function useAssistant() {
       api.get<{ results: SavingsGoal[] }>("/savings", { signal }).then((d) => d.results),
   });
 
+  // Datos del negocio solo cuando la vista es negocios (evita pedirlos en la
+  // vista personal o a usuarios sin negocio). Alimentan el fallback local.
+  const { data: businessSummary } = useQuery({
+    queryKey: queryKeys.businessSummary,
+    queryFn: ({ signal }) => api.get<BusinessSummary>("/business/summary", { signal }),
+    enabled: view === "business",
+    retry: false,
+  });
+  const { data: businessAnalytics } = useQuery({
+    queryKey: [...queryKeys.businessAnalytics, 6],
+    queryFn: ({ signal }) =>
+      api.get<BusinessAnalytics>("/business/analytics?months=6", { signal }),
+    enabled: view === "business",
+    retry: false,
+  });
+
   const sessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const greeting = t(view === "business" ? "assistant.greetingBusiness" : "assistant.greeting");
   const [messages, setMessages] = useState<AssistantMessage[]>([
-    { id: uid(), role: "assistant", text: t("assistant.greeting") },
+    { id: uid(), role: "assistant", text: greeting },
   ]);
   const [thinking, setThinking] = useState(false);
 
@@ -130,6 +150,42 @@ export function useAssistant() {
     [t, overview.data, wallets.data, subscriptions.data, goals],
   );
 
+  // Fallback local para la vista de negocio (si el backend no responde).
+  const businessAnswer = useCallback(
+    (question: string): string => {
+      const q = question.toLowerCase();
+      if (!businessSummary) return t("assistant.noBusiness");
+      const currency = businessSummary.currency;
+      if (/saldo|balance|cu[aá]nto tengo|caja|dinero/.test(q)) {
+        return t("assistant.businessBalanceReply", {
+          total: formatMoney(businessSummary.saldo, currency, { symbol: true }),
+        });
+      }
+      const k = businessAnalytics?.kpis;
+      if (/cobrar|me deben|recibir|cartera|factura/.test(q)) {
+        if (!k) return t("assistant.businessFallback");
+        return t("assistant.businessReceivablesReply", {
+          amount: formatMoney(String(k.receivable), currency, { symbol: true }),
+          overdue: formatMoney(String(k.overdue), currency, { symbol: true }),
+        });
+      }
+      if (/pagar|debo|proveedor|pedido/.test(q)) {
+        if (!k) return t("assistant.businessFallback");
+        return t("assistant.businessPayablesReply", {
+          amount: formatMoney(String(k.payable), currency, { symbol: true }),
+        });
+      }
+      return t("assistant.businessFallback");
+    },
+    [t, businessSummary, businessAnalytics],
+  );
+
+  const fallbackAnswer = useCallback(
+    (question: string): string =>
+      view === "business" ? businessAnswer(question) : answer(question),
+    [view, businessAnswer, answer],
+  );
+
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -143,6 +199,7 @@ export function useAssistant() {
           "/assistant/messages",
           {
             message: trimmed,
+            view,
             ...(sessionIdRef.current ? { session_id: sessionIdRef.current } : {}),
           },
           { signal: abortRef.current.signal }
@@ -156,13 +213,13 @@ export function useAssistant() {
         // Fallback local: sin red, rate limit o error del servidor.
         await sleep(600);
         if (abortRef.current?.signal.aborted) return;
-        setMessages((prev) => [...prev, { id: uid(), role: "assistant", text: answer(trimmed) }]);
+        setMessages((prev) => [...prev, { id: uid(), role: "assistant", text: fallbackAnswer(trimmed) }]);
       } finally {
         abortRef.current = null;
         setThinking(false);
       }
     },
-    [answer, thinking],
+    [fallbackAnswer, thinking, view],
   );
 
   // A12 — abortar cualquier petición en curso al desmontar el hook.
@@ -176,8 +233,8 @@ export function useAssistant() {
   const reset = useCallback(() => {
     sessionIdRef.current = null;
     abort();
-    setMessages([{ id: uid(), role: "assistant", text: t("assistant.greeting") }]);
-  }, [abort, t]);
+    setMessages([{ id: uid(), role: "assistant", text: greeting }]);
+  }, [abort, greeting]);
 
   return { messages, thinking, send, reset, abort };
 }

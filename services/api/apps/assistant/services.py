@@ -52,6 +52,24 @@ logger = logging.getLogger(__name__)
 #: TTL de las transferencias pendientes de confirmar (10 minutos).
 PENDING_TTL_SECONDS = 600
 
+#: Frases explícitas que fuerzan cada vista, independientemente de la UI.
+_BUSINESS_PHRASES = (
+    "en mi negocio", "del negocio", "en el negocio", "mi empresa", "mi comercio",
+    "para el negocio", "esto es del negocio", "vista de negocio", "vista negocios",
+)
+_PERSONAL_PHRASES = (
+    "en lo personal", "vista personal", "mis finanzas personales",
+    "mi plata personal", "cuenta personal", "finanzas personales",
+)
+
+#: Términos que, en vista personal, promueven el turno a la vista de negocio
+#: (solo si el usuario tiene un negocio creado).
+_BUSINESS_TERMS = (
+    "negocio", "empresa", "comercio", "factura", "pedido", "inventario",
+    "stock", "cliente", "proveedor", "cobranza", "cartera", "margen",
+    "rentabilidad", "aging",
+)
+
 #: Mensajes accionables para los errores del proveedor de transcripción.
 PROVIDER_ERROR_MESSAGES = {
     "auth": "La clave del servicio de transcripción no es válida.",
@@ -65,19 +83,27 @@ PROVIDER_ERROR_MESSAGES = {
 }
 
 
-def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
+def chat(
+    user,
+    message: str,
+    session_id: "uuid.UUID | None" = None,
+    view: str = "personal",
+) -> dict:
     """Procesa un turno: registro/seguridad por determinismo + respuesta.
 
     Args:
         user: usuario autenticado.
         message: texto del usuario (ya validado/normalizado).
         session_id: uuid de la sesión (se asigna uno nuevo si falta).
+        view: vista activa de la UI (``personal`` o ``business``). Puede
+            ajustarse por el contenido del mensaje (ver ``_resolve_view``).
 
     Returns:
-        Dict ``{"text": str, "session_id": str}`` con la respuesta de Navi.
+        Dict ``{"text": str, "session_id": str, "view": str}`` con la respuesta.
     """
     session_id = session_id or uuid.uuid4()
-    context = build_context(user)
+    resolved_view = _resolve_view(user, message, view)
+    context = build_context(user, view=resolved_view)
     pending_key = _pending_key(user, session_id)
     pending = cache.get(pending_key)
 
@@ -155,7 +181,7 @@ def chat(user, message: str, session_id: "uuid.UUID | None" = None) -> dict:
             text = answer_deterministic(context, message)
 
     _persist_chat(user, session_id, message, text)
-    return {"text": text, "session_id": str(session_id)}
+    return {"text": text, "session_id": str(session_id), "view": resolved_view}
 
 
 # ---------------------------------------------------------------------------
@@ -681,6 +707,38 @@ def _list_wallets(context: dict) -> str:
 # ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
+
+
+def _resolve_view(user, message: str, view: str) -> str:
+    """Ajusta la vista (personal/negocio) según el mensaje.
+
+    Regla base: la vista activa de la UI (``view``). El contenido del mensaje
+    puede cambiarla:
+    - frases explícitas ("en lo personal", "en mi negocio", "mi empresa"…);
+    - en vista personal, términos claros de negocio ("factura", "inventario",
+      "cliente"…) promueven a negocio SOLO si el usuario tiene un negocio.
+    """
+    if view not in ("personal", "business"):
+        view = "personal"
+    low = (message or "").lower()
+    if any(phrase in low for phrase in _PERSONAL_PHRASES):
+        return "personal"
+    if any(phrase in low for phrase in _BUSINESS_PHRASES):
+        return "business" if _has_business(user) else view
+    if view == "personal" and any(term in low for term in _BUSINESS_TERMS):
+        if _has_business(user):
+            return "business"
+    return view
+
+
+def _has_business(user) -> bool:
+    """True si el usuario tiene un negocio creado."""
+    try:
+        from apps.business.models import Business
+
+        return Business.objects.filter(user=user).exists()
+    except Exception:  # noqa: BLE001 — best-effort
+        return False
 
 
 def _pending_key(user, session_id: uuid.UUID) -> str:

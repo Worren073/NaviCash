@@ -699,8 +699,19 @@ export default {
     send: "Send",
     disclaimer:
       "Navi is an AI assistant, not a financial advisor: it can make mistakes. Verify important information with your accounts and official sources.",
+    disclaimerBusiness:
+      "Navi, your AI business advisor: its analyses and recommendations are guidance only and do not replace a professional accountant or advisor. Verify important information.",
     greeting:
       "Hi! I'm Navi, your finance assistant. Ask me about your balance, what you have to collect or pay, your due dates, savings goals or subscriptions. Remember I'm not a financial advisor and I can fail.",
+    greetingBusiness:
+      "Hi! I'm Navi, your business advisor. I can analyze your cash flow, receivables and payables, overdue portfolio, inventory and margin, and give you recommendations. I'm an AI: my advice is guidance only.",
+    noBusiness:
+      "You don't have a business yet. Create one in the Business section and I'll analyze your numbers.",
+    businessBalanceReply: "Your business balance is {{total}}.",
+    businessReceivablesReply: "You have {{amount}} to collect in your portfolio ({{overdue}} overdue).",
+    businessPayablesReply: "You have {{amount}} to pay suppliers.",
+    businessFallback:
+      "I can analyze your business: cash flow, receivables and payables, overdue portfolio, inventory and margin. What would you like to review?",
     noData: "I don't have data loaded yet. Try again in a moment.",
     balanceReply: "Your total balance is {{total}}:\n",
     toReceiveReply: "You have {{amount}} to collect ({{count}} pending charges).",

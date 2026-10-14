@@ -34,6 +34,8 @@ class ChatRequestSerializer(serializers.Serializer):
         message: texto del usuario (obligatorio, recortado, con longitud máx).
         session_id: identificador de sesión (uuid opcional; por defecto el
             backend asigna uno nuevo).
+        view: vista activa de la UI (``personal`` o ``business``); Navi ancla
+            su contexto y su rol a esta vista. Por defecto ``personal``.
     """
 
     message = serializers.CharField(
@@ -47,6 +49,14 @@ class ChatRequestSerializer(serializers.Serializer):
         },
     )
     session_id = serializers.UUIDField(required=False)
+    view = serializers.ChoiceField(
+        choices=("personal", "business"),
+        required=False,
+        default="personal",
+        error_messages={
+            "invalid_choice": "La vista debe ser 'personal' o 'business'.",
+        },
+    )
 
     def validate_message(self, value: str) -> str:
         """Normaliza el mensaje: colapsa espacios y quita saltos duplicados."""
@@ -58,6 +68,7 @@ class ChatResponseSerializer(serializers.Serializer):
 
     text = serializers.CharField(read_only=True)
     session_id = serializers.UUIDField(read_only=True)
+    view = serializers.CharField(read_only=True)
 
 
 class ChatMessageSerializer(serializers.ModelSerializer):

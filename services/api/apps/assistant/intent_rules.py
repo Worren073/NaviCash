@@ -15,6 +15,10 @@ que el backend -con el mismo contexto- pueda responder de forma consistente:
 
 Todas las respuestas usan SOLO el ``context`` pasado en llamada; nunca
 consultan a la base de datos ni exponen datos que no estén en el contexto.
+
+Si ``context["view"] == "business"`` se usan las reglas de negocio (flujo de
+caja, por cobrar/pagar, inventario, margen y mejores clientes) sobre el
+contexto del negocio.
 """
 
 from __future__ import annotations
@@ -46,6 +50,10 @@ def answer_deterministic(context: dict, user_text: str) -> str:
         return answer_dangerous()
     if is_injection(text):
         return answer_injection()
+
+    # Vista de NEGOCIO: reglas deterministas propias (asesor de negocio).
+    if context.get("view") == "business":
+        return _answer_business(context, text)
 
     if _has(text, ["permitir", "permito", "gastar", "comprar", "puedo gastar", "me alcanza", "me sobra"]):
         return _answer_afford(context, text)
@@ -80,6 +88,135 @@ def _answer_generic(context: dict) -> str:
         "«¿Cuánto debo?», «Mis metas de ahorro», «Mis mensualidades» o "
         "«¿Me lo puedo permitir?»."
     )
+
+
+# --- Vista de NEGOCIO -------------------------------------------------------
+
+
+def _answer_business(context: dict, text: str) -> str:
+    """Respuesta determinista para la vista de negocio (asesor, solo lectura)."""
+    if not context.get("business"):
+        return (
+            "Aún no tienes un negocio creado en NaviCash. Créalo desde la "
+            "sección Negocio y podré analizarte tu flujo de caja, tus cobros, "
+            "tus pagos y tu inventario."
+        )
+
+    if _has(text, ["cobrar", "por cobrar", "me deben", "recibir", "cartera", "factura"]):
+        return _answer_business_receivables(context)
+    if _has(text, ["pagar", "por pagar", "debo", "proveedor", "pedido"]):
+        return _answer_business_payables(context)
+    if _has(text, ["inventario", "stock", "producto", "existencias", "repon"]):
+        return _answer_business_inventory(context)
+    if _has(text, ["margen", "rentabilidad", "ganancia", "utilidad", "flujo", "vend", "ingres", "gast"]):
+        return _answer_business_cashflow(context)
+    if _has(text, ["cliente", "mejor", "top", "vende más", "factura más"]):
+        return _answer_business_top_clients(context)
+    if _has(text, ["saldo", "balance", "cuanto tengo", "dinero", "caja", "cuenta"]):
+        return _answer_business_balance(context)
+
+    return _answer_business_generic(context)
+
+
+def _answer_business_generic(context: dict) -> str:
+    """Respaldo de negocio: qué puede hacer Navi en esta vista."""
+    name = (context.get("business") or {}).get("name", "tu negocio")
+    return (
+        f"Puedo analizar {name} y darte recomendaciones 😊. Pregúntame por tu "
+        "flujo de caja, tus cuentas por cobrar o por pagar, tu cartera vencida, "
+        "tu inventario o tu margen. Recuerda que soy una IA: mis recomendaciones "
+        "son orientativas y no sustituyen a un contador o asesor profesional."
+    )
+
+
+def _answer_business_balance(context: dict) -> str:
+    """Saldo del negocio + flujo del mes."""
+    saldo = _fmt(context.get("saldo"))
+    currency = context.get("currency", "USD")
+    income = context.get("ingresos_mes")
+    expenses = context.get("egresos_mes")
+    msg = f"El saldo de tu negocio es {saldo} {currency}."
+    if income is not None and expenses is not None:
+        msg += (
+            f" Este mes llevas {_fmt(income)} {currency} en ingresos y "
+            f"{_fmt(expenses)} {currency} en egresos."
+        )
+    return msg
+
+
+def _answer_business_cashflow(context: dict) -> str:
+    """Flujo de caja: ingresos/egresos del período y margen."""
+    kpis = context.get("kpis") or {}
+    currency = context.get("currency", "USD")
+    income = _decimal(kpis.get("incomePeriod"))
+    expense = _decimal(kpis.get("expensePeriod"))
+    net = income - expense
+    msg = (
+        f"En el período registraste {income:,.2f} {currency} de ingresos y "
+        f"{expense:,.2f} {currency} de egresos (neto {net:,.2f} {currency})."
+    )
+    margin = kpis.get("marginPct")
+    if margin is not None:
+        msg += f" Tu margen es de {margin}%."
+        if _decimal(margin) < 10:
+            msg += " Es bajo: revisa tus costos y precios de venta."
+    return msg
+
+
+def _answer_business_receivables(context: dict) -> str:
+    """Cuentas por cobrar y cartera vencida."""
+    kpis = context.get("kpis") or {}
+    currency = context.get("currency", "USD")
+    receivable = _decimal(kpis.get("receivable"))
+    overdue = _decimal(kpis.get("overdue"))
+    open_inv = context.get("open_invoices") or {}
+    msg = (
+        f"Tienes {receivable:,.2f} {currency} por cobrar en "
+        f"{open_inv.get('count', 0)} factura(s) abierta(s)."
+    )
+    if overdue > 0:
+        msg += (
+            f" De eso, {overdue:,.2f} {currency} está vencido: te recomiendo "
+            "priorizar la cobranza de esas facturas."
+        )
+    return msg
+
+
+def _answer_business_payables(context: dict) -> str:
+    """Cuentas por pagar y pedidos pendientes."""
+    kpis = context.get("kpis") or {}
+    currency = context.get("currency", "USD")
+    payable = _decimal(kpis.get("payable"))
+    orders = context.get("pending_orders") or {}
+    return (
+        f"Tienes {payable:,.2f} {currency} por pagar en "
+        f"{orders.get('count', 0)} pedido(s) con saldo pendiente."
+    )
+
+
+def _answer_business_inventory(context: dict) -> str:
+    """Inventario: valor, número de productos y stock bajo."""
+    inventory = context.get("inventory") or {}
+    currency = context.get("currency", "USD")
+    low = context.get("low_stock") or []
+    msg = (
+        f"Tu inventario tiene {inventory.get('product_count', 0)} producto(s) "
+        f"por un valor de {_fmt(inventory.get('total_value'))} {currency} a costo."
+    )
+    if low:
+        names = " · ".join(f"{p['name']} ({p['stock_quantity']} {p['unit']})" for p in low[:5])
+        msg += f" ⚠️ {len(low)} con stock bajo: {names}. Conviene reponerlos."
+    return msg
+
+
+def _answer_business_top_clients(context: dict) -> str:
+    """Mejores clientes (y proveedores) del período."""
+    clients = context.get("top_clients") or []
+    if not clients:
+        return "Aún no hay pagos de clientes en el período para destacar."
+    currency = context.get("currency", "USD")
+    names = " · ".join(f"{c['label']}: {_fmt(c['value'])} {currency}" for c in clients[:5])
+    return "Tus mejores clientes del período:\n" + names
 
 
 def _answer_balance(context: dict) -> str:

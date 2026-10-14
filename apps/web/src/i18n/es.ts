@@ -698,8 +698,19 @@ export default {
     send: "Enviar",
     disclaimer:
       "Navi es un asistente con IA, no un asesor financiero: puede cometer errores. Verifica la información importante con tus cuentas y fuentes oficiales.",
+    disclaimerBusiness:
+      "Navi, tu asesor de negocio con IA: sus análisis y recomendaciones son orientativos y no sustituyen a un contador o asesor profesional. Verifica la información importante.",
     greeting:
       "¡Hola! Soy Navi, tu ayudante de finanzas. Pregúntame por tu saldo, lo que tienes por cobrar o pagar, tus vencimientos, metas de ahorro o mensualidades. Recuerda que no soy asesor financiero y puedo fallar.",
+    greetingBusiness:
+      "¡Hola! Soy Navi, tu asesor de negocio. Puedo analizarte el flujo de caja, tus cuentas por cobrar y por pagar, la cartera vencida, el inventario y el margen, y darte recomendaciones. Soy una IA: mis consejos son orientativos.",
+    noBusiness:
+      "Aún no tienes un negocio creado. Créalo en la sección Negocio y podré analizarte tus números.",
+    businessBalanceReply: "El saldo de tu negocio es {{total}}.",
+    businessReceivablesReply: "Tienes {{amount}} por cobrar en tu cartera ({{overdue}} vencido).",
+    businessPayablesReply: "Tienes {{amount}} por pagar a proveedores.",
+    businessFallback:
+      "Puedo analizar tu negocio: flujo de caja, cuentas por cobrar y por pagar, cartera vencida, inventario y margen. ¿Qué quieres revisar?",
     noData: "Aún no tengo datos cargados. Vuelve a intentarlo en un momento.",
     balanceReply: "Tu saldo total es {{total}}:\n",
     toReceiveReply: "Tienes {{amount}} por cobrar ({{count}} cobros pendientes).",

@@ -64,6 +64,7 @@ class ChatView(GenericAPIView):
             user=request.user,
             message=data["message"],
             session_id=data.get("session_id"),
+            view=data.get("view", "personal"),
         )
         return Response(ChatResponseSerializer(result).data, status=status.HTTP_200_OK)
 
