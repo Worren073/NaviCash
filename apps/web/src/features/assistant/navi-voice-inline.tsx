@@ -73,7 +73,13 @@ export const NaviVoiceInline = forwardRef<NaviVoiceInlineHandle, NaviVoiceInline
           ? startedRef.current
           : phase === "unsupported" || phase === "micError";
       if (!terminal) return;
-      const id = window.setTimeout(onClose, phase === "idle" ? 1400 : 2800);
+      // Al terminar de hablar, el cuadro se quita de inmediato.
+      if (phase === "idle") {
+        onClose();
+        return;
+      }
+      // Estados de error: se deja leer el mensaje un momento.
+      const id = window.setTimeout(onClose, 2800);
       return () => window.clearTimeout(id);
     }, [phase, active, onClose]);
 
