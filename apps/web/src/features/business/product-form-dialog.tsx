@@ -18,7 +18,10 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { api, ApiErrorClass } from "@/lib/api";
 import { queryKeys, useProductCategories } from "@/hooks/use-queries";
+import { formatMoney } from "@/lib/format";
 import type { Product } from "@/lib/types";
+
+const PRESET_MARGINS = [15, 20, 25, 30, 40, 50] as const;
 
 export function ProductFormDialog({
   product,
@@ -74,6 +77,24 @@ export function ProductFormDialog({
       return t("inventory.integerRequired");
     return null;
   }, [name, unit, unitPrice, wholesalePrice, costPrice, threshold, initialStock, t]);
+
+  // Ganancia sobre el costo (markup): (venta − costo) / costo. Requiere un
+  // costo positivo y un precio de venta; en falta se muestra «—».
+  const margin = useMemo(() => {
+    const cost = Number(costPrice);
+    const price = Number(unitPrice);
+    if (!costPrice.trim() || !Number.isFinite(cost) || cost <= 0) return null;
+    if (!unitPrice.trim() || !Number.isFinite(price)) return null;
+    return { percent: ((price - cost) / cost) * 100, amount: price - cost };
+  }, [costPrice, unitPrice]);
+
+  const costReady = costPrice.trim() !== "" && Number(costPrice) > 0;
+
+  const applyMargin = (pct: number) => {
+    const cost = Number(costPrice);
+    if (!Number.isFinite(cost) || cost <= 0) return;
+    setUnitPrice((cost * (1 + pct / 100)).toFixed(2));
+  };
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -192,23 +213,66 @@ export function ProductFormDialog({
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-on-surface">
-                {t("inventory.wholesalePrice")}
-              </span>
-              <NumericInput
-                value={wholesalePrice}
-                onChange={setWholesalePrice}
-              />
-            </label>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-on-surface">
                 {t("inventory.costPrice")}
               </span>
               <NumericInput
                 value={costPrice}
                 onChange={setCostPrice}
+              />
+            </label>
+          </div>
+
+          <div className="rounded-xl bg-surface-container-high px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-on-surface">
+                {margin && margin.percent < 0 ? t("inventory.loss") : t("inventory.profit")}
+              </span>
+              <span
+                className={`text-sm font-semibold ${
+                  margin == null
+                    ? "text-on-surface-variant"
+                    : margin.percent < 0
+                      ? "text-destructive"
+                      : "text-primary"
+                }`}
+              >
+                {margin == null ? "—" : `${margin.percent.toFixed(1)}%`}
+              </span>
+            </div>
+            <div className="mt-0.5 text-xs text-on-surface-variant">
+              {margin == null
+                ? t("inventory.profitHint")
+                : `${margin.amount >= 0 ? "+" : ""}${formatMoney(margin.amount)} ${t("inventory.profitPerUnit")}`}
+            </div>
+            <div className="mt-2">
+              <div className="mb-1 text-xs font-medium text-on-surface-variant">
+                {t("inventory.quickMargin")}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {PRESET_MARGINS.map((pct) => (
+                  <Button
+                    key={pct}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!costReady}
+                    onClick={() => applyMargin(pct)}
+                  >
+                    {pct}%
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-on-surface">
+                {t("inventory.wholesalePrice")}
+              </span>
+              <NumericInput
+                value={wholesalePrice}
+                onChange={setWholesalePrice}
               />
             </label>
             <label className="block">
