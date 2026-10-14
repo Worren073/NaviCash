@@ -732,6 +732,8 @@ export default {
       thinking: "Pensando…",
       speaking: "Diciendo…",
       talkAgain: "Toca la bolita para hablar de nuevo",
+      holdToTalk: "Mantén presionada la burbuja para hablar",
+      releaseToSend: "Suelta al terminar",
       unsupported: "Tu dispositivo no soporta la voz. Puedes escribirle a Navi desde el chat.",
       micDenied: "Navi necesita acceso al micrófono para escucharte. Habilítalo en tu navegador.",
       micError: "No pude acceder al micrófono. Intenta de nuevo.",

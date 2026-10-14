@@ -168,6 +168,11 @@ permite cambiar sin tocar el resto.
 - Gestión de operaciones recurrentes desde el chat (suscripciones) y confirmación con botones en la UI.
 - Transferencia a WhatsApp/webhook y push (fase posterior).
 
+**Hecho (octubre 2026) — modo de voz compacto en la burbuja (push-to-talk):**
+- `features/assistant/use-navi-voice.ts`: sesión de voz compartida (entrada Web Speech / MediaRecorder+VAD, envío vía `useAssistant`, salida TTS, re-desbloqueo de audio en iOS) reutilizada por el overlay (`navi-voice.tsx`) y el modo compacto.
+- `features/assistant/navi-voice-inline.tsx`: burbujitas ancladas al orbe (micrófono animado → 3 puntos → respuesta con TTS) sin tapar la vista actual; autocierre tras leer o al tocar el orbe.
+- `features/assistant/navi-bubble.tsx`: mantener presionada la burbuja **sin moverla** (~400 ms) abre el modo de voz; al **soltar** finaliza (push-to-talk) y responde. El arrastre sigue intacto y el toque corto abre el chat.
+
 ---
 
 ## 6. BLOCKERS y dependencias

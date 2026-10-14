@@ -1,28 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "motion/react";
 import { Mic, RefreshCw, VolumeX, X } from "lucide-react";
 
-import { useAssistant } from "@/hooks/use-assistant";
-import { isIOSDevice } from "@/hooks/use-device-os";
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
 import type { AnimationKey } from "@/features/assistant/navi-avatar/types";
-import {
-  getRecognitionKind,
-  getRecognitionProvider,
-  getSpeechProvider,
-} from "@/features/assistant/speech";
-import type { RecognitionErrorCode } from "@/features/assistant/speech/types";
+import { getSpeechProvider } from "@/features/assistant/speech";
+import { useNaviVoice } from "@/features/assistant/use-navi-voice";
 import { cn } from "@/lib/utils";
-
-type VoicePhase =
-  | "listening"
-  | "recording"
-  | "thinking"
-  | "speaking"
-  | "idle"
-  | "unsupported"
-  | "micError";
 
 interface NaviVoiceProps {
   open: boolean;
@@ -34,36 +19,28 @@ interface NaviVoiceProps {
  * desenfocado, la bolita de Navi en grande y la conversación visible en
  * burbujas.
  *
- * Entrada de voz:
- * - Android/desktop → Web Speech API (escucha → envía el texto al backend).
- * - iOS → grabación con MediaRecorder + corte por silencio (VAD) y
- *   transcripción en el backend (`/api/assistant/transcribe`).
- *
- * Salida (TTS): ``speechSynthesis`` nativo con arreglos para iOS (warm-up del
- * audio session en el gesto y carga de voces vía ``voiceschanged``).
+ * La sesión de voz vive en `useNaviVoice` (compartida con el modo compacto
+ * `navi-voice-inline.tsx`). Entrada: Web Speech API en Android/desktop e iOS
+ * 16.4+; en iOS sin soporte, MediaRecorder + VAD con transcripción en el
+ * backend. Salida: `speechSynthesis` con arreglos para iOS.
  *
  * Se abre manteniendo presionado el botón "+" del navbar.
  */
 export function NaviVoice({ open, onClose }: NaviVoiceProps) {
   const { t } = useTranslation();
-  const { messages, thinking, send, abort } = useAssistant();
-  const [phase, setPhase] = useState<VoicePhase>("idle");
-  const [micErrorCode, setMicErrorCode] = useState<RecognitionErrorCode | null>(null);
-  const [micErrorMessage, setMicErrorMessage] = useState<string | null>(null);
-  const [liveText, setLiveText] = useState("");
+  const {
+    messages,
+    thinking,
+    phase,
+    liveText,
+    micErrorMessage,
+    listening,
+    micDenied,
+    transcriptionFailed,
+    relisten,
+    isIOS,
+  } = useNaviVoice({ active: open, relistenOnTimeout: true });
   const listRef = useRef<HTMLDivElement>(null);
-  const recRef = useRef<ReturnType<typeof getRecognitionProvider>>(null);
-  const speechRef = useRef<ReturnType<typeof getSpeechProvider>>(null);
-  const mountedRef = useRef(false);
-  const lastCountRef = useRef(0);
-  const phaseRef = useRef<VoicePhase>("idle");
-
-  // El proveedor de entrada decide el estado activo (live vs grabación iOS).
-  const recognitionKind = useMemo(() => getRecognitionKind(), []);
-  const activePhase: VoicePhase = recognitionKind === "recording" ? "recording" : "listening";
-  // En iOS el interruptor de silencio silencia speechSynthesis (sin API para
-  // forzarlo): se muestra un recordatorio persistente.
-  const isIOS = isIOSDevice();
 
   // Animación del rostro según la fase de voz.
   const voiceAnimation: AnimationKey =
@@ -75,152 +52,11 @@ export function NaviVoice({ open, onClose }: NaviVoiceProps) {
           ? "happy"
           : "idle";
 
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
-
-  // Proveedor de salida (TTS): se configura una vez.
-  useEffect(() => {
-    const speech = getSpeechProvider();
-    speechRef.current = speech;
-    if (speech) {
-      speech.onEnd = () => {
-        if (!mountedRef.current) return;
-        setPhase("idle");
-      };
-    }
-    return () => {
-      if (speech) speech.onEnd = null;
-    };
-  }, []);
-
-  // Arranca al abrir: cancelar audio previo, desbloquear TTS y escuchar.
-  useEffect(() => {
-    if (!open) return;
-    mountedRef.current = true;
-    lastCountRef.current = messages.length;
-
-    const speech = getSpeechProvider();
-    speechRef.current = speech;
-    speech?.cancel();
-    // iOS exige que la primera emisión de audio ocurra dentro de un gesto.
-    // El gesto real ya desbloqueó en el botón (unlockSpeech); este warm-up es
-    // refuerzo por si el overlay se abre desde otro camino. El re-desbloqueo
-    // tras la grabación del micrófono ocurre en cada toque del overlay.
-    speech?.warmUp();
-
-    const rec = getRecognitionProvider();
-    recRef.current = rec;
-    if (!rec) {
-      setPhase("unsupported");
-      return;
-    }
-    rec.onResult = handleResult;
-    rec.onPartial = handlePartial;
-    rec.onError = handleRecError;
-    startListening();
-    return () => {
-      mountedRef.current = false;
-      rec?.cancel();
-      recRef.current = null;
-      if (rec) {
-        rec.onResult = null;
-        rec.onPartial = null;
-        rec.onError = null;
-      }
-      speech?.cancel();
-      // A12 — abortar la petición del backend si hay una en curso.
-      abort();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
   // Autoscroll al fondo de la conversación.
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, thinking, open]);
-
-  function handleResult(transcript: string) {
-    if (!mountedRef.current) return;
-    setLiveText("");
-    setPhase("thinking");
-    void send(transcript);
-  }
-
-  function handlePartial(text: string) {
-    if (!mountedRef.current) return;
-    setLiveText(text);
-  }
-
-  function handleRecError(code: RecognitionErrorCode, message?: string) {
-    if (!mountedRef.current) return;
-    switch (code) {
-      case "timeout": {
-        // Silencio: vuelve a escuchar (solo si nada lo reemplazó).
-        window.setTimeout(() => {
-          if (mountedRef.current && recRef.current && phaseRef.current === activePhase) {
-            startListening();
-          }
-        }, 600);
-        break;
-      }
-      case "unsupported":
-        setPhase("unsupported");
-        break;
-      default:
-        setMicErrorCode(code);
-        setMicErrorMessage(message ?? null);
-        setPhase("micError");
-        break;
-    }
-  }
-
-  function startListening() {
-    if (!mountedRef.current) return;
-    const rec = recRef.current;
-    if (!rec) {
-      setPhase("unsupported");
-      return;
-    }
-    setMicErrorCode(null);
-    setMicErrorMessage(null);
-    setLiveText("");
-    setPhase(activePhase);
-    rec.start();
-  }
-
-  // Re-escucha manual: corta la voz (si Navi está hablando) y vuelve a oír.
-  function relisten() {
-    if (phase === "thinking" || !mountedRef.current) return;
-    speechRef.current?.cancel();
-    setMicErrorCode(null);
-    setMicErrorMessage(null);
-    setLiveText("");
-    setPhase(activePhase);
-    // Retardo breve: el browser libera el micrófono tras hablar.
-    window.setTimeout(startListening, 250);
-  }
-
-  // La respuesta del backend llega como nuevo mensaje del asistente.
-  useEffect(() => {
-    if (phase !== "thinking" || messages.length <= lastCountRef.current) return;
-    lastCountRef.current = messages.length;
-    const last = messages[messages.length - 1];
-    if (last?.role !== "assistant") return;
-
-    const speech = speechRef.current;
-    if (!speech || !speech.isSupported()) {
-      setPhase("idle");
-      return;
-    }
-    setPhase("speaking");
-    speech.speak(last.text);
-  }, [messages, phase]);
-
-  const listening = phase === "listening" || phase === "recording";
-  const micDenied = micErrorCode === "permission";
-  const transcriptionFailed = micErrorCode === "network";
 
   return (
     <AnimatePresence>

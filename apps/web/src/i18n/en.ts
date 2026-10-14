@@ -733,6 +733,8 @@ export default {
       thinking: "Thinking…",
       speaking: "Speaking…",
       talkAgain: "Tap the orb to talk again",
+      holdToTalk: "Hold the bubble to talk",
+      releaseToSend: "Release when you're done",
       unsupported: "Your device doesn't support voice. You can text Navi from the chat.",
       micDenied: "Navi needs microphone access to hear you. Enable it in your browser.",
       micError: "I couldn't access the microphone. Try again.",

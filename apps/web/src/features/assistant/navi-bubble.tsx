@@ -4,9 +4,15 @@ import { motion, useMotionValue, useMotionValueEvent, useSpring } from "motion/r
 
 import { NaviAvatar } from "@/features/assistant/navi-avatar";
 import type { AnimationKey } from "@/features/assistant/navi-avatar/types";
+import { unlockSpeech } from "@/features/assistant/speech";
+import { NaviVoiceInline } from "@/features/assistant/navi-voice-inline";
+import type { NaviVoiceInlineHandle } from "@/features/assistant/navi-voice-inline";
+import type { VoicePhase } from "@/features/assistant/use-navi-voice";
 import { cn } from "@/lib/utils";
 
 const BUBBLE_SIZE = 48;
+// Mantener presionada la burbuja (sin moverla) abre la voz compacta.
+const HOLD_MS = 400;
 const STORAGE_KEY = "navi.bubble.pos";
 // Margen a los bordes al "pegarse" a la izquierda/derecha.
 const EDGE_MARGIN = 16;
@@ -132,6 +138,13 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
     moved: boolean;
   } | null>(null);
 
+  // Modo de voz compacto (mantener presionada la burbuja sin moverla).
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
+  const inlineRef = useRef<NaviVoiceInlineHandle>(null);
+  const holdTimer = useRef<number | null>(null);
+  const holdFired = useRef(false);
+
   // Detecta desktop (breakpoint lg) y se re-sincroniza al cambiar el viewport.
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -205,17 +218,49 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
     setSide(latest < window.innerWidth / 2 ? "left" : "right");
   });
 
+  function clearHold() {
+    if (holdTimer.current !== null) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }
+
+  // Cierra el modo de voz compacto (abortando la captura en curso).
+  const closeVoice = useCallback(() => {
+    inlineRef.current?.cancel();
+    setVoiceActive(false);
+  }, []);
+
   function onPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     dragStart.current = { px: e.clientX, py: e.clientY, dx: x.get(), dy: y.get(), moved: false };
+    holdFired.current = false;
+    clearHold();
+    // iOS: el audio de voz debe desbloquearse dentro de un gesto; el primer
+    // toque de la burbuja (posible hold → voz) es ese gesto.
+    unlockSpeech();
+    holdTimer.current = window.setTimeout(() => {
+      holdTimer.current = null;
+      // Solo si no se movió: mantener presionado = hablar (sin mover la burbuja).
+      if (dragStart.current && !dragStart.current.moved) {
+        holdFired.current = true;
+        setVoiceActive(true);
+      }
+    }, HOLD_MS);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
     const s = dragStart.current;
     if (!s) return;
+    // En modo voz la burbuja no se arrastra.
+    if (holdFired.current) return;
     const deltaX = e.clientX - s.px;
     const deltaY = e.clientY - s.py;
-    if (Math.abs(deltaX) + Math.abs(deltaY) > 4) s.moved = true;
+    if (Math.abs(deltaX) + Math.abs(deltaY) > 4) {
+      // Se movió: cancela el hold (es un arrastre, no una pulsación larga).
+      if (!s.moved) clearHold();
+      s.moved = true;
+    }
     if (!s.moved) return;
 
     const vw = window.innerWidth;
@@ -249,42 +294,87 @@ export function NaviBubble({ onOpen, hasUnread = false, tour, wrapperClassName, 
   }
 
   function onPointerUp() {
+    clearHold();
+    // Push-to-talk: al soltar tras el hold, finaliza la captura y responde.
+    if (holdFired.current) {
+      holdFired.current = false;
+      inlineRef.current?.stop();
+      return;
+    }
+    // Un toque sobre el modo voz activo lo cierra (sin abrir el chat).
+    if (voiceActive) {
+      closeVoice();
+      return;
+    }
     finishDrag(true);
   }
 
   function onPointerCancel() {
+    clearHold();
+    if (holdFired.current) {
+      holdFired.current = false;
+      closeVoice();
+      return;
+    }
     finishDrag(false);
   }
+
+  // Animación del orbe según la fase de voz (tiene prioridad sobre `animation`).
+  const voiceAnimation: AnimationKey | undefined = !voiceActive
+    ? undefined
+    : voicePhase === "listening" || voicePhase === "recording"
+      ? "listening"
+      : voicePhase === "thinking"
+        ? "thinking"
+        : voicePhase === "speaking"
+          ? "happy"
+          : undefined;
+  const orbAnimation = voiceAnimation ?? animation;
 
   return (
     <motion.div
       style={{ x: springX, y: springY }}
-      className={cn("fixed left-0 top-0 z-40", wrapperClassName, ready ? "" : "opacity-0")}
+      className={cn(
+        "fixed left-0 top-0 z-40",
+        voiceActive && "z-[60]",
+        wrapperClassName,
+        ready ? "" : "opacity-0",
+      )}
     >
       <motion.button
         type="button"
         aria-label={t("assistant.openChat")}
-        title={t("assistant.openChat")}
+        title={`${t("assistant.openChat")} · ${t("assistant.voice.holdToTalk")}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onContextMenu={(e) => e.preventDefault()}
         style={{
           width: BUBBLE_SIZE,
           height: BUBBLE_SIZE,
           touchAction: "none",
+          userSelect: "none",
+          WebkitTouchCallout: "none",
           cursor: dragging ? "grabbing" : "grab",
         }}
-        className="clip-rounded-full relative block rounded-full shadow-[0_6px_24px_rgba(0,106,97,0.25)] transition-shadow hover:shadow-[0_8px_32px_rgba(0,106,97,0.4)] active:scale-95"
+        className="clip-rounded-full relative block select-none rounded-full shadow-[0_6px_24px_rgba(0,106,97,0.25)] transition-shadow hover:shadow-[0_8px_32px_rgba(0,106,97,0.4)] active:scale-95"
       >
-        <NaviAvatar size={BUBBLE_SIZE} animation={animation} />
+        <NaviAvatar size={BUBBLE_SIZE} animation={orbAnimation} />
         {/* Punto de atención si hay novedades */}
         {hasUnread && (
           <span className="absolute -right-0.5 -top-0.5 z-10 h-3 w-3 rounded-full bg-status-delayed ring-2 ring-white/60" />
         )}
       </motion.button>
-      {animation === "sleeping" && <NaviSleepingZzz color="#7ed6ec" />}
+      {orbAnimation === "sleeping" && <NaviSleepingZzz color="#7ed6ec" />}
       {tour ? cloneElement(tour, { side }) : null}
+      <NaviVoiceInline
+        ref={inlineRef}
+        active={voiceActive}
+        side={side}
+        onClose={closeVoice}
+        onPhaseChange={setVoicePhase}
+      />
     </motion.div>
   );
 }
