@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { Plus, ReceiptText, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import { formatMoney, formatDate } from "@/lib/format";
 import type { Invoice } from "@/lib/types";
 import { INVOICE_STATUS_OPTIONS, InvoiceStatusBadge } from "./invoice-badges";
 import { InvoiceDetail } from "./invoice-detail";
+import { InvoiceForm } from "./invoice-new-page";
 
 export { INVOICE_STATUS_OPTIONS, InvoiceStatusBadge } from "./invoice-badges";
 
@@ -60,6 +60,7 @@ export default function InvoicesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selected, setSelected] = useState<Invoice | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300);
@@ -81,11 +82,9 @@ export default function InvoicesPage() {
             <p className="text-sm text-on-surface-variant">{t("invoices.subtitle")}</p>
           </div>
         </div>
-        <Link to="/business/invoices/new">
-          <Button variant="glow" className="gap-1">
-            <Plus className="h-4 w-4" /> {t("invoices.new")}
-          </Button>
-        </Link>
+        <Button variant="glow" className="gap-1" onClick={() => setFormOpen(true)}>
+          <Plus className="h-4 w-4" /> {t("invoices.new")}
+        </Button>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -135,6 +134,23 @@ export default function InvoicesPage() {
         <SidePanelContent>
           {selected && <SidePanelTitle className="sr-only">{selected.number}</SidePanelTitle>}
           {selected && <InvoiceDetail id={selected.id} />}
+        </SidePanelContent>
+      </SidePanel>
+
+      <SidePanel open={formOpen} onOpenChange={setFormOpen}>
+        <SidePanelContent size="wide">
+          {formOpen && (
+            <SidePanelTitle className="sr-only">{t("invoices.form.title")}</SidePanelTitle>
+          )}
+          {formOpen && (
+            <InvoiceForm
+              onCancel={() => setFormOpen(false)}
+              onCreated={(invoice) => {
+                setFormOpen(false);
+                setSelected(invoice);
+              }}
+            />
+          )}
         </SidePanelContent>
       </SidePanel>
     </div>

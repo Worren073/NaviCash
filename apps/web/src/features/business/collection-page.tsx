@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-import { ChevronRight, CheckCircle2, HandCoins, PhoneCall } from "lucide-react";
+import { CheckCircle2, HandCoins, PhoneCall } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SidePanel, SidePanelContent, SidePanelTitle } from "@/components/ui/side-panel";
 import { useInvoices } from "@/hooks/use-queries";
 import { formatDate, formatMoney } from "@/lib/format";
 import { FollowUpDialog } from "./follow-up-dialog";
 import { InvoiceStatusBadge } from "./invoices-page";
+import { InvoiceDetail } from "./invoice-detail";
 import type { Invoice } from "@/lib/types";
 
 const OPEN_STATUSES: Invoice["status"][] = ["enviada", "parcial", "vencida"];
@@ -39,6 +40,7 @@ export default function CollectionPage() {
   const { t } = useTranslation();
   const { data, isLoading, isError } = useInvoices();
   const [recordFor, setRecordFor] = useState<Invoice | null>(null);
+  const [selected, setSelected] = useState<Invoice | null>(null);
 
   const today = todayISO();
   const open = useMemo(
@@ -121,12 +123,18 @@ export default function CollectionPage() {
               return (
                 <div
                   key={inv.id}
-                  className="glass-panel clip-rounded-lg flex items-center justify-between gap-3 rounded-lg p-4"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelected(inv)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelected(inv);
+                    }
+                  }}
+                  className="glass-panel clip-rounded-lg flex cursor-pointer items-center justify-between gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 >
-                  <Link
-                    to={`/business/invoices/${inv.id}`}
-                    className="min-w-0 flex-1 transition-opacity hover:opacity-80"
-                  >
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-on-surface">{inv.number}</span>
                       <InvoiceStatusBadge status={inv.status} />
@@ -145,7 +153,7 @@ export default function CollectionPage() {
                     <div className="mt-1">
                       <LatestChip invoice={inv} />
                     </div>
-                  </Link>
+                  </div>
 
                   <div className="flex shrink-0 flex-col items-end gap-2">
                     <div className="text-base font-semibold text-on-surface">
@@ -155,16 +163,13 @@ export default function CollectionPage() {
                       variant="outline"
                       size="sm"
                       className="gap-1"
-                      onClick={() => setRecordFor(inv)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRecordFor(inv);
+                      }}
                     >
                       <PhoneCall className="h-3.5 w-3.5" /> {t("collection.register")}
                     </Button>
-                    <Link
-                      to={`/business/invoices/${inv.id}`}
-                      className="text-xs text-primary transition-opacity hover:opacity-80"
-                    >
-                      {t("collection.followUps.detail")} <ChevronRight className="inline h-3 w-3" />
-                    </Link>
                   </div>
                 </div>
               );
@@ -178,6 +183,13 @@ export default function CollectionPage() {
         onOpenChange={(open) => !open && setRecordFor(null)}
         invoiceId={recordFor?.id ?? ""}
       />
+
+      <SidePanel open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+        <SidePanelContent>
+          {selected && <SidePanelTitle className="sr-only">{selected.number}</SidePanelTitle>}
+          {selected && <InvoiceDetail id={selected.id} />}
+        </SidePanelContent>
+      </SidePanel>
     </div>
   );
 }

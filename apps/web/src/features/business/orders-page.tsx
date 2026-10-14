@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { Plus, Search, ShoppingCart } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import { formatMoney, formatDate } from "@/lib/format";
 import type { Order } from "@/lib/types";
 import { ORDER_STATUS_OPTIONS, OrderStatusCluster } from "./order-badges";
 import { OrderDetail } from "./order-detail";
+import { OrderForm } from "./order-new-page";
 
 export {
   ORDER_STATUS_OPTIONS,
@@ -70,6 +70,7 @@ export default function OrdersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selected, setSelected] = useState<Order | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300);
@@ -91,11 +92,9 @@ export default function OrdersPage() {
             <p className="text-sm text-on-surface-variant">{t("orders.subtitle")}</p>
           </div>
         </div>
-        <Link to="/business/orders/new">
-          <Button variant="glow" className="gap-1">
-            <Plus className="h-4 w-4" /> {t("orders.new")}
-          </Button>
-        </Link>
+        <Button variant="glow" className="gap-1" onClick={() => setFormOpen(true)}>
+          <Plus className="h-4 w-4" /> {t("orders.new")}
+        </Button>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -145,6 +144,21 @@ export default function OrdersPage() {
         <SidePanelContent>
           {selected && <SidePanelTitle className="sr-only">{selected.number}</SidePanelTitle>}
           {selected && <OrderDetail id={selected.id} />}
+        </SidePanelContent>
+      </SidePanel>
+
+      <SidePanel open={formOpen} onOpenChange={setFormOpen}>
+        <SidePanelContent size="wide">
+          {formOpen && <SidePanelTitle className="sr-only">{t("orders.form.title")}</SidePanelTitle>}
+          {formOpen && (
+            <OrderForm
+              onCancel={() => setFormOpen(false)}
+              onCreated={(order) => {
+                setFormOpen(false);
+                setSelected(order);
+              }}
+            />
+          )}
         </SidePanelContent>
       </SidePanel>
     </div>

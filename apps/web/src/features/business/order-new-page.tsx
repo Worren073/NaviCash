@@ -52,15 +52,25 @@ function emptyItem(): ItemRow {
 
 
 
-/** Prefill del CTA «aprovisionar stock bajo» (llegó vía state del router). */
-interface PrefillState {
-  prefill?: Array<{ product: string; quantity: string; unit_price: string }>;
+/** Prefill del CTA «aprovisionar stock bajo» (llega vía state del router). */
+export interface OrderPrefillLine {
+  product: string;
+  quantity: string;
+  unit_price: string;
 }
 
-export default function OrderNewPage() {
+interface PrefillState {
+  prefill?: OrderPrefillLine[];
+}
+
+interface OrderFormProps {
+  prefill?: OrderPrefillLine[];
+  onCreated: (order: Order) => void;
+  onCancel: () => void;
+}
+
+export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const location = useLocation();
   const queryClient = useQueryClient();
 
   const { data: business } = useBusiness();
@@ -73,8 +83,6 @@ export default function OrderNewPage() {
   const catalogue = useMemo(() => productsData?.results ?? [], [productsData]);
   const { data: categoriesData } = useProductCategories();
   const categories = useMemo(() => categoriesData?.results ?? [], [categoriesData]);
-
-  const prefill = useMemo(() => (location.state as PrefillState | null)?.prefill ?? [], [location.state]);
 
   const [supplierSearch, setSupplierSearch] = useState("");
   const [debouncedSupplierSearch, setDebouncedSupplierSearch] = useState("");
@@ -214,7 +222,7 @@ export default function OrderNewPage() {
     onSuccess: (order) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.orders });
       sileo.success({ title: t("orders.created") });
-      navigate(`/business/orders/${order.id}`);
+      onCreated(order);
     },
     onError: (err) => {
       const msg = err instanceof ApiErrorClass ? err.message : t("errors.generic");
@@ -223,7 +231,7 @@ export default function OrderNewPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
           <ShoppingCart className="h-5 w-5 text-primary" />
@@ -609,7 +617,7 @@ export default function OrderNewPage() {
       )}
 
       <div className="flex gap-2">
-        <Button variant="ghost" onClick={() => navigate("/business/orders")} disabled={create.isPending}>
+        <Button variant="ghost" onClick={onCancel} disabled={create.isPending}>
           {t("common.cancel")}
         </Button>
         <Button
@@ -621,6 +629,25 @@ export default function OrderNewPage() {
           {create.isPending ? t("orders.form.creating") : t("orders.form.create")}
         </Button>
       </div>
+    </div>
+  );
+}
+
+export default function OrderNewPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const prefill = useMemo(
+    () => (location.state as PrefillState | null)?.prefill ?? [],
+    [location.state],
+  );
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <OrderForm
+        prefill={prefill}
+        onCreated={(order) => navigate(`/business/orders/${order.id}`)}
+        onCancel={() => navigate("/business/orders")}
+      />
     </div>
   );
 }

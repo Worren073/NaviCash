@@ -48,9 +48,13 @@ function lineTotal(row: ItemRow): number {
   return qty * price - disc;
 }
 
-export default function InvoiceNewPage() {
+interface InvoiceFormProps {
+  onCreated: (invoice: Invoice) => void;
+  onCancel: () => void;
+}
+
+export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [docType, setDocType] = useState<TaxIdType>("V");
@@ -190,7 +194,7 @@ export default function InvoiceNewPage() {
     onSuccess: (inv) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.invoices });
       sileo.success({ title: t("invoices.created") });
-      navigate(`/business/invoices/${inv.id}`);
+      onCreated(inv);
     },
     onError: (err) => {
       const msg = err instanceof ApiErrorClass ? err.message : t("errors.generic");
@@ -199,7 +203,7 @@ export default function InvoiceNewPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
           <ReceiptText className="h-5 w-5 text-primary" />
@@ -477,11 +481,7 @@ export default function InvoiceNewPage() {
       )}
 
       <div className="flex gap-2">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/business/invoices")}
-          disabled={create.isPending}
-        >
+        <Button variant="ghost" onClick={onCancel} disabled={create.isPending}>
           {t("common.cancel")}
         </Button>
         <Button
@@ -527,6 +527,19 @@ export default function InvoiceNewPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+export default function InvoiceNewPage() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <InvoiceForm
+        onCreated={(invoice) => navigate(`/business/invoices/${invoice.id}`)}
+        onCancel={() => navigate("/business/invoices")}
+      />
     </div>
   );
 }
