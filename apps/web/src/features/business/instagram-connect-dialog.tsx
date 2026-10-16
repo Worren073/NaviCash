@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { sileo } from "sileo";
-import { Check, Copy, Instagram, Unplug } from "lucide-react";
+import { AlertTriangle, Check, Copy, Instagram, Unplug } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -73,6 +73,7 @@ export function InstagramConnectDialog({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const connected = Boolean(config?.connected);
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   const popupRef = useRef<Window | null>(null);
   const pollRef = useRef<number | null>(null);
@@ -127,6 +128,7 @@ export function InstagramConnectDialog({
   }, [queryClient, t]);
 
   const handleConnect = useCallback(() => {
+    setPopupBlocked(false);
     // En pantallas táctiles el popup se abre como pestaña y no se autocierra:
     // se usa la redirección de página completa.
     const coarsePointer = window.matchMedia?.("(pointer: coarse)").matches ?? false;
@@ -142,7 +144,8 @@ export function InstagramConnectDialog({
       "width=600,height=740"
     );
     if (!popup) {
-      redirectToInstagram();
+      // El navegador bloqueó la ventana: se avisa y se ofrece continuar aquí.
+      setPopupBlocked(true);
       return;
     }
     // Se corta el acceso al opener por seguridad: la app detecta el cierre.
@@ -230,9 +233,29 @@ export function InstagramConnectDialog({
               </div>
             </>
           ) : (
-            <p className="text-sm text-on-surface-variant">
-              {t("chats.instagramDialog.requirements")}
-            </p>
+            <>
+              <p className="text-sm text-on-surface-variant">
+                {t("chats.instagramDialog.requirements")}
+              </p>
+              {popupBlocked && (
+                <div className="rounded-xl border border-status-warning/40 bg-status-warning/10 p-3">
+                  <p className="flex items-start gap-2 text-sm text-on-surface">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
+                    <span>{t("chats.instagramDialog.popupBlocked")}</span>
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={redirectToInstagram}
+                    disabled={start.isPending}
+                  >
+                    {t("chats.instagramDialog.popupBlockedAction")}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
 

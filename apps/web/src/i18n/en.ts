@@ -421,6 +421,9 @@ export default {
       oauthError: "Couldn't connect Instagram. Please try again.",
       success: "Instagram connected.",
       cancelled: "Instagram connection cancelled.",
+      popupBlocked:
+        "Your browser blocked the popup window. You can continue connecting in this same tab.",
+      popupBlockedAction: "Continue here",
     },
   },
   invoices: {
