@@ -8,7 +8,7 @@ django-cors-headers>=4.7,<5
 django-environ>=0.12,<1
 
 # Cliente HTTP para la integración con DolarApi (tasas del dólar)
-httpx>=0.28,<1
+httpx>=0.28.1,<1
 
 # Caché compartida Redis (AUDIT C2): throttle del asistente y confirmaciones
 # pendientes viven en Redis, no por proceso.
