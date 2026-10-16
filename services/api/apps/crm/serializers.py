@@ -10,9 +10,11 @@ from apps.core.currency import is_valid_amount, round_money
 from apps.crm.tax_id import normalize_tax_id, tax_id_error
 from apps.crm.models import (
     BusinessContact,
+    ChatAttachment,
     ChatConversation,
     ChatMessage,
     CollectionFollowUp,
+    InstagramConfig,
     Invoice,
     InvoiceItem,
     InvoicePayment,
@@ -944,6 +946,56 @@ class WhatsAppConfigSerializer(serializers.ModelSerializer):
         return value
 
 
+class InstagramConfigSerializer(serializers.ModelSerializer):
+    """Credenciales de Instagram del negocio.
+
+    El token de acceso es de SOLO ESCRITURA (nunca se devuelve); se informa si
+    está presente con ``has_access_token``. El token se gestiona por el flujo
+    OAuth (no se pega a mano), por eso este serializador es de lectura salvo por
+    ``is_active``.
+    """
+
+    has_access_token = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InstagramConfig
+        fields = [
+            "ig_user_id",
+            "username",
+            "is_active",
+            "has_access_token",
+            "token_expires_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_has_access_token(self, obj: InstagramConfig) -> bool:
+        return bool(obj.access_token_encrypted)
+
+
+class ChatAttachmentSerializer(serializers.ModelSerializer):
+    """Adjunto de un mensaje: URL servible (archivo rehospedado o remoto)."""
+
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChatAttachment
+        fields = ["id", "kind", "url", "remote_url", "mime", "size", "filename"]
+        read_only_fields = fields
+
+    def get_url(self, obj: ChatAttachment) -> str:
+        if obj.file:
+            try:
+                url = obj.file.url
+            except ValueError:
+                return obj.remote_url
+            request = self.context.get("request")
+            if request is not None:
+                return request.build_absolute_uri(url)
+            return url
+        return obj.remote_url
+
+
 class ChatConversationSerializer(serializers.ModelSerializer):
     """Hilo de conversación para la lista del inbox."""
 
@@ -955,6 +1007,7 @@ class ChatConversationSerializer(serializers.ModelSerializer):
             "external_id",
             "contact",
             "contact_name",
+            "avatar_url",
             "last_message_at",
             "last_message_preview",
             "unread_count",
@@ -967,6 +1020,8 @@ class ChatConversationSerializer(serializers.ModelSerializer):
 class ChatMessageSerializer(serializers.ModelSerializer):
     """Mensaje individual de una conversación (solo lectura)."""
 
+    attachments = ChatAttachmentSerializer(many=True, read_only=True)
+
     class Meta:
         model = ChatMessage
         fields = [
@@ -975,6 +1030,7 @@ class ChatMessageSerializer(serializers.ModelSerializer):
             "message_type",
             "body",
             "status",
+            "attachments",
             "created_at",
         ]
         read_only_fields = fields

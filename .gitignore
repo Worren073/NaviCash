@@ -22,6 +22,8 @@ venv/
 htmlcov/
 .coverage
 db.sqlite3
+# Adjuntos de chat locales (en producción van al object storage S3/R2)
+services/api/media/
 
 # Editor y SO
 .vscode/

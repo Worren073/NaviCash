@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import hmac
 import json
+from datetime import timedelta
 from decimal import Decimal, DecimalException
+from urllib.parse import unquote, urlparse
 
+import httpx
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.core import signing
+from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.db.models import F, Prefetch, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -20,9 +28,11 @@ from apps.business.models import Business
 from apps.core.permissions import IsOwner
 from apps.crm.models import (
     BusinessContact,
+    ChatAttachment,
     ChatConversation,
     ChatMessage,
     CollectionFollowUp,
+    InstagramConfig,
     Invoice,
     Order,
     Product,
@@ -39,11 +49,25 @@ from apps.crm.whatsapp_service import (
     send_text,
     verify_signature,
 )
+from apps.crm.instagram_service import (
+    InstagramError,
+    InstagramSendError,
+    build_authorize_url,
+    describe_inbound as describe_instagram_inbound,
+    exchange_code,
+    exchange_long_lived,
+    extract_events,
+    fetch_profile,
+    refresh_long_lived,
+    send_attachment as send_instagram_attachment,
+    send_text as send_instagram_text,
+)
 from apps.crm.serializers import (
     BusinessContactSerializer,
     ChatConversationSerializer,
     ChatMessageSerializer,
     CollectionFollowUpSerializer,
+    InstagramConfigSerializer,
     InvoiceReadSerializer,
     InvoiceWriteSerializer,
     OrderReadSerializer,
@@ -694,6 +718,301 @@ class WhatsAppConfigView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+_OAUTH_STATE_SALT = "navicash.instagram.oauth"
+_OAUTH_STATE_MAX_AGE = 600  # 10 min para completar el flujo OAuth.
+_INSTAGRAM_REFRESH_MARGIN = timedelta(days=7)
+_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+
+def _instagram_redirect(query: str) -> HttpResponseRedirect:
+    base = (settings.APP_BASE_URL or "").rstrip("/")
+    return HttpResponseRedirect(f"{base}/business/chats?{query}")
+
+
+def _attachment_kind_from_content_type(content_type: str) -> str:
+    content_type = (content_type or "").lower()
+    if content_type.startswith("image/"):
+        return "image"
+    if content_type.startswith("video/"):
+        return "video"
+    if content_type.startswith("audio/"):
+        return "audio"
+    return "file"
+
+
+def _filename_from_url(url: str, kind: str) -> str:
+    """Extrae un nombre de archivo razonable de la URL de la CDN de Meta."""
+    try:
+        name = unquote(urlparse(url).path.rsplit("/", 1)[-1])
+    except (ValueError, AttributeError):
+        name = ""
+    if not name or "." not in name:
+        name = f"{kind or 'archivo'}.bin"
+    return name[:255]
+
+
+def _instagram_access_token(config: InstagramConfig) -> str:
+    """Devuelve un token válido, refrescándolo si está por caducar (<7 días)."""
+    token = config.access_token
+    expires = config.token_expires_at
+    if not token or not expires:
+        return token
+    if expires - timezone.now() >= _INSTAGRAM_REFRESH_MARGIN:
+        return token
+    try:
+        data = refresh_long_lived(token)
+    except InstagramError:
+        return token
+    new_token = data.get("access_token", "")
+    if not new_token:
+        return token
+    config.access_token = new_token
+    expires_in = data.get("expires_in") or 0
+    if expires_in:
+        config.token_expires_at = timezone.now() + timedelta(seconds=expires_in)
+    config.save(update_fields=["access_token_encrypted", "token_expires_at", "updated_at"])
+    return new_token
+
+
+def _rehost_attachment(message: ChatMessage, kind: str, url: str) -> ChatAttachment:
+    """Copia un adjunto entrante de la CDN de Meta a nuestro almacenamiento.
+
+    Las URLs de Meta caducan; se descarga el binario y se guarda en el
+    almacenamiento configurado (S3/R2 en prod). Si la descarga falla se conserva
+    solo ``remote_url`` para no perder la referencia.
+    """
+    attachment = ChatAttachment(
+        user=message.user, message=message, kind=kind, remote_url=url[:1000]
+    )
+    filename = _filename_from_url(url, kind)
+    content: bytes = b""
+    content_type = ""
+    try:
+        response = httpx.get(url, timeout=15, follow_redirects=True)
+        if response.status_code < 400:
+            content = response.content or b""
+            content_type = response.headers.get("content-type", "")
+    except httpx.HTTPError:
+        content = b""
+    attachment.filename = filename
+    if content and len(content) <= _MAX_ATTACHMENT_BYTES:
+        attachment.mime = content_type[:120]
+        attachment.size = len(content)
+        attachment.file.save(filename, ContentFile(content), save=False)
+    attachment.save()
+    return attachment
+
+
+def _ingest_instagram_event(config: InstagramConfig, event: dict) -> None:
+    """Guarda un evento de Instagram y actualiza el resumen de su conversación."""
+    info = describe_instagram_inbound(event)
+    external_id = info["external_id"]
+    if not external_id:
+        return
+    # Deduplicación: Meta reentrega el webhook hasta confirmar el 200.
+    if ChatMessage.objects.filter(external_id=external_id).exists():
+        return
+    is_echo = info["is_echo"]
+    peer = event.get("recipient_id") if is_echo else event.get("sender_id")
+    if not peer:
+        return
+
+    with transaction.atomic():
+        conversation, _ = ChatConversation.objects.get_or_create(
+            user=config.user,
+            platform="instagram",
+            external_id=peer,
+            defaults={"business": config.business},
+        )
+        message = ChatMessage.objects.create(
+            user=config.user,
+            conversation=conversation,
+            external_id=external_id,
+            direction="out" if is_echo else "in",
+            message_type=info["type"],
+            body=info["body"],
+            status="sent" if is_echo else "received",
+        )
+        for att in info["attachments"]:
+            _rehost_attachment(message, att["kind"], att["url"])
+        update_fields = ["last_message_at", "last_message_preview", "updated_at"]
+        conversation.last_message_at = timezone.now()
+        conversation.last_message_preview = info["body"][:200]
+        if not is_echo:
+            conversation.unread_count = F("unread_count") + 1
+            update_fields.append("unread_count")
+        conversation.save(update_fields=update_fields)
+
+
+class InstagramWebhookView(APIView):
+    """Webhook público de la mensajería de Instagram (sin JWT).
+
+    - ``GET``: handshake de verificación de Meta (``hub.challenge``) validado con
+      el ``INSTAGRAM_VERIFY_TOKEN`` global (un solo callback).
+    - ``POST``: entrega de eventos; se autentica con la firma HMAC
+      ``X-Hub-Signature-256`` usando el ``INSTAGRAM_APP_SECRET`` de la app.
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes: list = []
+
+    def get(self, request):
+        mode = request.query_params.get("hub.mode")
+        token = request.query_params.get("hub.verify_token")
+        challenge = request.query_params.get("hub.challenge", "")
+        expected = settings.INSTAGRAM_VERIFY_TOKEN
+        if (
+            mode == "subscribe"
+            and token
+            and expected
+            and hmac.compare_digest(token, expected)
+        ):
+            return HttpResponse(challenge, content_type="text/plain")
+        return HttpResponse("Forbidden", status=403, content_type="text/plain")
+
+    def post(self, request):
+        raw_body = request.body or b""
+        try:
+            payload = json.loads(raw_body or b"{}")
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "Payload inválido.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        signature = request.headers.get("X-Hub-Signature-256", "")
+        if not verify_signature(settings.INSTAGRAM_APP_SECRET, raw_body, signature):
+            return Response(
+                {"detail": "Firma inválida."}, status=status.HTTP_403_FORBIDDEN
+            )
+
+        events = extract_events(payload)
+        ig_ids = {event["ig_user_id"] for event in events if event["ig_user_id"]}
+        configs = {
+            config.ig_user_id: config
+            for config in InstagramConfig.objects.filter(
+                ig_user_id__in=ig_ids, is_active=True
+            ).select_related("user", "business")
+        }
+        for event in events:
+            config = configs.get(event["ig_user_id"])
+            if config is not None:
+                _ingest_instagram_event(config, event)
+
+        # Siempre 200 para que Meta no reintente (eventos desconocidos incluidos).
+        return Response({"status": "ok"})
+
+
+class InstagramOAuthStartView(APIView):
+    """Devuelve la URL de autorización de Instagram Login para el negocio."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not (settings.INSTAGRAM_APP_ID and settings.INSTAGRAM_REDIRECT_URI):
+            return Response(
+                {
+                    "detail": "Instagram no está configurado en el servidor.",
+                    "code": "instagram_not_configured",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        state = signing.dumps(
+            {"uid": request.user.id}, salt=_OAUTH_STATE_SALT, compress=True
+        )
+        return Response({"authorize_url": build_authorize_url(state)})
+
+
+class InstagramOAuthCallbackView(APIView):
+    """Callback OAuth de Instagram: canjea el código y guarda el token del negocio."""
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes: list = []
+
+    def get(self, request):
+        code = request.query_params.get("code")
+        state = request.query_params.get("state")
+        error = request.query_params.get("error") or request.query_params.get("error_reason")
+        if error or not code or not state:
+            return _instagram_redirect("instagram=error")
+
+        try:
+            data = signing.loads(
+                state, salt=_OAUTH_STATE_SALT, max_age=_OAUTH_STATE_MAX_AGE
+            )
+            user_id = data.get("uid")
+        except signing.BadSignature:
+            return _instagram_redirect("instagram=error")
+
+        user = get_user_model().objects.filter(pk=user_id).first()
+        if user is None:
+            return _instagram_redirect("instagram=error")
+        business = Business.objects.filter(user=user).first()
+        if business is None:
+            return _instagram_redirect("instagram=error")
+
+        try:
+            short = exchange_code(code)
+            long_lived = exchange_long_lived(short.get("access_token", ""))
+        except InstagramError:
+            return _instagram_redirect("instagram=error")
+
+        ig_user_id = str(short.get("user_id", ""))
+        token = long_lived.get("access_token", "")
+        if not ig_user_id or not token:
+            return _instagram_redirect("instagram=error")
+
+        profile = fetch_profile(ig_user_id, token)
+        expires_in = long_lived.get("expires_in") or 0
+        expires_at = (
+            timezone.now() + timedelta(seconds=expires_in) if expires_in else None
+        )
+        try:
+            with transaction.atomic():
+                config, _ = InstagramConfig.objects.update_or_create(
+                    business=business,
+                    defaults={
+                        "user": user,
+                        "ig_user_id": ig_user_id,
+                        "username": (profile.get("username") or "")[:120],
+                        "token_expires_at": expires_at,
+                        "is_active": True,
+                    },
+                )
+                config.access_token = token
+                config.save(update_fields=["access_token_encrypted", "updated_at"])
+        except IntegrityError:
+            return _instagram_redirect("instagram=error")
+
+        return _instagram_redirect("instagram=connected")
+
+
+class InstagramConfigView(APIView):
+    """Estado de la conexión de Instagram del negocio autenticado."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        config = InstagramConfig.objects.filter(user=request.user).first()
+        if config is None:
+            return Response({"connected": False})
+        data = InstagramConfigSerializer(config).data
+        data["connected"] = config.is_active
+        return Response(data)
+
+    def delete(self, request):
+        deleted, _ = InstagramConfig.objects.filter(user=request.user).delete()
+        if not deleted:
+            return Response(
+                {"detail": "No hay una conexión de Instagram configurada."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
     """Inbox unificado del negocio: hilos, mensajes y respuesta manual."""
 
@@ -716,9 +1035,13 @@ class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
     def messages(self, request, pk=None):
         """Devuelve los mensajes del hilo y marca la conversación como leída."""
         conversation = self.get_object()
-        qs = conversation.messages.all()
+        qs = conversation.messages.prefetch_related("attachments")
         page = self.paginate_queryset(qs)
-        serializer = ChatMessageSerializer(page if page is not None else qs, many=True)
+        serializer = ChatMessageSerializer(
+            page if page is not None else qs,
+            many=True,
+            context=self.get_serializer_context(),
+        )
         if conversation.unread_count:
             conversation.unread_count = 0
             conversation.save(update_fields=["unread_count", "updated_at"])
@@ -728,8 +1051,14 @@ class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["post"])
     def send(self, request, pk=None):
-        """Envía una respuesta de texto al cliente por WhatsApp."""
+        """Envía una respuesta al cliente por la plataforma del hilo."""
         conversation = self.get_object()
+        if conversation.platform == "instagram":
+            return self._send_instagram(request, conversation)
+        return self._send_whatsapp(request, conversation)
+
+    def _send_whatsapp(self, request, conversation: ChatConversation):
+        """Envía una respuesta de texto al cliente por WhatsApp."""
         text = str(request.data.get("text") or "").strip()
         if not text:
             return Response(
@@ -778,3 +1107,115 @@ class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
         conversation.last_message_preview = text[:200]
         conversation.save(update_fields=["last_message_at", "last_message_preview", "updated_at"])
         return Response(ChatMessageSerializer(message).data, status=status.HTTP_201_CREATED)
+
+    def _send_instagram(self, request, conversation: ChatConversation):
+        """Envía un texto o un adjunto al cliente por Instagram."""
+        config = InstagramConfig.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+        if config is None:
+            return Response(
+                {
+                    "detail": "Conecta tu Instagram antes de responder.",
+                    "code": "instagram_not_connected",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        upload = request.FILES.get("file")
+        text = str(request.data.get("text") or "").strip()
+        if not upload and not text:
+            return Response(
+                {
+                    "detail": "Escribe un mensaje o adjunta un archivo.",
+                    "code": "validation_error",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if text and len(text) > 1000:
+            return Response(
+                {"detail": "El mensaje es demasiado largo (máx. 1000 caracteres).", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            token = _instagram_access_token(config)
+            if upload is not None:
+                return self._send_instagram_attachment(
+                    request, conversation, config, token, upload, text
+                )
+            mid = send_instagram_text(
+                config.ig_user_id, token, conversation.external_id, text
+            )
+        except InstagramSendError as exc:
+            return Response(
+                {"detail": exc.message, "code": exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = ChatMessage.objects.create(
+            user=request.user,
+            conversation=conversation,
+            external_id=mid,
+            direction="out",
+            message_type="text",
+            body=text,
+            status="sent",
+        )
+        conversation.last_message_at = timezone.now()
+        conversation.last_message_preview = text[:200]
+        conversation.save(update_fields=["last_message_at", "last_message_preview", "updated_at"])
+        return Response(ChatMessageSerializer(message).data, status=status.HTTP_201_CREATED)
+
+    def _send_instagram_attachment(
+        self, request, conversation, config, token, upload, caption
+    ):
+        kind = _attachment_kind_from_content_type(getattr(upload, "content_type", ""))
+        max_bytes = _MAX_IMAGE_BYTES if kind == "image" else _MAX_ATTACHMENT_BYTES
+        if upload.size and upload.size > max_bytes:
+            limit = max_bytes // (1024 * 1024)
+            return Response(
+                {"detail": f"El archivo supera el límite de {limit} MB.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = ChatMessage.objects.create(
+            user=request.user,
+            conversation=conversation,
+            direction="out",
+            message_type=kind,
+            body=caption,
+            status="sent",
+        )
+        attachment = ChatAttachment(
+            user=request.user,
+            message=message,
+            kind=kind,
+            filename=(upload.name or "")[:255],
+            mime=(getattr(upload, "content_type", "") or "")[:120],
+            size=upload.size,
+        )
+        attachment.file.save(upload.name or f"{kind}.bin", upload, save=True)
+        file_url = request.build_absolute_uri(attachment.file.url)
+        try:
+            mid = send_instagram_attachment(
+                config.ig_user_id, token, conversation.external_id, kind, file_url
+            )
+        except InstagramSendError as exc:
+            message.delete()
+            return Response(
+                {"detail": exc.message, "code": exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message.external_id = mid
+        message.save(update_fields=["external_id", "updated_at"])
+        preview = caption or f"[{kind.capitalize()} enviado]"
+        conversation.last_message_at = timezone.now()
+        conversation.last_message_preview = preview[:200]
+        conversation.save(update_fields=["last_message_at", "last_message_preview", "updated_at"])
+        message.refresh_from_db()
+        return Response(
+            ChatMessageSerializer(message, context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED,
+        )

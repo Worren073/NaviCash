@@ -38,3 +38,8 @@ pywebpush>=2,<3
 # Cifrado simétrico de secretos en reposo (Fernet) para integraciones de
 # terceros (p. ej. tokens de la WhatsApp Cloud API). Ver apps/core/crypto.py.
 cryptography>=43,<46
+
+# Almacenamiento de adjuntos de chat en object storage (S3/R2) en producción.
+# En dev/tests se usa disco local o InMemoryStorage (no requiere credenciales).
+django-storages>=1.14,<2
+boto3>=1.35,<2

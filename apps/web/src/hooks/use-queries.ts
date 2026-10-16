@@ -21,6 +21,7 @@ import type {
   User,
   Wallet,
   WhatsAppConfig,
+  InstagramConfig,
 } from "@/lib/types";
 
 export const queryKeys = {
@@ -48,6 +49,7 @@ export const queryKeys = {
   chats: ["chats"] as const,
   chatMessages: ["chat-messages"] as const,
   whatsappConfig: ["whatsapp-config"] as const,
+  instagramConfig: ["instagram-config"] as const,
 };
 
 /** Intervalo de sondeo de la bandeja de chats (10 s), alineado con el backend. */
@@ -264,5 +266,13 @@ export function useWhatsAppConfig() {
   return useQuery({
     queryKey: queryKeys.whatsappConfig,
     queryFn: ({ signal }) => api.get<WhatsAppConfig>("/business/whatsapp/config/", { signal }),
+  });
+}
+
+/** Estado de la conexión de Instagram del negocio. */
+export function useInstagramConfig() {
+  return useQuery({
+    queryKey: queryKeys.instagramConfig,
+    queryFn: ({ signal }) => api.get<InstagramConfig>("/business/instagram/config/", { signal }),
   });
 }

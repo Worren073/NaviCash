@@ -9,6 +9,10 @@ from apps.crm.views import (
     BusinessContactViewSet,
     ChatConversationViewSet,
     CollectionFollowUpViewSet,
+    InstagramConfigView,
+    InstagramOAuthCallbackView,
+    InstagramOAuthStartView,
+    InstagramWebhookView,
     InvoiceViewSet,
     OrderViewSet,
     ProductCategoryViewSet,
@@ -33,5 +37,26 @@ urlpatterns = [
     path("whatsapp/webhook/", WhatsAppWebhookView.as_view(), name="whatsapp-webhook"),
     # Credenciales de WhatsApp del negocio autenticado.
     path("whatsapp/config/", WhatsAppConfigView.as_view(), name="whatsapp-config"),
+    # Instagram Messaging (Instagram Login): OAuth + webhook + estado.
+    path(
+        "instagram/oauth/start/",
+        InstagramOAuthStartView.as_view(),
+        name="instagram-oauth-start",
+    ),
+    path(
+        "instagram/oauth/callback/",
+        InstagramOAuthCallbackView.as_view(),
+        name="instagram-oauth-callback",
+    ),
+    path(
+        "instagram/webhook/",
+        InstagramWebhookView.as_view(),
+        name="instagram-webhook",
+    ),
+    path(
+        "instagram/config/",
+        InstagramConfigView.as_view(),
+        name="instagram-config",
+    ),
     *router.urls,
 ]

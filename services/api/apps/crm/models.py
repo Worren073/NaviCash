@@ -9,6 +9,7 @@ Fase 4: Inventario conectado a facturación (`Product`, `ProductCategory`, `Stoc
 from __future__ import annotations
 
 import secrets
+import uuid
 
 from django.db import models
 from django.db.models.functions import Lower
@@ -793,8 +794,56 @@ class WhatsAppConfig(OwnedModel):
         self.app_secret_encrypted = encrypt_value(raw)
 
 
+class InstagramConfig(OwnedModel):
+    """Credenciales del negocio para la mensajería de Instagram (Instagram Login).
+
+    Cada negocio autoriza su propia cuenta profesional de Instagram vía OAuth;
+    el token de usuario de Instagram (``access_token``) se guarda CIFRADO con
+    Fernet y nunca se devuelve al cliente. ``client_id``/``client_secret`` son de
+    la app de Meta (globales por entorno), no por negocio.
+    """
+
+    business = models.OneToOneField(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="instagram_config",
+        verbose_name="Negocio",
+    )
+    ig_user_id = models.CharField(
+        max_length=64, unique=True, verbose_name="ID de usuario de Instagram"
+    )
+    username = models.CharField(
+        max_length=120, blank=True, default="", verbose_name="Usuario de Instagram"
+    )
+    access_token_encrypted = models.TextField(
+        blank=True, default="", verbose_name="Token de acceso (cifrado)"
+    )
+    token_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Expiración del token"
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
+
+    class Meta:
+        verbose_name = "Configuración de Instagram"
+        verbose_name_plural = "Configuraciones de Instagram"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Instagram @{self.username or self.ig_user_id}"
+
+    @property
+    def access_token(self) -> str:
+        """Token de acceso en claro (para llamar a la API de Meta)."""
+        return decrypt_value(self.access_token_encrypted)
+
+    @access_token.setter
+    def access_token(self, raw: str) -> None:
+        self.access_token_encrypted = encrypt_value(raw)
+
+
 CHAT_PLATFORMS = [
     ("whatsapp", "WhatsApp"),
+    ("instagram", "Instagram"),
 ]
 
 CONVERSATION_STATUSES = [
@@ -830,6 +879,9 @@ class ChatConversation(OwnedModel):
     )
     contact_name = models.CharField(
         max_length=120, blank=True, default="", verbose_name="Nombre mostrado"
+    )
+    avatar_url = models.CharField(
+        max_length=500, blank=True, default="", verbose_name="URL del avatar"
     )
     last_message_at = models.DateTimeField(
         null=True, blank=True, db_index=True, verbose_name="Último mensaje"
@@ -927,3 +979,61 @@ class ChatMessage(OwnedModel):
 
     def __str__(self) -> str:
         return f"{self.direction}: {self.body[:40]}"
+
+
+ATTACHMENT_KINDS = [
+    ("image", "Imagen"),
+    ("video", "Video"),
+    ("audio", "Audio"),
+    ("file", "Archivo"),
+    ("sticker", "Sticker"),
+    ("share", "Compartido"),
+    ("link", "Enlace"),
+    ("unknown", "Desconocido"),
+]
+
+
+def _attachment_upload_to(instance: "ChatAttachment", filename: str) -> str:
+    """Ruta de almacenamiento: chat/<conversacion>/<uuid>.<ext>."""
+    ext = ""
+    if "." in filename:
+        ext = "." + filename.rsplit(".", 1)[1].lower()[:10]
+    return f"chat/{instance.message.conversation_id}/{uuid.uuid4().hex}{ext}"
+
+
+class ChatAttachment(OwnedModel):
+    """Adjunto (imagen/video/audio/archivo) asociado a un mensaje de chat.
+
+    El binario se guarda en el almacenamiento configurado (S3/R2 en producción,
+    disco local en dev). ``remote_url`` conserva la URL original del proveedor
+    (las URLs de la CDN de Meta caducan), y ``file`` es la copia rehospedada.
+    """
+
+    message = models.ForeignKey(
+        ChatMessage,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        verbose_name="Mensaje",
+    )
+    kind = models.CharField(
+        max_length=16, choices=ATTACHMENT_KINDS, default="unknown", verbose_name="Tipo"
+    )
+    file = models.FileField(
+        upload_to=_attachment_upload_to, blank=True, default="", verbose_name="Archivo"
+    )
+    remote_url = models.CharField(
+        max_length=1000, blank=True, default="", verbose_name="URL original"
+    )
+    mime = models.CharField(max_length=120, blank=True, default="", verbose_name="MIME")
+    size = models.PositiveBigIntegerField(null=True, blank=True, verbose_name="Tamaño")
+    filename = models.CharField(
+        max_length=255, blank=True, default="", verbose_name="Nombre de archivo"
+    )
+
+    class Meta:
+        verbose_name = "Adjunto de chat"
+        verbose_name_plural = "Adjuntos de chat"
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.kind}: {self.filename or self.remote_url[:40]}"

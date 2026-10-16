@@ -109,6 +109,26 @@ env = environ.Env(
     FIELD_ENCRYPTION_KEY=(str, ""),
     # Base de la Graph API de Meta usada por el conector de WhatsApp.
     WHATSAPP_API_BASE_URL=(str, "https://graph.facebook.com/v21.0"),
+    # --- Instagram Messaging (Instagram Login, sin Página de Facebook) ------
+    # Credenciales de la app de Meta (globales del entorno, no por negocio).
+    INSTAGRAM_APP_ID=(str, ""),
+    # También firma el HMAC del webhook de Instagram (X-Hub-Signature-256).
+    INSTAGRAM_APP_SECRET=(str, ""),
+    # URL de callback OAuth registrada en la app de Meta.
+    INSTAGRAM_REDIRECT_URI=(str, ""),
+    # Token compartido del handshake GET del webhook (global: un solo callback).
+    INSTAGRAM_VERIFY_TOKEN=(str, ""),
+    # Base de la Graph API de Instagram (versión fija).
+    INSTAGRAM_API_BASE_URL=(str, "https://graph.instagram.com/v21.0"),
+    # --- Almacenamiento de adjuntos de chat (S3/R2 en prod, local en dev) --
+    MEDIA_STORAGE_BACKEND=(str, "local"),
+    MEDIA_URL=(str, "/media/"),
+    AWS_ACCESS_KEY_ID=(str, ""),
+    AWS_SECRET_ACCESS_KEY=(str, ""),
+    AWS_STORAGE_BUCKET_NAME=(str, ""),
+    AWS_S3_ENDPOINT_URL=(str, ""),
+    AWS_S3_REGION_NAME=(str, ""),
+    AWS_S3_CUSTOM_DOMAIN=(str, ""),
     # Máximo de pushes por usuario en un mismo ciclo del tick.
     PUSH_MAX_PER_TICK=(int, 3),
     # Hora LOCAL del usuario a partir de la cual puede salir el recordatorio
@@ -429,6 +449,14 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY")
 # Base de la Graph API de Meta (WhatsApp Cloud API).
 WHATSAPP_API_BASE_URL = env("WHATSAPP_API_BASE_URL")
 
+# Instagram Messaging (Instagram Login): credenciales globales de la app de Meta
+# y parámetros del OAuth/webhook. Los tokens por negocio se cifran en la BD.
+INSTAGRAM_APP_ID = env("INSTAGRAM_APP_ID")
+INSTAGRAM_APP_SECRET = env("INSTAGRAM_APP_SECRET")
+INSTAGRAM_REDIRECT_URI = env("INSTAGRAM_REDIRECT_URI")
+INSTAGRAM_VERIFY_TOKEN = env("INSTAGRAM_VERIFY_TOKEN")
+INSTAGRAM_API_BASE_URL = env("INSTAGRAM_API_BASE_URL")
+
 # ---------------------------------------------------------------------------
 # DRF y JWT
 # ---------------------------------------------------------------------------
@@ -585,9 +613,40 @@ VERIFICATION_TOKEN_HOURS = env("VERIFICATION_TOKEN_HOURS")
 APP_BASE_URL = env("APP_BASE_URL")
 
 # ---------------------------------------------------------------------------
-# Archivos estáticos
+# Archivos estáticos y multimedia (adjuntos de chat)
 # ---------------------------------------------------------------------------
 STATIC_URL = "static/"
+
+# URL/raíz local para servir los adjuntos en desarrollo (en prod los sirve el
+# object storage S3/R2). MEDIA_URL debe ser accesible desde el dominio de la API.
+MEDIA_URL = env("MEDIA_URL")
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Backend de almacenamiento de ``FileField``: "s3" habilita el object storage
+# (S3/R2) para los adjuntos de chat; "local" usa disco (dev/tests).
+MEDIA_STORAGE_BACKEND = env("MEDIA_STORAGE_BACKEND")
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
+AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL")
+AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME")
+AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN")
+
+_STATICFILES_BACKEND = "django.contrib.staticfiles.storage.StaticFilesStorage"
+if MEDIA_STORAGE_BACKEND == "s3":
+    STORAGES = {
+        "default": {"BACKEND": "storages.backends.s3.S3Storage"},
+        "staticfiles": {"BACKEND": _STATICFILES_BACKEND},
+    }
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = False
+    AWS_S3_ADDRESSING_STYLE = "virtual"
+else:
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": _STATICFILES_BACKEND},
+    }
 
 # ---------------------------------------------------------------------------
 # Varios

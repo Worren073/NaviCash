@@ -498,20 +498,21 @@ export interface Checklist {
 }
 
 // ---------------------------------------------------------------------------
-// Mensajería de redes sociales (WhatsApp Cloud API) — Fase 1: inbox
+// Mensajería de redes sociales (WhatsApp Cloud API / Instagram Login)
 // ---------------------------------------------------------------------------
 
-export type ChatPlatform = "whatsapp";
+export type ChatPlatform = "whatsapp" | "instagram";
 export type ChatConversationStatus = "abierta" | "archivada";
 
 /** Hilo de conversación con un cliente en una red social. */
 export interface ChatConversation {
   id: string;
   platform: ChatPlatform;
-  /** Identificador del interlocutor en la plataforma (wa_id/teléfono). */
+  /** Identificador del interlocutor en la plataforma (wa_id/teléfono o IGSID). */
   external_id: string;
   contact: string | null;
   contact_name: string;
+  avatar_url: string;
   last_message_at: string | null;
   last_message_preview: string;
   unread_count: number;
@@ -522,6 +523,18 @@ export interface ChatConversation {
 export type ChatMessageDirection = "in" | "out";
 export type ChatMessageStatus = "received" | "sent" | "delivered" | "read" | "failed";
 
+/** Adjunto de un mensaje (imagen, video, audio o archivo). */
+export interface ChatAttachment {
+  id: string;
+  kind: string;
+  /** URL servible (archivo rehospedado en el object storage o remoto). */
+  url: string;
+  remote_url: string;
+  mime: string;
+  size: number | null;
+  filename: string;
+}
+
 /** Mensaje individual dentro de una conversación. */
 export interface ChatMessage {
   id: string;
@@ -529,6 +542,7 @@ export interface ChatMessage {
   message_type: string;
   body: string;
   status: ChatMessageStatus;
+  attachments: ChatAttachment[];
   created_at: string;
 }
 
@@ -556,4 +570,23 @@ export interface WhatsAppConfigDraft {
   waba_id?: string;
   access_token?: string;
   app_secret?: string;
+}
+
+/**
+ * Estado de la conexión de Instagram del negocio. El token nunca llega al
+ * cliente: solo se informa si está presente (``has_access_token``).
+ */
+export interface InstagramConfig {
+  connected: boolean;
+  ig_user_id?: string;
+  username?: string;
+  is_active?: boolean;
+  has_access_token?: boolean;
+  token_expires_at?: string | null;
+  updated_at?: string;
+}
+
+/** Respuesta del endpoint de inicio del OAuth de Instagram. */
+export interface InstagramOAuthStart {
+  authorize_url: string;
 }

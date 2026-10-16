@@ -59,3 +59,11 @@ SIMPLE_JWT = {
     **SIMPLE_JWT,
     "AUTH_COOKIE_SECURE": False,
 }
+
+# Adjuntos de chat en memoria: los tests no escriben en disco.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+    },
+}

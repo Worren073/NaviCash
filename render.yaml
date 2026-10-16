@@ -118,6 +118,37 @@ services:
       #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - key: FIELD_ENCRYPTION_KEY
         sync: false
+      # Instagram Messaging (Instagram Login): app de Meta con el producto
+      # "Instagram" y permisos instagram_business_basic +
+      # instagram_business_manage_messages. El redirect URI y el webhook se
+      # registran en el panel de la app.
+      - key: INSTAGRAM_APP_ID
+        sync: false
+      - key: INSTAGRAM_APP_SECRET
+        sync: false
+      - key: INSTAGRAM_REDIRECT_URI
+        sync: false
+      - key: INSTAGRAM_VERIFY_TOKEN
+        sync: false
+      - key: INSTAGRAM_API_BASE_URL
+        value: https://graph.instagram.com/v21.0
+      # Adjuntos de chat: object storage S3/R2 (bucket público o dominio CDN).
+      - key: MEDIA_STORAGE_BACKEND
+        value: s3
+      - key: MEDIA_URL
+        value: /media/
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_S3_ENDPOINT_URL
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        value: auto
+      - key: AWS_S3_CUSTOM_DOMAIN
+        sync: false
 
   # ================== Frontend / PWA (Docker + nginx) =======================
   # Render Static Site no permite emitir headers HTTP (CSP, X-Frame-Options,

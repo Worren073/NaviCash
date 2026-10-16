@@ -5,6 +5,7 @@ rutas (definidas en su ``urls.py`` correspondiente).
 """
 
 from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
@@ -38,3 +39,6 @@ urlpatterns = [
 # que una build de producción no publique /admin/ sin protección.
 if settings.DEBUG:
     urlpatterns.insert(0, path("admin/", admin.site.urls))
+    # Adjuntos de chat servidos por disco local en desarrollo (en producción los
+    # entrega el object storage S3/R2 vía MEDIA_URL).
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
