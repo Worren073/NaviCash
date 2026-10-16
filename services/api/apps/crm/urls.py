@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from apps.crm.views import (
     BusinessContactViewSet,
+    ChatConversationViewSet,
     CollectionFollowUpViewSet,
     InvoiceViewSet,
     OrderViewSet,
     ProductCategoryViewSet,
     ProductViewSet,
+    WhatsAppConfigView,
+    WhatsAppWebhookView,
 )
 
 router = DefaultRouter()
@@ -22,5 +26,12 @@ router.register("products", ProductViewSet, basename="business-product")
 router.register(
     "product-categories", ProductCategoryViewSet, basename="business-product-category"
 )
+router.register("chats", ChatConversationViewSet, basename="business-chat")
 
-urlpatterns = router.urls
+urlpatterns = [
+    # Webhook público de Meta (sin JWT; autenticado por firma HMAC).
+    path("whatsapp/webhook/", WhatsAppWebhookView.as_view(), name="whatsapp-webhook"),
+    # Credenciales de WhatsApp del negocio autenticado.
+    path("whatsapp/config/", WhatsAppConfigView.as_view(), name="whatsapp-config"),
+    *router.urls,
+]

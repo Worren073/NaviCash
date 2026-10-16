@@ -2,29 +2,47 @@
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal, DecimalException
 
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch, Q
+from django.db.models import F, Prefetch, Q
+from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from apps.business.models import Business
 from apps.core.permissions import IsOwner
 from apps.crm.models import (
     BusinessContact,
+    ChatConversation,
+    ChatMessage,
     CollectionFollowUp,
     Invoice,
     Order,
     Product,
     ProductCategory,
     StockAdjustment,
+    WhatsAppConfig,
 )
 from apps.crm.services import GOODS_OUT_STATUSES, requires_integer_amounts
 from apps.crm.tax_id import TAX_ID_TYPES, tax_id_search_term
+from apps.crm.whatsapp_service import (
+    WhatsAppSendError,
+    describe_inbound,
+    extract_changes,
+    send_text,
+    verify_signature,
+)
 from apps.crm.serializers import (
     BusinessContactSerializer,
+    ChatConversationSerializer,
+    ChatMessageSerializer,
     CollectionFollowUpSerializer,
     InvoiceReadSerializer,
     InvoiceWriteSerializer,
@@ -32,6 +50,7 @@ from apps.crm.serializers import (
     OrderWriteSerializer,
     ProductCategorySerializer,
     ProductSerializer,
+    WhatsAppConfigSerializer,
 )
 
 
@@ -449,3 +468,313 @@ class ProductViewSet(viewsets.ModelViewSet):
                 user=request.user, product=product, delta=delta, reason=reason
             )
         return Response(self.get_serializer(product).data)
+
+
+# ---------------------------------------------------------------------------
+# Mensajería de redes sociales (WhatsApp Cloud API)
+# ---------------------------------------------------------------------------
+
+
+def _match_contact(business: Business, external_id: str) -> BusinessContact | None:
+    """Intenta vincular un número entrante con un contacto del directorio.
+
+    Compara por los últimos dígitos (tolerando prefijos y separadores); si no
+    hay coincidencia, la conversación queda sin contacto (se puede vincular
+    manualmente más adelante).
+    """
+    digits = "".join(ch for ch in external_id if ch.isdigit())
+    if len(digits) < 7:
+        return None
+    suffix = digits[-9:] if len(digits) >= 9 else digits
+    candidates = BusinessContact.objects.filter(business=business).exclude(phone="")
+    for contact in candidates:
+        contact_digits = "".join(ch for ch in contact.phone if ch.isdigit())
+        if contact_digits and contact_digits.endswith(suffix):
+            return contact
+    return None
+
+
+def _ingest_inbound_message(config: WhatsAppConfig, raw: dict, name_by_wa: dict) -> None:
+    """Guarda un mensaje entrante y actualiza el resumen de su conversación."""
+    info = describe_inbound(raw)
+    sender = info["from"]
+    if not sender:
+        return
+    external_id = info["external_id"]
+    # Deduplicación: Meta reentrega el webhook hasta confirmar el 200.
+    if external_id and ChatMessage.objects.filter(external_id=external_id).exists():
+        return
+
+    with transaction.atomic():
+        conversation, _ = ChatConversation.objects.get_or_create(
+            user=config.user,
+            platform="whatsapp",
+            external_id=sender,
+            defaults={
+                "business": config.business,
+                "contact_name": name_by_wa.get(sender, ""),
+                "contact": _match_contact(config.business, sender),
+            },
+        )
+        ChatMessage.objects.create(
+            user=config.user,
+            conversation=conversation,
+            external_id=external_id,
+            direction="in",
+            message_type=info["type"],
+            body=info["body"],
+            status="received",
+        )
+        conversation.last_message_at = timezone.now()
+        conversation.last_message_preview = info["body"][:200]
+        conversation.unread_count = F("unread_count") + 1
+        if not conversation.contact_name and name_by_wa.get(sender):
+            conversation.contact_name = name_by_wa[sender][:120]
+        conversation.save(
+            update_fields=[
+                "last_message_at",
+                "last_message_preview",
+                "unread_count",
+                "contact_name",
+                "updated_at",
+            ]
+        )
+
+
+def _apply_status_update(config: WhatsAppConfig, status_row: dict) -> None:
+    """Actualiza el estado de entrega/lectura de un mensaje saliente."""
+    wamid = status_row.get("id")
+    new_status = status_row.get("status")
+    if not wamid or new_status not in {"sent", "delivered", "read", "failed"}:
+        return
+    ChatMessage.objects.filter(
+        user=config.user, external_id=wamid, direction="out"
+    ).update(status=new_status)
+
+
+def _process_change(config: WhatsAppConfig, value: dict) -> None:
+    """Procesa un bloque ``value`` del webhook: mensajes y estados."""
+    contacts = value.get("contacts") or []
+    name_by_wa = {
+        c.get("wa_id"): (c.get("profile") or {}).get("name", "")
+        for c in contacts
+        if c.get("wa_id")
+    }
+    for raw in value.get("messages") or []:
+        _ingest_inbound_message(config, raw, name_by_wa)
+    for status_row in value.get("statuses") or []:
+        _apply_status_update(config, status_row)
+
+
+class WhatsAppWebhookView(APIView):
+    """Webhook público de la WhatsApp Cloud API (sin JWT).
+
+    - ``GET``: handshake de verificación de Meta (``hub.challenge``).
+    - ``POST``: entrega de eventos; se autentica con la firma HMAC
+      ``X-Hub-Signature-256`` usando el ``app_secret`` del negocio dueño del
+      número. Throttle desactivado (lo llama Meta, no un usuario).
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes: list = []
+
+    def get(self, request):
+        mode = request.query_params.get("hub.mode")
+        token = request.query_params.get("hub.verify_token")
+        challenge = request.query_params.get("hub.challenge", "")
+        if (
+            mode == "subscribe"
+            and token
+            and WhatsAppConfig.objects.filter(verify_token=token, is_active=True).exists()
+        ):
+            return HttpResponse(challenge, content_type="text/plain")
+        return HttpResponse("Forbidden", status=403, content_type="text/plain")
+
+    def post(self, request):
+        raw_body = request.body or b""
+        try:
+            payload = json.loads(raw_body or b"{}")
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "Payload inválido.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        changes = extract_changes(payload)
+        config_by_number: dict[str, WhatsAppConfig] = {}
+        for change in changes:
+            number = change["phone_number_id"]
+            if not number:
+                continue
+            config = (
+                WhatsAppConfig.objects.filter(phone_number_id=number, is_active=True)
+                .select_related("user", "business")
+                .first()
+            )
+            if config is None:
+                continue
+            config_by_number[number] = config
+
+        if config_by_number:
+            # La firma es la única autenticación del webhook: se valida con el
+            # app_secret del número antes de procesar (AUDIT: sin firma no se
+            # ingiere nada). Se compara en tiempo constante.
+            signature = request.headers.get("X-Hub-Signature-256", "")
+            for config in config_by_number.values():
+                if not verify_signature(config.app_secret, raw_body, signature):
+                    return Response(
+                        {"detail": "Firma inválida."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            for change in changes:
+                config = config_by_number.get(change["phone_number_id"])
+                if config is not None:
+                    _process_change(config, change["value"])
+
+        # Siempre 200 para que Meta no reintente (eventos desconocidos incluidos).
+        return Response({"status": "ok"})
+
+
+class WhatsAppConfigView(APIView):
+    """Credenciales de WhatsApp del negocio autenticado (una por usuario)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _business(self, request) -> Business | None:
+        return Business.objects.filter(user=request.user).first()
+
+    def get(self, request):
+        config = WhatsAppConfig.objects.filter(user=request.user).first()
+        if config is None:
+            return Response({"connected": False})
+        data = WhatsAppConfigSerializer(config).data
+        data["connected"] = config.is_active
+        return Response(data)
+
+    def _save(self, request):
+        business = self._business(request)
+        if business is None:
+            return Response(
+                {"detail": "Crea tu negocio antes de conectar WhatsApp.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        config = WhatsAppConfig.objects.filter(user=request.user).first()
+        serializer = WhatsAppConfigSerializer(
+            config, data=request.data, partial=config is not None
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.save(user=request.user, business=business)
+        except IntegrityError:
+            return Response(
+                {
+                    "detail": "Ese número de WhatsApp ya está conectado a otra cuenta.",
+                    "code": "validation_error",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = WhatsAppConfigSerializer(serializer.instance).data
+        data["connected"] = serializer.instance.is_active
+        return Response(data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        return self._save(request)
+
+    def put(self, request):
+        return self._save(request)
+
+    def delete(self, request):
+        deleted, _ = WhatsAppConfig.objects.filter(user=request.user).delete()
+        if not deleted:
+            return Response(
+                {"detail": "No hay una conexión de WhatsApp configurada."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
+    """Inbox unificado del negocio: hilos, mensajes y respuesta manual."""
+
+    serializer_class = ChatConversationSerializer
+    permission_classes = [IsOwner]
+
+    def get_queryset(self):
+        qs = ChatConversation.objects.filter(user=self.request.user).select_related("contact")
+        platform = self.request.query_params.get("platform")
+        if platform:
+            qs = qs.filter(platform=platform)
+        return qs.order_by("-last_message_at", "-created_at")
+
+    def get_throttles(self):
+        """Limita solo el envío saliente (respuesta manual) a la API de Meta."""
+        self.throttle_scope = "chat_send" if self.action == "send" else ""
+        return super().get_throttles()
+
+    @action(detail=True, methods=["get"])
+    def messages(self, request, pk=None):
+        """Devuelve los mensajes del hilo y marca la conversación como leída."""
+        conversation = self.get_object()
+        qs = conversation.messages.all()
+        page = self.paginate_queryset(qs)
+        serializer = ChatMessageSerializer(page if page is not None else qs, many=True)
+        if conversation.unread_count:
+            conversation.unread_count = 0
+            conversation.save(update_fields=["unread_count", "updated_at"])
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def send(self, request, pk=None):
+        """Envía una respuesta de texto al cliente por WhatsApp."""
+        conversation = self.get_object()
+        text = str(request.data.get("text") or "").strip()
+        if not text:
+            return Response(
+                {"detail": "Escribe un mensaje.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(text) > 4096:
+            return Response(
+                {"detail": "El mensaje es demasiado largo (máx. 4096 caracteres).", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        config = WhatsAppConfig.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+        if config is None:
+            return Response(
+                {
+                    "detail": "Conecta tu WhatsApp antes de responder.",
+                    "code": "whatsapp_not_connected",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            wamid = send_text(
+                config.phone_number_id,
+                config.access_token,
+                conversation.external_id,
+                text,
+            )
+        except WhatsAppSendError as exc:
+            return Response(
+                {"detail": exc.message, "code": exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = ChatMessage.objects.create(
+            user=request.user,
+            conversation=conversation,
+            external_id=wamid,
+            direction="out",
+            message_type="text",
+            body=text,
+            status="sent",
+        )
+        conversation.last_message_at = timezone.now()
+        conversation.last_message_preview = text[:200]
+        conversation.save(update_fields=["last_message_at", "last_message_preview", "updated_at"])
+        return Response(ChatMessageSerializer(message).data, status=status.HTTP_201_CREATED)

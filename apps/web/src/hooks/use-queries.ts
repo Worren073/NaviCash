@@ -6,6 +6,8 @@ import type {
   BusinessAnalytics,
   BusinessContact,
   BusinessSummary,
+  ChatConversation,
+  ChatMessage,
   Checklist,
   CollectionFollowUp,
   Invoice,
@@ -18,6 +20,7 @@ import type {
   Subscription,
   User,
   Wallet,
+  WhatsAppConfig,
 } from "@/lib/types";
 
 export const queryKeys = {
@@ -42,7 +45,13 @@ export const queryKeys = {
   followUps: ["follow-ups"] as const,
   products: ["products"] as const,
   productCategories: ["product-categories"] as const,
+  chats: ["chats"] as const,
+  chatMessages: ["chat-messages"] as const,
+  whatsappConfig: ["whatsapp-config"] as const,
 };
+
+/** Intervalo de sondeo de la bandeja de chats (10 s), alineado con el backend. */
+const CHAT_POLL_INTERVAL_MS = 10_000;
 
 export function useOverview() {
   return useQuery({
@@ -213,5 +222,47 @@ export function useProducts(search?: string, category?: string, active?: string)
         signal,
       });
     },
+  });
+}
+
+/**
+ * Bandeja de conversaciones del negocio (sondeo cada 10 s para recibir
+ * mensajes nuevos sin recargar; el webhook los persiste en el servidor).
+ */
+export function useChatConversations(platform?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.chats, { platform }],
+    refetchInterval: CHAT_POLL_INTERVAL_MS,
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (platform) params.set("platform", platform);
+      const query = params.toString();
+      return api.get<Paginated<ChatConversation>>(
+        `/business/chats${query ? `?${query}` : ""}`,
+        { signal }
+      );
+    },
+  });
+}
+
+/** Mensajes de un hilo; también refresca por sondeo mientras esté abierto. */
+export function useChatMessages(conversationId: string | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.chatMessages, conversationId],
+    enabled: Boolean(conversationId),
+    refetchInterval: conversationId ? CHAT_POLL_INTERVAL_MS : false,
+    queryFn: ({ signal }) =>
+      api.get<Paginated<ChatMessage>>(
+        `/business/chats/${conversationId}/messages/`,
+        { signal }
+      ),
+  });
+}
+
+/** Estado de la conexión de WhatsApp del negocio. */
+export function useWhatsAppConfig() {
+  return useQuery({
+    queryKey: queryKeys.whatsappConfig,
+    queryFn: ({ signal }) => api.get<WhatsAppConfig>("/business/whatsapp/config/", { signal }),
   });
 }

@@ -21,6 +21,7 @@ const ProfilePage = lazy(() => import("@/features/profile/profile-page"));
 const BusinessPage = lazy(() => import("@/features/business/business-page"));
 const BusinessAnalyticsPage = lazy(() => import("@/features/analytics/analytics-page"));
 const BusinessContactsPage = lazy(() => import("@/features/business/business-contacts-page"));
+const ChatsPage = lazy(() => import("@/features/business/chats-page"));
 const InvoicesPage = lazy(() => import("@/features/business/invoices-page"));
 const InvoiceNewPage = lazy(() => import("@/features/business/invoice-new-page"));
 const InvoiceDetailPage = lazy(() => import("@/features/business/invoice-detail-page"));
@@ -175,6 +176,7 @@ export const router = createBrowserRouter([
                   { path: "/business", element: <BusinessPage /> },
                   { path: "/business/analytics", element: <BusinessAnalyticsPage /> },
                   { path: "/business/contacts", element: <BusinessContactsPage /> },
+                  { path: "/business/chats", element: <ChatsPage /> },
                   { path: "/business/invoices", element: <InvoicesPage /> },
                   { path: "/business/invoices/new", element: <InvoiceNewPage /> },
                   { path: "/business/invoices/:id", element: <InvoiceDetailPage /> },

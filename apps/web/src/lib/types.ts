@@ -496,3 +496,64 @@ export interface Checklist {
   items: ChecklistItem[];
   created_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Mensajería de redes sociales (WhatsApp Cloud API) — Fase 1: inbox
+// ---------------------------------------------------------------------------
+
+export type ChatPlatform = "whatsapp";
+export type ChatConversationStatus = "abierta" | "archivada";
+
+/** Hilo de conversación con un cliente en una red social. */
+export interface ChatConversation {
+  id: string;
+  platform: ChatPlatform;
+  /** Identificador del interlocutor en la plataforma (wa_id/teléfono). */
+  external_id: string;
+  contact: string | null;
+  contact_name: string;
+  last_message_at: string | null;
+  last_message_preview: string;
+  unread_count: number;
+  status: ChatConversationStatus;
+  created_at: string;
+}
+
+export type ChatMessageDirection = "in" | "out";
+export type ChatMessageStatus = "received" | "sent" | "delivered" | "read" | "failed";
+
+/** Mensaje individual dentro de una conversación. */
+export interface ChatMessage {
+  id: string;
+  direction: ChatMessageDirection;
+  message_type: string;
+  body: string;
+  status: ChatMessageStatus;
+  created_at: string;
+}
+
+/**
+ * Credenciales de WhatsApp del negocio. Los secretos nunca llegan al cliente:
+ * solo se informa si están presentes (``has_access_token`` / ``has_app_secret``).
+ */
+export interface WhatsAppConfig {
+  connected: boolean;
+  phone_number_id?: string;
+  waba_id?: string;
+  display_phone_number?: string;
+  is_active?: boolean;
+  /** Secreto de handshake del webhook; el dueño lo pega en el panel de Meta. */
+  verify_token?: string;
+  has_access_token?: boolean;
+  has_app_secret?: boolean;
+  updated_at?: string;
+}
+
+/** Datos editables de la conexión de WhatsApp (alta o actualización). */
+export interface WhatsAppConfigDraft {
+  phone_number_id: string;
+  display_phone_number?: string;
+  waba_id?: string;
+  access_token?: string;
+  app_secret?: string;
+}

@@ -34,3 +34,7 @@ python-json-logger>=3,<4
 # Web Push (VAPID): cifrado y envío de notificaciones push del navegador.
 # Trae cryptography, http-ece y py-vapid como dependencias.
 pywebpush>=2,<3
+
+# Cifrado simétrico de secretos en reposo (Fernet) para integraciones de
+# terceros (p. ej. tokens de la WhatsApp Cloud API). Ver apps/core/crypto.py.
+cryptography>=43,<46

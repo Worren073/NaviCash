@@ -8,11 +8,14 @@ Fase 4: Inventario conectado a facturación (`Product`, `ProductCategory`, `Stoc
 
 from __future__ import annotations
 
+import secrets
+
 from django.db import models
 from django.db.models.functions import Lower
 
 from apps.business.models import Business
 from apps.core.currency import CURRENCY_CHOICES, MONEY_DECIMALS
+from apps.core.crypto import decrypt_value, encrypt_value
 from apps.core.models import OwnedModel
 from apps.transactions.models import Transaction
 
@@ -710,3 +713,217 @@ class StockAdjustment(OwnedModel):
 
     def __str__(self) -> str:
         return f"{self.product.name} {self.delta:+}"
+
+
+# ---------------------------------------------------------------------------
+# Mensajería de redes sociales (WhatsApp Cloud API) — Fase 1: inbox + respuesta
+# ---------------------------------------------------------------------------
+
+
+def generate_verify_token() -> str:
+    """Token de verificación de webhook, aleatorio y difícil de adivinar."""
+    return secrets.token_urlsafe(32)
+
+
+class WhatsAppConfig(OwnedModel):
+    """Credenciales del negocio para la WhatsApp Cloud API de Meta.
+
+    Cada negocio conecta su propio número (multi-inquilino): los datos salen de
+    su propia app de Meta. Los secretos (``access_token`` y ``app_secret``) se
+    guardan CIFRADOS con Fernet y nunca se devuelven al cliente.
+
+    ``verify_token`` es un secreto compartido que Meta reenvía en el handshake
+    del webhook; permite localizar al negocio cuando llega el GET de
+    verificación (el POST se enruta por ``phone_number_id``).
+    """
+
+    business = models.OneToOneField(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="whatsapp_config",
+        verbose_name="Negocio",
+    )
+    phone_number_id = models.CharField(
+        max_length=64, unique=True, verbose_name="ID del número (phone_number_id)"
+    )
+    waba_id = models.CharField(
+        max_length=64, blank=True, default="", verbose_name="ID de la cuenta (WABA)"
+    )
+    display_phone_number = models.CharField(
+        max_length=40, blank=True, default="", verbose_name="Número visible"
+    )
+    access_token_encrypted = models.TextField(
+        blank=True, default="", verbose_name="Token de acceso (cifrado)"
+    )
+    app_secret_encrypted = models.TextField(
+        blank=True, default="", verbose_name="App Secret (cifrado)"
+    )
+    verify_token = models.CharField(
+        max_length=64,
+        unique=True,
+        default=generate_verify_token,
+        verbose_name="Token de verificación del webhook",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
+
+    class Meta:
+        verbose_name = "Configuración de WhatsApp"
+        verbose_name_plural = "Configuraciones de WhatsApp"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"WhatsApp {self.display_phone_number or self.phone_number_id}"
+
+    @property
+    def access_token(self) -> str:
+        """Token de acceso en claro (para llamar a la API de Meta)."""
+        return decrypt_value(self.access_token_encrypted)
+
+    @access_token.setter
+    def access_token(self, raw: str) -> None:
+        self.access_token_encrypted = encrypt_value(raw)
+
+    @property
+    def app_secret(self) -> str:
+        """App Secret en claro (para verificar la firma del webhook)."""
+        return decrypt_value(self.app_secret_encrypted)
+
+    @app_secret.setter
+    def app_secret(self, raw: str) -> None:
+        self.app_secret_encrypted = encrypt_value(raw)
+
+
+CHAT_PLATFORMS = [
+    ("whatsapp", "WhatsApp"),
+]
+
+CONVERSATION_STATUSES = [
+    ("abierta", "Abierta"),
+    ("archivada", "Archivada"),
+]
+
+
+class ChatConversation(OwnedModel):
+    """Hilo de conversación con un cliente en una plataforma social."""
+
+    business = models.ForeignKey(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="chat_conversations",
+        verbose_name="Negocio",
+    )
+    contact = models.ForeignKey(
+        BusinessContact,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chat_conversations",
+        verbose_name="Contacto",
+    )
+    platform = models.CharField(
+        max_length=20, choices=CHAT_PLATFORMS, default="whatsapp", verbose_name="Plataforma"
+    )
+    external_id = models.CharField(
+        max_length=64,
+        verbose_name="ID externo",
+        help_text="Identificador del interlocutor en la plataforma (wa_id/teléfono).",
+    )
+    contact_name = models.CharField(
+        max_length=120, blank=True, default="", verbose_name="Nombre mostrado"
+    )
+    last_message_at = models.DateTimeField(
+        null=True, blank=True, db_index=True, verbose_name="Último mensaje"
+    )
+    last_message_preview = models.CharField(
+        max_length=200, blank=True, default="", verbose_name="Vista previa"
+    )
+    unread_count = models.PositiveIntegerField(default=0, verbose_name="No leídos")
+    status = models.CharField(
+        max_length=20,
+        choices=CONVERSATION_STATUSES,
+        default="abierta",
+        verbose_name="Estado",
+    )
+
+    class Meta:
+        verbose_name = "Conversación"
+        verbose_name_plural = "Conversaciones"
+        ordering = ["-last_message_at", "-created_at"]
+        indexes = [
+            models.Index(
+                fields=["user", "platform", "last_message_at"],
+                name="crm_chat_user_plat_last_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "platform", "external_id"],
+                name="uniq_user_platform_conversation",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.contact_name or self.external_id
+
+
+MESSAGE_DIRECTIONS = [
+    ("in", "Entrante"),
+    ("out", "Saliente"),
+]
+
+MESSAGE_STATUSES = [
+    ("received", "Recibido"),
+    ("sent", "Enviado"),
+    ("delivered", "Entregado"),
+    ("read", "Leído"),
+    ("failed", "Fallido"),
+]
+
+
+class ChatMessage(OwnedModel):
+    """Mensaje individual dentro de una conversación.
+
+    ``external_id`` es el ``wamid`` de Meta: único para deduplicar
+    reentregas del webhook (entrega "at-least-once").
+    """
+
+    conversation = models.ForeignKey(
+        ChatConversation,
+        on_delete=models.CASCADE,
+        related_name="messages",
+        verbose_name="Conversación",
+    )
+    external_id = models.CharField(
+        max_length=128, blank=True, default="", verbose_name="ID externo"
+    )
+    direction = models.CharField(
+        max_length=3, choices=MESSAGE_DIRECTIONS, verbose_name="Dirección"
+    )
+    message_type = models.CharField(
+        max_length=16, default="text", verbose_name="Tipo"
+    )
+    body = models.TextField(blank=True, default="", verbose_name="Contenido")
+    status = models.CharField(
+        max_length=16, choices=MESSAGE_STATUSES, default="received", verbose_name="Estado"
+    )
+
+    class Meta:
+        verbose_name = "Mensaje de chat"
+        verbose_name_plural = "Mensajes de chat"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(
+                fields=["conversation", "created_at"],
+                name="crm_chatmsg_conv_created_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["external_id"],
+                condition=models.Q(external_id__gt=""),
+                name="uniq_chat_message_external_id",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.direction}: {self.body[:40]}"

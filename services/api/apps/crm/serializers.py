@@ -10,6 +10,8 @@ from apps.core.currency import is_valid_amount, round_money
 from apps.crm.tax_id import normalize_tax_id, tax_id_error
 from apps.crm.models import (
     BusinessContact,
+    ChatConversation,
+    ChatMessage,
     CollectionFollowUp,
     Invoice,
     InvoiceItem,
@@ -19,6 +21,7 @@ from apps.crm.models import (
     OrderPayment,
     Product,
     ProductCategory,
+    WhatsAppConfig,
 )
 
 
@@ -891,3 +894,87 @@ class ProductSerializer(serializers.ModelSerializer):
         # Las existencias solo cambian por el endpoint de ajuste (auditoría).
         validated_data.pop("stock_quantity", None)
         return super().update(instance, validated_data)
+
+
+class WhatsAppConfigSerializer(serializers.ModelSerializer):
+    """Credenciales de WhatsApp del negocio.
+
+    Los secretos (``access_token``, ``app_secret``) son de SOLO ESCRITURA: al
+    leerlos se informa únicamente si están presentes (``has_*``), nunca su
+    valor. ``verify_token`` sí se devuelve porque el dueño lo necesita para
+    pegarlo en el panel de Meta; es un secreto de handshake, no una credencial
+    de envío.
+    """
+
+    access_token = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, trim_whitespace=True
+    )
+    app_secret = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, trim_whitespace=True
+    )
+    has_access_token = serializers.SerializerMethodField()
+    has_app_secret = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WhatsAppConfig
+        fields = [
+            "phone_number_id",
+            "waba_id",
+            "display_phone_number",
+            "is_active",
+            "access_token",
+            "app_secret",
+            "verify_token",
+            "has_access_token",
+            "has_app_secret",
+            "updated_at",
+        ]
+        read_only_fields = ["verify_token", "has_access_token", "has_app_secret", "updated_at"]
+
+    def get_has_access_token(self, obj: WhatsAppConfig) -> bool:
+        return bool(obj.access_token_encrypted)
+
+    def get_has_app_secret(self, obj: WhatsAppConfig) -> bool:
+        return bool(obj.app_secret_encrypted)
+
+    def validate_phone_number_id(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Indica el ID del número de WhatsApp.")
+        return value
+
+
+class ChatConversationSerializer(serializers.ModelSerializer):
+    """Hilo de conversación para la lista del inbox."""
+
+    class Meta:
+        model = ChatConversation
+        fields = [
+            "id",
+            "platform",
+            "external_id",
+            "contact",
+            "contact_name",
+            "last_message_at",
+            "last_message_preview",
+            "unread_count",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    """Mensaje individual de una conversación (solo lectura)."""
+
+    class Meta:
+        model = ChatMessage
+        fields = [
+            "id",
+            "direction",
+            "message_type",
+            "body",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = fields

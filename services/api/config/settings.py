@@ -103,6 +103,12 @@ env = environ.Env(
     # Token que autoriza el disparo externo (GitHub Actions cron) del
     # endpoint POST /api/internal/tick. Vacío = tick deshabilitado (403).
     INTERNAL_TOKEN=(str, ""),
+    # Clave Fernet (base64 urlsafe) para cifrar en reposo los secretos de
+    # terceros (tokens de WhatsApp, etc.). Si está vacía se deriva de
+    # DJANGO_SECRET_KEY (ver apps/core/crypto.py).
+    FIELD_ENCRYPTION_KEY=(str, ""),
+    # Base de la Graph API de Meta usada por el conector de WhatsApp.
+    WHATSAPP_API_BASE_URL=(str, "https://graph.facebook.com/v21.0"),
     # Máximo de pushes por usuario en un mismo ciclo del tick.
     PUSH_MAX_PER_TICK=(int, 3),
     # Hora LOCAL del usuario a partir de la cual puede salir el recordatorio
@@ -418,6 +424,11 @@ INTERNAL_TOKEN = env("INTERNAL_TOKEN")
 PUSH_MAX_PER_TICK = env("PUSH_MAX_PER_TICK")
 NUDGE_LOCAL_HOUR = env("NUDGE_LOCAL_HOUR")
 
+# Cifrado en reposo de secretos de terceros (conector de WhatsApp).
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY")
+# Base de la Graph API de Meta (WhatsApp Cloud API).
+WHATSAPP_API_BASE_URL = env("WHATSAPP_API_BASE_URL")
+
 # ---------------------------------------------------------------------------
 # DRF y JWT
 # ---------------------------------------------------------------------------
@@ -454,6 +465,9 @@ REST_FRAMEWORK = {
         "assistant": env("ASSISTANT_THROTTLE_RATE", default="30/hour"),
         # Transcripción de voz: cada clip es una llamada paga al proveedor.
         "transcribe": env("TRANSCRIBE_THROTTLE_RATE", default="20/hour"),
+        # Respuesta manual de chats de redes sociales (WhatsApp): limita el
+        # abuso del envío saliente contra la API del proveedor.
+        "chat_send": env("CHAT_SEND_THROTTLE_RATE", default="60/hour"),
     },
     # Errores en el mismo formato/estilo espagnol-friendly.
     "EXCEPTION_HANDLER": "apps.core.exceptions.base_exception_handler",
