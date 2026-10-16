@@ -1,6 +1,6 @@
 # Dependencias del backend de NaviCash
 # Rangos compatibles (>=,<) para builds reproducibles sin fijar parches obsoletos.
-Django>=5.2,<5.3
+Django>=6.1,<6.2
 djangorestframework>=3.16,<3.17
 djangorestframework-simplejwt>=5.5,<6
 psycopg[binary]>=3.2,<4
