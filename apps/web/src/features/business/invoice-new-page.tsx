@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, ReceiptText, Trash2, UserPlus, Users } from "lucide-react";
 import { sileo } from "sileo";
 
@@ -19,10 +19,20 @@ import { Input } from "@/components/ui/input";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Segmented } from "@/components/ui/segmented";
 import { api, ApiErrorClass } from "@/lib/api";
-import { queryKeys, useBusinessContacts, useProducts } from "@/hooks/use-queries";
+import {
+  queryKeys,
+  useBusiness,
+  useBusinessContacts,
+  useProducts,
+} from "@/hooks/use-queries";
 import { formatMoney, toDateTimeLocalValue } from "@/lib/format";
+import {
+  PAYMENT_METHODS,
+  defaultMethodFor,
+  methodCurrency,
+} from "@/lib/payment-methods";
 import { TAX_ID_TYPES, formatTaxId, isValidTaxId, taxIdSearchTerm, type TaxIdType } from "@/lib/tax-id";
-import type { BusinessContact, Invoice } from "@/lib/types";
+import type { BusinessContact, Currency, Invoice, PaymentMethod } from "@/lib/types";
 import {
   ContactForm,
   emptyContactForm,
@@ -77,6 +87,8 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
   );
   const { data: productsData } = useProducts();
   const catalogue = useMemo(() => productsData?.results ?? [], [productsData]);
+  const { data: business } = useBusiness();
+  const baseCurrency: Currency = business?.currency ?? "USD";
 
   const [issueDate, setIssueDate] = useState(() => toDateTimeLocalValue());
   const [dueDate, setDueDate] = useState("");
@@ -84,6 +96,27 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
   const [paidAmount, setPaidAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ItemRow[]>([emptyItem()]);
+  const [method, setMethod] = useState<PaymentMethod | "">("");
+
+  const effectiveMethod: PaymentMethod = method || defaultMethodFor(baseCurrency);
+  const docCurrency = methodCurrency(effectiveMethod);
+  const crossCurrency = docCurrency !== baseCurrency;
+
+  const { data: rateData } = useQuery({
+    queryKey: queryKeys.rates,
+    queryFn: () => api.get<{ rate: string }>("/rates/current"),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    enabled: crossCurrency,
+  });
+  const rate = Number(rateData?.rate) || 0;
+
+  /** Convierte un precio del catálogo (en moneda base) a la moneda del documento. */
+  const convertFromBase = (price: string): string => {
+    if (!crossCurrency || rate <= 0) return price;
+    const value = Number(price) || 0;
+    return (docCurrency === "VES" ? value * rate : value / rate).toFixed(2);
+  };
 
   const subtotal = useMemo(
     () => items.reduce((sum, row) => sum + lineTotal(row), 0),
@@ -110,11 +143,12 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
     updateItem(idx, {
       product: product.id,
       description: product.name,
-      unit_price: price,
+      unit_price: convertFromBase(price),
     });
   };
 
   const validationError = useMemo(() => {
+    if (crossCurrency && rate <= 0) return t("invoices.form.errors.rateMissing");
     if (!selectedContact) return t("invoices.form.errors.contact");
     if (items.length === 0 || items.some((r) => !r.description.trim()))
       return t("invoices.form.errors.itemDescription");
@@ -138,7 +172,7 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
     if (dueDate && issueDate && dueDate < issueDate.slice(0, 10))
       return t("invoices.form.errors.invalidDate");
     return null;
-  }, [selectedContact, items, catalogue, tax, paid, total, dueDate, issueDate, t]);
+  }, [selectedContact, items, catalogue, tax, paid, total, dueDate, issueDate, crossCurrency, rate, t]);
 
   const openAffiliate = () => {
     const form = emptyContactForm();
@@ -187,6 +221,7 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
         ...(dueDate ? { due_date: dueDate } : {}),
         ...(taxAmount ? { tax_amount: taxAmount } : {}),
         ...(paidAmount ? { paid_amount: paidAmount } : {}),
+        payment_method: effectiveMethod,
         ...(notes.trim() ? { notes: notes.trim() } : {}),
       };
       return api.post<Invoice>("/business/invoices/", payload);
@@ -341,6 +376,46 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
         </div>
       </section>
 
+      <section className="space-y-2">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-on-surface">
+            {t("invoices.form.paymentMethod")}
+          </span>
+          <select
+            value={effectiveMethod}
+            onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+            className="h-11 w-full rounded-xl border border-glass-border bg-glass-surface px-3 text-base text-on-surface shadow-sm outline-none transition-colors backdrop-blur-md focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 md:text-sm"
+          >
+            <optgroup label="VES">
+              {PAYMENT_METHODS.filter((m) => m.currency === "VES").map((m) => (
+                <option key={m.value} value={m.value}>
+                  {t(m.labelKey)}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="USD">
+              {PAYMENT_METHODS.filter((m) => m.currency === "USD").map((m) => (
+                <option key={m.value} value={m.value}>
+                  {t(m.labelKey)}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+          <span className="mt-1 block text-xs text-on-surface-variant">
+            {crossCurrency
+              ? t("invoices.form.methodCross", { currency: docCurrency })
+              : t("invoices.form.methodSame", { currency: docCurrency })}
+          </span>
+        </label>
+        {crossCurrency && (
+          <p className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-on-surface-variant">
+            {rate > 0
+              ? t("invoices.form.rateBanner", { rate: rate.toLocaleString() })
+              : t("invoices.form.rateMissing")}
+          </p>
+        )}
+      </section>
+
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-on-surface">{t("invoices.form.items")}</h2>
@@ -407,7 +482,7 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
             </div>
             <div className="col-span-2 flex items-center justify-end gap-2 sm:col-span-2">
               <span className="text-sm font-medium text-on-surface">
-                {formatMoney(lineTotal(row))}
+                {formatMoney(lineTotal(row), docCurrency, { symbol: true })}
               </span>
               {items.length > 1 && (
                 <button
@@ -451,15 +526,15 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
       <section className="glass-panel clip-rounded-lg rounded-lg p-4">
         <div className="flex justify-between text-sm text-on-surface-variant">
           <span>{t("invoices.detail.subtotal")}</span>
-          <span>{formatMoney(subtotal)}</span>
+          <span>{formatMoney(subtotal, docCurrency, { symbol: true })}</span>
         </div>
         <div className="flex justify-between text-sm text-on-surface-variant">
           <span>{t("invoices.detail.tax")}</span>
-          <span>{formatMoney(tax)}</span>
+          <span>{formatMoney(tax, docCurrency, { symbol: true })}</span>
         </div>
         <div className="mt-1 flex justify-between border-t border-glass-border pt-2 text-base font-semibold text-on-surface">
           <span>{t("invoices.detail.total")}</span>
-          <span>{formatMoney(total)}</span>
+          <span>{formatMoney(total, docCurrency, { symbol: true })}</span>
         </div>
       </section>
 

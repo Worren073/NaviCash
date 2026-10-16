@@ -462,14 +462,21 @@ export function TransferWalletDialog({
   defaultSource,
   open,
   onOpenChange,
+  wallets: walletsProp,
+  invalidateKeys,
 }: {
   defaultSource?: Wallet;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Billeteras a ofrecer (por defecto, las personales). */
+  wallets?: Wallet[];
+  /** Claves de react-query a invalidar al transferir (además de las por defecto). */
+  invalidateKeys?: readonly (readonly unknown[])[];
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data: wallets } = useWallets();
+  const { data: personalWallets } = useWallets(!walletsProp);
+  const wallets = walletsProp ?? personalWallets;
   const [internalOpen, setInternalOpen] = useState(false);
   const [sourceId, setSourceId] = useState(defaultSource?.id ?? "");
   const [targetId, setTargetId] = useState("");
@@ -551,6 +558,9 @@ export function TransferWalletDialog({
       void queryClient.invalidateQueries({ queryKey: queryKeys.wallets });
       void queryClient.invalidateQueries({ queryKey: queryKeys.overview });
       void queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+      for (const key of invalidateKeys ?? []) {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
       setDialogOpen(false);
       setError(null);
     },

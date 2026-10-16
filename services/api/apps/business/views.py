@@ -31,7 +31,7 @@ class BusinessView(APIView):
     def _business(self, request):
         """Negocio del usuario con su billetera (o ``None``)."""
         return (
-            Business.objects.filter(user=request.user).select_related("wallet").first()
+            Business.objects.filter(user=request.user).prefetch_related("wallets").first()
         )
 
     def get(self, request) -> Response:
@@ -65,7 +65,7 @@ class BusinessSummaryView(APIView):
     def get(self, request) -> Response:
         """GET /api/business/summary -> {saldo, ingresos/egresos del mes, recent}."""
         business = (
-            Business.objects.filter(user=request.user).select_related("wallet").first()
+            Business.objects.filter(user=request.user).prefetch_related("wallets").first()
         )
         if business is None:
             return Response(
@@ -89,7 +89,7 @@ class BusinessAnalyticsView(APIView):
         12). Si el usuario no tiene negocio devuelve 404.
         """
         business = (
-            Business.objects.filter(user=request.user).select_related("wallet").first()
+            Business.objects.filter(user=request.user).prefetch_related("wallets").first()
         )
         if business is None:
             return Response(

@@ -26,6 +26,12 @@ WALLET_TYPES = [
     ("business", "Negocio"),
 ]
 
+#: Rol de una billetera de negocio: principal (moneda base) o secundaria (la otra).
+WALLET_ROLES = [
+    ("primary", "Principal"),
+    ("secondary", "Secundaria"),
+]
+
 
 class WalletManager(models.Manager):
     """Manager por defecto: excluye billeteras ocultas (soft-delete, C4).
@@ -84,14 +90,21 @@ help_text="Saldo actual; se ajusta automáticamente con los pagos y manualmente 
     # Billetera de un negocio (módulo Business). null para billeteras
     # personales; los scopes "personal"/"business" de la API filtran por este
     # campo para que ambos mundos jamás se mezclen.
-    business = models.OneToOneField(
+    business = models.ForeignKey(
         "business.Business",
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name="wallet",
+        related_name="wallets",
         verbose_name="Negocio",
         help_text="Negocio al que pertenece la billetera (si es de negocio).",
+    )
+    role = models.CharField(
+        max_length=10,
+        choices=WALLET_ROLES,
+        default="primary",
+        verbose_name="Rol",
+        help_text="Cuenta principal (VES/USD base) o secundaria del negocio.",
     )
     is_deleted = models.BooleanField(
         default=False,
@@ -121,6 +134,12 @@ help_text="Saldo actual; se ajusta automáticamente con los pagos y manualmente 
                 fields=["user", "name"],
                 name="uniq_wallet_name_per_user",
                 condition=models.Q(is_deleted=False),
+            ),
+            # Un negocio tiene exactamente una cuenta principal y una secundaria.
+            models.UniqueConstraint(
+                fields=["business", "role"],
+                name="uniq_wallet_business_role",
+                condition=models.Q(business__isnull=False, is_deleted=False),
             ),
             # Respaldo a nivel de BD del invariante del dominio (C1/A10):
             # el saldo jamás puede quedar negativo, aunque una carrera de

@@ -38,20 +38,40 @@ class BusinessCreateSerializer(serializers.ModelSerializer):
 
 
 class BusinessSerializer(serializers.ModelSerializer):
-    """Lectura del negocio: identidad + cuenta (billetera)."""
+    """Lectura del negocio: identidad + sus DOS cuentas (principal y secundaria).
+
+    ``wallet_id``/``saldo`` se mantienen por compatibilidad y apuntan a la cuenta
+    principal; ``accounts`` expone el detalle de ambas cuentas.
+    """
 
     wallet_id = serializers.SerializerMethodField()
     saldo = serializers.SerializerMethodField()
+    accounts = serializers.SerializerMethodField()
 
     class Meta:
         model = Business
-        fields = ["id", "name", "currency", "wallet_id", "saldo", "created_at"]
+        fields = ["id", "name", "currency", "wallet_id", "saldo", "accounts", "created_at"]
         read_only_fields = ["id", "created_at"]
 
-    def get_wallet_id(self, obj: Business) -> str:
-        """UUID de la billetera del negocio (para filtrar sus operaciones)."""
-        return str(obj.wallet.pk)
+    def get_wallet_id(self, obj: Business) -> str | None:
+        """Id de la cuenta principal (o ``None`` si aún no existe)."""
+        wallet = obj.wallet
+        return str(wallet.pk) if wallet else None
 
     def get_saldo(self, obj: Business) -> str:
-        """Saldo actual de la cuenta del negocio (materializado en la wallet)."""
-        return str(obj.wallet.saldo)
+        """Saldo de la cuenta principal (en la moneda base del negocio)."""
+        wallet = obj.wallet
+        return str(wallet.saldo) if wallet else "0.00"
+
+    def get_accounts(self, obj: Business) -> list[dict]:
+        """Detalle de las cuentas del negocio (principal y secundaria)."""
+        return [
+            {
+                "id": str(w.pk),
+                "name": w.name,
+                "currency": w.currency,
+                "role": w.role,
+                "balance": str(w.saldo),
+            }
+            for w in obj.wallets.all()
+        ]

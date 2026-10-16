@@ -16,7 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-import { useBusinessSummary, useInvoices, useOrders } from "@/hooks/use-queries";
+import { useBusinessSummary, useInvoices, useOrders, queryKeys } from "@/hooks/use-queries";
 import { useHideBalances } from "@/hooks/use-hide-balances";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,8 +25,23 @@ import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Reveal } from "@/components/ui/reveal";
 import { formatMoney, formatRelativeEvent } from "@/lib/format";
 import { TrendSparkline } from "@/features/dashboard/trend-sparkline";
+import { TransferWalletDialog } from "@/features/wallets/wallets-page";
 import { CardGlow } from "@/components/ui/card-glow";
-import type { Transaction } from "@/lib/types";
+import type { BusinessAccount, Transaction, Wallet } from "@/lib/types";
+
+/** Adapta una cuenta del negocio al shape de ``Wallet`` para el diálogo de transferencia. */
+function accountAsWallet(account: BusinessAccount): Wallet {
+  return {
+    id: account.id,
+    name: account.name,
+    currency: account.currency,
+    saldo: account.balance,
+    tipo: "business",
+    role: account.role,
+    color: "",
+    created_at: "",
+  };
+}
 
 function TxIcon({ concepto }: { concepto: string }) {
   const map: Array<{ re: RegExp; Icon: typeof Store }> = [
@@ -131,6 +146,53 @@ export function BusinessDashboard() {
           </div>
         </div>
       </Reveal>
+
+      {(data?.accounts?.length ?? 0) > 0 && (
+        <Reveal>
+          <div className="glass-panel clip-rounded-lg rounded-lg p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-on-surface">
+                {t("business.dashboard.accounts")}
+              </h2>
+              <TransferWalletDialog
+                wallets={(data?.accounts ?? []).map(accountAsWallet)}
+                invalidateKeys={[
+                  queryKeys.business,
+                  queryKeys.businessSummary,
+                  queryKeys.transactions,
+                ]}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(data?.accounts ?? []).map((account) => (
+                <div
+                  key={account.id}
+                  className="flex items-center justify-between rounded-lg bg-surface-container px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-on-surface">
+                      {account.name}
+                    </div>
+                    <div className="text-xs text-on-surface-variant">
+                      {t(`business.dashboard.accountRole.${account.role}`)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-on-surface">
+                      {hideBalances
+                        ? "••••"
+                        : formatMoney(Number(account.balance), account.currency, {
+                            symbol: true,
+                          })}
+                    </div>
+                    <Badge variant="outline">{account.currency}</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+      )}
 
       <section className="grid grid-cols-2 gap-2 md:gap-3">
         <Reveal>

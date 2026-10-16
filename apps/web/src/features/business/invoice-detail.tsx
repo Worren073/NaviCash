@@ -31,9 +31,10 @@ import { useFollowUps, useInvoice } from "@/hooks/use-queries";
 import { queryKeys } from "@/hooks/use-queries";
 import { api, ApiErrorClass } from "@/lib/api";
 import { formatMoney, formatDate } from "@/lib/format";
+import { PAYMENT_METHODS, defaultMethodFor } from "@/lib/payment-methods";
 import { InvoiceStatusBadge } from "./invoice-badges";
 import { FollowUpDialog } from "./follow-up-dialog";
-import type { CollectionOutcome } from "@/lib/types";
+import type { CollectionOutcome, PaymentMethod } from "@/lib/types";
 
 const OUTCOME_VARIANT: Record<
   CollectionOutcome,
@@ -58,10 +59,13 @@ export function InvoiceDetail({ id }: { id: string }) {
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payNote, setPayNote] = useState("");
+  const [payMethod, setPayMethod] = useState<PaymentMethod | "">("");
   const [followUpOpen, setFollowUpOpen] = useState(false);
 
   const paid = useMemo(() => Number(invoice?.amount_paid ?? 0), [invoice]);
   const balanceDue = useMemo(() => Number(invoice?.balance_due ?? 0), [invoice]);
+  const effectivePayMethod: PaymentMethod =
+    payMethod || defaultMethodFor(invoice?.currency ?? "USD");
 
   const refresh = async () => {
     await Promise.all([
@@ -100,6 +104,7 @@ export function InvoiceDetail({ id }: { id: string }) {
     mutationFn: () =>
       api.post(`/business/invoices/${id}/pay/`, {
         amount: payAmount,
+        payment_method: effectivePayMethod,
         ...(payNote.trim() ? { note: payNote.trim() } : {}),
       }),
     onSuccess: () => {
@@ -303,6 +308,20 @@ export function InvoiceDetail({ id }: { id: string }) {
               {formatMoney(balanceDue, invoice.currency)}
             </span>
           </div>
+          {invoice.conversion && Number(invoice.conversion.total ?? 0) > 0 && (
+            <div className="mt-1 flex w-full max-w-xs items-center justify-between border-t border-glass-border pt-1 text-xs text-on-surface-variant">
+              <span>
+                {invoice.conversion.frozen
+                  ? t("invoices.detail.equivalentFrozen", { currency: invoice.conversion.currency })
+                  : t("invoices.detail.equivalentLive", { currency: invoice.conversion.currency })}
+              </span>
+              <span className="font-medium text-on-surface">
+                {formatMoney(invoice.conversion.total ?? 0, invoice.conversion.currency, {
+                  symbol: true,
+                })}
+              </span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -318,9 +337,14 @@ export function InvoiceDetail({ id }: { id: string }) {
                 <div>
                   <div className="text-sm font-medium text-on-surface">
                     {formatMoney(p.amount, invoice.currency)}
+                    {p.paid_currency !== invoice.currency && (
+                      <span className="ml-2 text-xs font-normal text-on-surface-variant">
+                        {formatMoney(p.paid_amount, p.paid_currency, { symbol: true })}
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-on-surface-variant">
-                    {formatDate(p.paid_at)}
+                    {t(`paymentMethods.${p.payment_method}`)} · {formatDate(p.paid_at)}
                     {p.note ? ` · ${p.note}` : ""}
                   </div>
                 </div>
@@ -449,6 +473,22 @@ export function InvoiceDetail({ id }: { id: string }) {
                 {formatMoney(balanceDue, invoice.currency)})
               </span>
               <NumericInput value={payAmount} onChange={setPayAmount} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-on-surface">
+                {t("invoices.form.paymentMethod")}
+              </span>
+              <select
+                value={effectivePayMethod}
+                onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}
+                className="h-11 w-full rounded-xl border border-glass-border bg-glass-surface px-3 text-base text-on-surface shadow-sm outline-none transition-colors backdrop-blur-md focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 md:text-sm"
+              >
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {t(m.labelKey)}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-on-surface">

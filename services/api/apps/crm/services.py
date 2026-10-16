@@ -8,7 +8,7 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from apps.core.currency import round_money
+from apps.core.currency import convert_to_usd, round_money, usd_to_currency
 from apps.core.exceptions import BusinessRuleError
 from apps.crm.models import (
     Invoice,
@@ -20,15 +20,73 @@ from apps.crm.models import (
     Product,
     StockAdjustment,
 )
+from apps.crm.payment_methods import method_currency
 from apps.notifications.models import Notification
+from apps.rates.service import get_usd_rate_for_conversion
 from apps.transactions.services import register_transaction
+from apps.wallets.models import Wallet
 
-# Estados de factura en los que la mercancía ya salió de inventario.
+#: Estados de factura en los que la mercancía ya salió de inventario.
 GOODS_OUT_STATUSES = {"enviada", "parcial", "pagada", "vencida"}
 
 # Unidades cuyas cantidades deben ser enteras (sin decimales) en todo el
 # flujo: existencias, ajustes y líneas de factura.
 INTEGER_UNITS = frozenset({"unidad"})
+
+
+def _default_method_for(currency: str) -> str:
+    """Método de pago por defecto para una moneda (VES→Pago Móvil, USD→Zelle)."""
+    return "pago_movil" if currency == "VES" else "zelle"
+
+
+def wallet_for_method(business, method: str) -> Wallet:
+    """Devuelve la cuenta del negocio (VES/USD) que corresponde al método.
+
+    Args:
+        business: negocio dueño de las cuentas.
+        method: código del método de pago.
+
+    Returns:
+        La ``Wallet`` del negocio en la moneda del método.
+
+    Raises:
+        BusinessRuleError: si el negocio no tiene cuenta en esa moneda.
+    """
+    currency = method_currency(method)
+    wallet = next((w for w in business.wallets.all() if w.currency == currency), None)
+    if wallet is None:
+        raise BusinessRuleError(
+            f"El negocio no tiene una cuenta en {currency} para ese método de pago."
+        )
+    return wallet
+
+
+def _convert_between(amount: Decimal, source: str, dest: str, rate: Decimal) -> Decimal:
+    """Convierte un monto entre VES y USD con la tasa BCV (Bs por 1 USD)."""
+    if source == dest:
+        return round_money(amount)
+    if dest == "VES":
+        return usd_to_currency(amount, "VES", rate)
+    return convert_to_usd(amount, "VES", rate)
+
+
+def _resolve_payment(
+    business, document_currency: str, amount: Decimal, method: str
+) -> tuple[Wallet, str, Decimal, Decimal]:
+    """Resuelve cuenta, moneda efectiva, monto y tasa congelada de un pago.
+
+    El monto del pago viaja en la moneda del documento; el dinero entra/sale de
+    la cuenta del método elegido (VES o USD). Si la moneda del método difiere de
+    la del documento, se convierte con la tasa BCV del día (que queda congelada).
+
+    Returns:
+        Tupla ``(wallet, paid_currency, paid_amount, rate)``.
+    """
+    wallet = wallet_for_method(business, method)
+    rate = get_usd_rate_for_conversion()
+    paid_currency = wallet.currency
+    paid_amount = _convert_between(amount, document_currency, paid_currency, rate)
+    return wallet, paid_currency, paid_amount, rate
 
 
 def requires_integer_amounts(unit: str) -> bool:
@@ -152,22 +210,29 @@ def create_invoice(
     due_date: date | None = None,
     tax_amount: Decimal | None = None,
     paid_amount: Decimal | None = None,
+    payment_method: str | None = None,
     notes: str = "",
 ) -> Invoice:
     """Crea una factura con sus líneas y registra el pago inicial si aplica.
+
+    La moneda de la factura es la del método de pago elegido (``payment_method``):
+    Pago Móvil/Transferencia/Efectivo Bs → VES; Efectivo USD/Binance/Zelle → USD.
 
     Args:
         user: dueño de la factura.
         business: negocio al que pertenece.
         contact: cliente/proveedor (BusinessContact) del negocio.
         items_data: lista de dicts con ``description``, ``quantity``,
-            ``unit_price`` y opcional ``discount``.
+            ``unit_price`` y opcional ``discount`` (montos en la moneda del método).
         issue_date: fecha de emisión (por defecto hoy).
         issued_at: fecha y hora reales de emisión enviadas por el cliente
             (por defecto ``None``, se guarda como ``NULL``).
         due_date: fecha de vencimiento (por defecto hoy + días de crédito del contacto).
         tax_amount: impuesto manual (por defecto 0).
-        paid_amount: monto pagado al crear la factura (0 = crédito, >= total = contado).
+        paid_amount: monto pagado al crear la factura, en la moneda de la factura
+            (0 = crédito, >= total = contado).
+        payment_method: método de pago; define la moneda de la factura y la cuenta
+            del cobro. Por defecto, el método acorde a la moneda del negocio.
         notes: notas libres.
 
     Returns:
@@ -179,6 +244,9 @@ def create_invoice(
     """
     if not items_data:
         raise BusinessRuleError("La factura debe tener al menos una línea.")
+
+    payment_method = payment_method or _default_method_for(business.currency)
+    invoice_currency = method_currency(payment_method)
 
     issue_date = issue_date or timezone.localdate()
     if due_date is None:
@@ -234,7 +302,7 @@ def create_invoice(
         total=total,
         amount_paid=paid_amount,
         balance_due=round_money(total - paid_amount),
-        currency=business.currency,
+        currency=invoice_currency,
         notes=notes,
     )
 
@@ -254,13 +322,16 @@ def create_invoice(
     _withdraw_stock(invoice)
 
     if paid_amount > 0:
+        wallet, paid_currency, wallet_amount, rate = _resolve_payment(
+            business, invoice_currency, paid_amount, payment_method
+        )
         tx = register_transaction(
             user,
             tipo="cobro",
-            monto=paid_amount,
-            moneda=invoice.currency,
+            monto=wallet_amount,
+            moneda=paid_currency,
             concepto=f"Pago factura {invoice.number}",
-            wallet=business.wallet,
+            wallet=wallet,
             estado="pagado",
             fecha=issue_date,
             origen="crm_invoice",
@@ -270,6 +341,10 @@ def create_invoice(
             invoice=invoice,
             transaction=tx,
             amount=paid_amount,
+            payment_method=payment_method,
+            paid_currency=paid_currency,
+            paid_amount=wallet_amount,
+            rate_usd=rate,
             note="Pago al emitir",
         )
 
@@ -281,6 +356,7 @@ def record_invoice_payment(
     invoice: Invoice,
     amount: Decimal,
     *,
+    payment_method: str | None = None,
     note: str = "",
     paid_at=None,
 ) -> InvoicePayment:
@@ -289,6 +365,8 @@ def record_invoice_payment(
     Args:
         invoice: factura a pagar.
         amount: monto del pago (en la moneda de la factura).
+        payment_method: método de pago; define la cuenta del negocio donde entra
+            el cobro. Por defecto, el método acorde a la moneda de la factura.
         note: nota opcional.
         paid_at: instante del pago (por defecto ahora).
 
@@ -309,13 +387,18 @@ def record_invoice_payment(
     if amount > invoice.balance_due:
         raise BusinessRuleError("El pago no puede superar el saldo pendiente.")
 
+    payment_method = payment_method or _default_method_for(invoice.currency)
+    wallet, paid_currency, wallet_amount, rate = _resolve_payment(
+        invoice.business, invoice.currency, amount, payment_method
+    )
+
     tx = register_transaction(
         invoice.user,
         tipo="cobro",
-        monto=amount,
-        moneda=invoice.currency,
+        monto=wallet_amount,
+        moneda=paid_currency,
         concepto=f"Pago factura {invoice.number}",
-        wallet=invoice.business.wallet,
+        wallet=wallet,
         estado="pagado",
         fecha=paid_at.date() if paid_at else timezone.localdate(),
         origen="crm_invoice",
@@ -326,6 +409,10 @@ def record_invoice_payment(
         invoice=invoice,
         transaction=tx,
         amount=amount,
+        payment_method=payment_method,
+        paid_currency=paid_currency,
+        paid_amount=wallet_amount,
+        rate_usd=rate,
         note=note,
     )
 
@@ -564,9 +651,13 @@ def create_order(
     due_date: date | None = None,
     shipping_amount: Decimal | None = None,
     paid_amount: Decimal | None = None,
+    payment_method: str | None = None,
     notes: str = "",
 ) -> Order:
     """Crea un pedido con sus líneas y registra el pago inicial si aplica.
+
+    La moneda del pedido es la del método de pago elegido (``payment_method``):
+    Pago Móvil/Transferencia/Efectivo Bs → VES; Efectivo USD/Binance/Zelle → USD.
 
     Args:
         user: dueño del pedido.
@@ -581,7 +672,10 @@ def create_order(
         due_date: fecha prevista de pago (por defecto hoy + días de crédito
             del proveedor).
         shipping_amount: costo de envío que se suma al subtotal (por defecto 0).
-        paid_amount: monto pagado al crear el pedido (0 = solo borrador).
+        paid_amount: monto pagado al crear el pedido, en la moneda del pedido
+            (0 = solo borrador).
+        payment_method: método de pago; define la moneda del pedido y la cuenta
+            del pago. Por defecto, el método acorde a la moneda del negocio.
         notes: notas libres.
 
     Returns:
@@ -593,6 +687,9 @@ def create_order(
     """
     if not items_data:
         raise BusinessRuleError("El pedido debe tener al menos una línea.")
+
+    payment_method = payment_method or _default_method_for(business.currency)
+    order_currency = method_currency(payment_method)
 
     order_date = order_date or timezone.localdate()
     if due_date is None:
@@ -651,7 +748,7 @@ def create_order(
         total=total,
         amount_paid=paid_amount,
         balance_due=round_money(total - paid_amount),
-        currency=business.currency,
+        currency=order_currency,
         notes=notes,
     )
 
@@ -670,13 +767,16 @@ def create_order(
         )
 
     if paid_amount > 0:
+        wallet, paid_currency, wallet_amount, rate = _resolve_payment(
+            business, order_currency, paid_amount, payment_method
+        )
         tx = register_transaction(
             user,
             tipo="pago",
-            monto=paid_amount,
-            moneda=order.currency,
+            monto=wallet_amount,
+            moneda=paid_currency,
             concepto=f"Pago pedido {order.number}",
-            wallet=business.wallet,
+            wallet=wallet,
             estado="pagado",
             fecha=order_date,
             origen="crm_order",
@@ -686,6 +786,10 @@ def create_order(
             order=order,
             transaction=tx,
             amount=paid_amount,
+            payment_method=payment_method,
+            paid_currency=paid_currency,
+            paid_amount=wallet_amount,
+            rate_usd=rate,
             note="Pago al crear",
         )
 
@@ -697,6 +801,7 @@ def record_order_payment(
     order: Order,
     amount: Decimal,
     *,
+    payment_method: str | None = None,
     note: str = "",
     paid_at=None,
 ) -> OrderPayment:
@@ -705,6 +810,8 @@ def record_order_payment(
     Args:
         order: pedido a pagar.
         amount: monto del pago (en la moneda del pedido).
+        payment_method: método de pago; define la cuenta del negocio de donde
+            sale el pago. Por defecto, el método acorde a la moneda del pedido.
         note: nota opcional.
         paid_at: instante del pago (por defecto ahora).
 
@@ -725,13 +832,18 @@ def record_order_payment(
     if amount > order.balance_due:
         raise BusinessRuleError("El pago no puede superar el saldo pendiente.")
 
+    payment_method = payment_method or _default_method_for(order.currency)
+    wallet, paid_currency, wallet_amount, rate = _resolve_payment(
+        order.business, order.currency, amount, payment_method
+    )
+
     tx = register_transaction(
         order.user,
         tipo="pago",
-        monto=amount,
-        moneda=order.currency,
+        monto=wallet_amount,
+        moneda=paid_currency,
         concepto=f"Pago pedido {order.number}",
-        wallet=order.business.wallet,
+        wallet=wallet,
         estado="pagado",
         fecha=paid_at.date() if paid_at else timezone.localdate(),
         origen="crm_order",
@@ -742,6 +854,10 @@ def record_order_payment(
         order=order,
         transaction=tx,
         amount=amount,
+        payment_method=payment_method,
+        paid_currency=paid_currency,
+        paid_amount=wallet_amount,
+        rate_usd=rate,
         note=note,
     )
 

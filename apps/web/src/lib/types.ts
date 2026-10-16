@@ -4,6 +4,36 @@ export type Currency = "USD" | "VES";
 export type TxType = "cobro" | "pago" | "transferencia";
 export type TxState = "pendiente" | "pagado" | "retrasado" | "cancelado";
 
+export type WalletRole = "primary" | "secondary";
+
+/** Métodos de pago del CRM; su moneda define la cuenta y la moneda del documento. */
+export type PaymentMethod =
+  | "pago_movil"
+  | "transferencia"
+  | "efectivo_ves"
+  | "efectivo_usd"
+  | "binance"
+  | "zelle";
+
+/** Cuenta de un negocio (una en VES y otra en USD). */
+export interface BusinessAccount {
+  id: string;
+  name: string;
+  currency: Currency;
+  role: WalletRole;
+  balance: string;
+}
+
+/** Equivalencia de un documento en su otra moneda (pagado congelado, saldo vivo). */
+export interface CurrencyConversion {
+  currency: Currency;
+  rate: string | null;
+  total: string | null;
+  paid: string | null;
+  balance: string | null;
+  frozen: boolean;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -25,6 +55,7 @@ export interface Wallet {
   currency: Currency;
   saldo: string;
   tipo: "cash" | "bank" | "saving" | "other" | "business";
+  role: WalletRole;
   color: string;
   created_at: string;
 }
@@ -35,12 +66,14 @@ export interface Business {
   currency: Currency;
   wallet_id: string;
   saldo: string;
+  accounts: BusinessAccount[];
   created_at: string;
 }
 
 export interface BusinessSummary {
   saldo: string;
   currency: Currency;
+  accounts: BusinessAccount[];
   ingresos_mes: string;
   egresos_mes: string;
   recent: Transaction[];
@@ -131,6 +164,10 @@ export interface InvoicePayment {
   id: string;
   transaction_id: string | null;
   amount: string;
+  payment_method: PaymentMethod;
+  paid_currency: Currency;
+  paid_amount: string;
+  rate_usd: string;
   paid_at: string;
   note: string;
 }
@@ -150,6 +187,7 @@ export interface Invoice {
   amount_paid: string;
   balance_due: string;
   currency: Currency;
+  conversion: CurrencyConversion | null;
   notes: string;
   items: InvoiceItem[];
   payments: InvoicePayment[];
@@ -166,6 +204,7 @@ export interface InvoiceDraft {
   due_date?: string;
   tax_amount?: string;
   paid_amount?: string;
+  payment_method?: PaymentMethod;
   notes?: string;
 }
 
@@ -240,6 +279,10 @@ export interface OrderPayment {
   id: string;
   transaction_id: string | null;
   amount: string;
+  payment_method: PaymentMethod;
+  paid_currency: Currency;
+  paid_amount: string;
+  rate_usd: string;
   paid_at: string;
   note: string;
 }
@@ -261,6 +304,7 @@ export interface Order {
   amount_paid: string;
   balance_due: string;
   currency: Currency;
+  conversion: CurrencyConversion | null;
   notes: string;
   items: OrderItem[];
   payments: OrderPayment[];

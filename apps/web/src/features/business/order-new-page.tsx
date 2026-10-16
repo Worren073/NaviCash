@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sileo } from "sileo";
 import { Info, PackagePlus, Plus, ShoppingCart, Trash2, Users } from "lucide-react";
 
@@ -20,7 +20,8 @@ import {
   useProducts,
 } from "@/hooks/use-queries";
 import { formatMoney, toDateTimeLocalValue } from "@/lib/format";
-import type { Order, OrderLineDraft, OrderNewProduct } from "@/lib/types";
+import { PAYMENT_METHODS, defaultMethodFor, methodCurrency } from "@/lib/payment-methods";
+import type { Currency, Order, OrderLineDraft, OrderNewProduct, PaymentMethod } from "@/lib/types";
 
 interface ItemRow {
   kind: "existing" | "new";
@@ -92,6 +93,7 @@ export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps)
   const [shippingAmount, setShippingAmount] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
   const [notes, setNotes] = useState("");
+  const [method, setMethod] = useState<PaymentMethod | "">("");
   const [items, setItems] = useState<ItemRow[]>(() => {
     if (prefill.length === 0) return [emptyItem()];
     return prefill.map((line) => ({
@@ -138,7 +140,7 @@ export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps)
     updateItem(idx, {
       product: productId,
       description: product?.name ?? "",
-      unit_price: product?.cost_price ?? product?.unit_price ?? "",
+      unit_price: convertFromBase(product?.cost_price ?? product?.unit_price ?? ""),
     });
   };
 
@@ -155,10 +157,33 @@ export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps)
   const shipping = Number(shippingAmount) || 0;
   const total = subtotal + shipping;
   const paid = Number(paidAmount) || 0;
-  const walletSaldo = Number(business?.saldo ?? 0);
-  const currency = business?.currency ?? "USD";
+  const baseCurrency: Currency = business?.currency ?? "USD";
+  const effectiveMethod: PaymentMethod = method || defaultMethodFor(baseCurrency);
+  const docCurrency = methodCurrency(effectiveMethod);
+  const crossCurrency = docCurrency !== baseCurrency;
+
+  const { data: rateData } = useQuery({
+    queryKey: queryKeys.rates,
+    queryFn: () => api.get<{ rate: string }>("/rates/current"),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    enabled: crossCurrency,
+  });
+  const rate = Number(rateData?.rate) || 0;
+
+  /** Convierte un precio del catálogo (moneda base) a la moneda del pedido. */
+  const convertFromBase = (price: string): string => {
+    if (!crossCurrency || rate <= 0) return price;
+    const value = Number(price) || 0;
+    return (docCurrency === "VES" ? value * rate : value / rate).toFixed(2);
+  };
+
+  const walletSaldo = Number(
+    business?.accounts?.find((a) => a.currency === docCurrency)?.balance ?? 0,
+  );
 
   const validationError = useMemo(() => {
+    if (crossCurrency && rate <= 0) return t("invoices.form.errors.rateMissing");
     if (!selectedSupplier) return t("orders.form.errors.contact");
     if (items.length === 0) return t("orders.form.errors.items");
     if (items.some((r) => r.kind === "existing" && !r.description.trim()))
@@ -188,7 +213,7 @@ export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps)
     if (dueDate && orderDate && dueDate < orderDate.slice(0, 10))
       return t("orders.form.errors.dueBeforeOrder");
     return null;
-  }, [selectedSupplier, items, catalogue, shipping, paid, total, walletSaldo, dueDate, orderDate, t]);
+  }, [selectedSupplier, items, catalogue, shipping, paid, total, walletSaldo, dueDate, orderDate, crossCurrency, rate, t]);
 
   const create = useMutation({
     mutationFn: () => {
@@ -215,6 +240,7 @@ export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps)
         ...(dueDate ? { due_date: dueDate } : {}),
         ...(shippingAmount ? { shipping_amount: shippingAmount } : {}),
         ...(paidAmount ? { paid_amount: paidAmount } : {}),
+        payment_method: effectiveMethod,
         ...(notes.trim() ? { notes: notes.trim() } : {}),
       };
       return api.post<Order>("/business/orders/", payload);
@@ -549,7 +575,8 @@ export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps)
                   {formatMoney(
                     (Number(row.quantity) || 0) * (Number(row.unit_price) || 0) -
                       (Number(row.discount) || 0),
-                    currency
+                    docCurrency,
+                    { symbol: true }
                   )}
                 </span>
               </div>
@@ -578,24 +605,64 @@ export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps)
           </span>
           {Number(paidAmount) > 0 && (
             <span className="mt-1 block text-xs text-warning-text">
-              {t("orders.form.payable")}: {formatMoney(walletSaldo, currency)}
+              {t("orders.form.payable")}: {formatMoney(walletSaldo, docCurrency, { symbol: true })}
             </span>
           )}
         </label>
       </section>
 
+      <section className="space-y-2">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-on-surface">
+            {t("invoices.form.paymentMethod")}
+          </span>
+          <select
+            value={effectiveMethod}
+            onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+            className="h-11 w-full rounded-xl border border-glass-border bg-glass-surface px-3 text-base text-on-surface shadow-sm outline-none transition-colors backdrop-blur-md focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 md:text-sm"
+          >
+            <optgroup label="VES">
+              {PAYMENT_METHODS.filter((m) => m.currency === "VES").map((m) => (
+                <option key={m.value} value={m.value}>
+                  {t(m.labelKey)}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="USD">
+              {PAYMENT_METHODS.filter((m) => m.currency === "USD").map((m) => (
+                <option key={m.value} value={m.value}>
+                  {t(m.labelKey)}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+          <span className="mt-1 block text-xs text-on-surface-variant">
+            {crossCurrency
+              ? t("invoices.form.methodCross", { currency: docCurrency })
+              : t("invoices.form.methodSame", { currency: docCurrency })}
+          </span>
+        </label>
+        {crossCurrency && (
+          <p className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-on-surface-variant">
+            {rate > 0
+              ? t("invoices.form.rateBanner", { rate: rate.toLocaleString() })
+              : t("invoices.form.rateMissing")}
+          </p>
+        )}
+      </section>
+
       <section className="glass-panel clip-rounded-lg rounded-lg p-4">
         <div className="flex justify-between text-sm text-on-surface-variant">
           <span>{t("orders.detail.subtotal")}</span>
-          <span>{formatMoney(subtotal, currency)}</span>
+          <span>{formatMoney(subtotal, docCurrency, { symbol: true })}</span>
         </div>
         <div className="flex justify-between text-sm text-on-surface-variant">
           <span>{t("orders.detail.shipping")}</span>
-          <span>{formatMoney(shipping, currency)}</span>
+          <span>{formatMoney(shipping, docCurrency, { symbol: true })}</span>
         </div>
         <div className="mt-1 flex justify-between border-t border-glass-border pt-2 text-base font-semibold text-on-surface">
           <span>{t("orders.detail.total")}</span>
-          <span>{formatMoney(total, currency)}</span>
+          <span>{formatMoney(total, docCurrency, { symbol: true })}</span>
         </div>
       </section>
 

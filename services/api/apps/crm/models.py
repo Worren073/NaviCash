@@ -18,6 +18,7 @@ from apps.business.models import Business
 from apps.core.currency import CURRENCY_CHOICES, MONEY_DECIMALS
 from apps.core.crypto import decrypt_value, encrypt_value
 from apps.core.models import OwnedModel
+from apps.crm.payment_methods import PAYMENT_METHOD_CHOICES
 from apps.transactions.models import Transaction
 
 
@@ -272,12 +273,39 @@ class InvoicePayment(OwnedModel):
     amount = models.DecimalField(
         max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Monto"
     )
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default="efectivo_ves",
+        verbose_name="Método de pago",
+        help_text="Determina la cuenta del negocio (VES/USD) donde entra el cobro.",
+    )
+    paid_currency = models.CharField(
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        default="VES",
+        verbose_name="Moneda recibida",
+    )
+    paid_amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        default=0,
+        verbose_name="Monto recibido",
+        help_text="Cantidad realmente cobrada, en la moneda del método de pago.",
+    )
+    rate_usd = models.DecimalField(
+        max_digits=20,
+        decimal_places=4,
+        default=1,
+        verbose_name="Tasa BCV congelada",
+        help_text="Bs por 1 USD al momento del cobro (equivalencia congelada).",
+    )
     paid_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de pago")
     note = models.CharField(max_length=200, blank=True, default="", verbose_name="Nota")
 
     class Meta:
         verbose_name = "Pago de factura"
-        verbose_name_plural = "Pagos de facturas"
+        verbose_name_plural = "Pagos de factura"
         ordering = ["-paid_at"]
 
     def __str__(self) -> str:
@@ -467,6 +495,33 @@ class OrderPayment(OwnedModel):
     )
     amount = models.DecimalField(
         max_digits=20, decimal_places=MONEY_DECIMALS, verbose_name="Monto"
+    )
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default="efectivo_ves",
+        verbose_name="Método de pago",
+        help_text="Determina la cuenta del negocio (VES/USD) de donde sale el pago.",
+    )
+    paid_currency = models.CharField(
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        default="VES",
+        verbose_name="Moneda pagada",
+    )
+    paid_amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=MONEY_DECIMALS,
+        default=0,
+        verbose_name="Monto pagado",
+        help_text="Cantidad realmente pagada, en la moneda del método de pago.",
+    )
+    rate_usd = models.DecimalField(
+        max_digits=20,
+        decimal_places=4,
+        default=1,
+        verbose_name="Tasa BCV congelada",
+        help_text="Bs por 1 USD al momento del pago (equivalencia congelada).",
     )
     paid_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de pago")
     note = models.CharField(max_length=200, blank=True, default="", verbose_name="Nota")

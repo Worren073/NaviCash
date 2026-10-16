@@ -111,15 +111,15 @@ export default function NewOperationPage() {
   });
   const rate = rateData?.rate ? Number(rateData.rate) : null;
 
-  // En la vista de negocio la operación solo puede usar la cuenta del negocio:
-  // se preselecciona (es la única devuelta por scope=business) y su moneda
-  // queda fija para que el alta nunca choque con la regla del servidor.
+  // En la vista de negocio la operación debe usar la cuenta cuya moneda coincide
+  // con la del monto (el servidor exige wallet.currency == moneda). El negocio
+  // tiene dos cuentas (VES y USD), así que al cambiar de moneda cambiamos de cuenta.
   useEffect(() => {
     if (!isBusiness || !wallets || wallets.length === 0) return;
-    const bizWallet = wallets[0];
-    setWallet((current) => (current && wallets.some((w) => w.id === current) ? current : bizWallet.id));
-    setCurrency(bizWallet.currency);
-  }, [isBusiness, wallets]);
+    const match = wallets.find((w) => w.currency === currency) ?? wallets[0];
+    setWallet(match.id);
+    if (match.currency !== currency) setCurrency(match.currency);
+  }, [isBusiness, wallets, currency]);
 
   const changeCurrency = (c: Currency) => {
     if (c === currency) return;

@@ -42,7 +42,7 @@ def build_business_context(user, today: date | None = None) -> dict:
         tiene negocio, ``business`` es ``None`` y ``note`` es ``"no_business"``.
     """
     today = today or timezone.localdate()
-    business = Business.objects.filter(user=user).select_related("wallet").first()
+    business = Business.objects.filter(user=user).prefetch_related("wallets").first()
 
     if business is None:
         return {

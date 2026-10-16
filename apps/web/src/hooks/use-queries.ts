@@ -69,9 +69,10 @@ export function useMe() {
   });
 }
 
-export function useWallets() {
+export function useWallets(enabled = true) {
   return useQuery({
     queryKey: queryKeys.wallets,
+    enabled,
     queryFn: ({ signal }) =>
       api.get<{ results: Wallet[] }>("/wallets", { signal }).then((d) => d.results),
   });

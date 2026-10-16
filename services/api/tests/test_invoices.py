@@ -94,7 +94,7 @@ class TestInvoices:
 
     def test_create_invoice_full_paid(self, api_client, business, contact) -> None:
         """paid_amount == total: factura pagada y el cobro acredita la billetera."""
-        wallet = Wallet.objects.get(business=business)
+        wallet = Wallet.objects.get(business=business, role="primary")
         resp = api_client.post(
             self.URL, self._payload(contact, paid_amount="250.00"), format="json"
         )
@@ -186,7 +186,7 @@ class TestInvoices:
             total=Decimal("250.00"),
             balance_due=Decimal("250.00"),
         )
-        wallet = Wallet.objects.get(business=business)
+        wallet = Wallet.objects.get(business=business, role="primary")
         resp = api_client.post(f"{self.URL}{invoice.id}/pay/", {"amount": "250.00"})
         assert resp.status_code == 200
         assert resp.data["status"] == "pagada"

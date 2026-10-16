@@ -6,7 +6,13 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.core.currency import is_valid_amount, round_money
+from apps.core.currency import (
+    convert_to_usd,
+    is_valid_amount,
+    round_money,
+    usd_to_currency,
+)
+from apps.crm.payment_methods import PAYMENT_METHOD_CHOICES
 from apps.crm.tax_id import normalize_tax_id, tax_id_error
 from apps.crm.models import (
     BusinessContact,
@@ -25,6 +31,58 @@ from apps.crm.models import (
     ProductCategory,
     WhatsAppConfig,
 )
+from apps.rates.service import get_current_official_rate
+
+
+def _other_currency(currency: str) -> str:
+    """Devuelve la otra moneda del negocio (VES <-> USD)."""
+    return "USD" if currency == "VES" else "VES"
+
+
+def _convert(amount, source: str, dest: str, rate) -> "Decimal":
+    """Convierte entre VES y USD con la tasa BCV (Bs por 1 USD)."""
+    if source == dest:
+        return round_money(amount)
+    if dest == "VES":
+        return usd_to_currency(amount, "VES", rate)
+    return convert_to_usd(amount, "VES", rate)
+
+
+def _build_conversion(document, payments: list, rate_value) -> dict:
+    """Equivalencia de un documento en su otra moneda (regla B).
+
+    - La parte ya pagada queda CONGELADA con la tasa de cada pago.
+    - El saldo pendiente se muestra con la tasa BCV ACTUAL (del día).
+    - Si el documento está saldado, el total es la suma de lo congelado.
+    """
+    other = _other_currency(document.currency)
+    if rate_value is None:
+        return {
+            "currency": other,
+            "rate": None,
+            "total": None,
+            "paid": None,
+            "balance": None,
+            "frozen": document.balance_due <= 0,
+        }
+    paid = Decimal("0.00")
+    for payment in payments:
+        amount = payment.paid_amount or Decimal("0.00")
+        if payment.paid_currency == other:
+            paid += amount
+        else:
+            paid += _convert(
+                amount, payment.paid_currency, other, payment.rate_usd or Decimal("1")
+            )
+    balance = _convert(document.balance_due, document.currency, other, rate_value)
+    return {
+        "currency": other,
+        "rate": str(rate_value),
+        "total": str(round_money(paid + balance)),
+        "paid": str(round_money(paid)),
+        "balance": str(round_money(balance)),
+        "frozen": document.balance_due <= 0,
+    }
 
 
 class BusinessContactSerializer(serializers.ModelSerializer):
@@ -183,7 +241,17 @@ class InvoicePaymentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InvoicePayment
-        fields = ["id", "transaction_id", "amount", "paid_at", "note"]
+        fields = [
+            "id",
+            "transaction_id",
+            "amount",
+            "payment_method",
+            "paid_currency",
+            "paid_amount",
+            "rate_usd",
+            "paid_at",
+            "note",
+        ]
         read_only_fields = ["id", "transaction_id", "paid_at"]
 
 
@@ -194,6 +262,7 @@ class InvoiceReadSerializer(serializers.ModelSerializer):
     items = InvoiceItemSerializer(many=True, read_only=True)
     payments = InvoicePaymentSerializer(many=True, read_only=True)
     latest_follow_up = serializers.SerializerMethodField()
+    conversion = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -212,6 +281,7 @@ class InvoiceReadSerializer(serializers.ModelSerializer):
             "amount_paid",
             "balance_due",
             "currency",
+            "conversion",
             "notes",
             "items",
             "payments",
@@ -220,6 +290,12 @@ class InvoiceReadSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "business", "number", "created_at", "updated_at"]
+
+    def get_conversion(self, obj) -> dict:
+        """Equivalencia del total/saldo en la otra moneda (pagado congelado)."""
+        rate = get_current_official_rate()
+        rate_value = rate.effective_rate if rate else None
+        return _build_conversion(obj, list(obj.payments.all()), rate_value)
 
     def get_latest_follow_up(self, obj) -> dict | None:
         """Resumen del seguimiento más reciente (prefetched en el viewset)."""
@@ -254,6 +330,9 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
     paid_amount = serializers.DecimalField(
         max_digits=20, decimal_places=2, required=False, default=Decimal("0")
     )
+    payment_method = serializers.ChoiceField(
+        choices=PAYMENT_METHOD_CHOICES, required=False
+    )
 
     class Meta:
         model = Invoice
@@ -266,6 +345,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
             "due_date",
             "tax_amount",
             "paid_amount",
+            "payment_method",
             "notes",
             "items",
         ]
@@ -308,6 +388,11 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
                 {"business": "No tienes un negocio creado."}
             )
         attrs["business"] = business
+        if self.instance is None and not attrs.get("payment_method"):
+            # Sin método explícito, la factura nace en la moneda del negocio.
+            attrs["payment_method"] = (
+                "pago_movil" if business.currency == "VES" else "zelle"
+            )
 
         issue_date = attrs.get("issue_date")
         due_date = attrs.get("due_date")
@@ -345,6 +430,7 @@ class InvoiceWriteSerializer(serializers.ModelSerializer):
             due_date=validated_data.get("due_date"),
             tax_amount=validated_data.get("tax_amount"),
             paid_amount=validated_data.get("paid_amount"),
+            payment_method=validated_data.get("payment_method"),
             notes=validated_data.get("notes", ""),
         )
 
@@ -496,7 +582,17 @@ class OrderPaymentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderPayment
-        fields = ["id", "transaction_id", "amount", "paid_at", "note"]
+        fields = [
+            "id",
+            "transaction_id",
+            "amount",
+            "payment_method",
+            "paid_currency",
+            "paid_amount",
+            "rate_usd",
+            "paid_at",
+            "note",
+        ]
         read_only_fields = ["id", "transaction_id", "paid_at"]
 
 
@@ -507,6 +603,7 @@ class OrderReadSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     payments = OrderPaymentSerializer(many=True, read_only=True)
     payment_state = serializers.SerializerMethodField()
+    conversion = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -527,6 +624,7 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "amount_paid",
             "balance_due",
             "currency",
+            "conversion",
             "notes",
             "items",
             "payments",
@@ -534,6 +632,12 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "business", "number", "created_at", "updated_at"]
+
+    def get_conversion(self, obj) -> dict:
+        """Equivalencia del total/saldo en la otra moneda (pagado congelado)."""
+        rate = get_current_official_rate()
+        rate_value = rate.effective_rate if rate else None
+        return _build_conversion(obj, list(obj.payments.all()), rate_value)
 
     def get_payment_state(self, obj: Order) -> str:
         if obj.amount_paid <= 0:
@@ -557,6 +661,9 @@ class OrderWriteSerializer(serializers.ModelSerializer):
     paid_amount = serializers.DecimalField(
         max_digits=20, decimal_places=2, required=False, default=Decimal("0")
     )
+    payment_method = serializers.ChoiceField(
+        choices=PAYMENT_METHOD_CHOICES, required=False
+    )
 
     class Meta:
         model = Order
@@ -569,6 +676,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
             "due_date",
             "shipping_amount",
             "paid_amount",
+            "payment_method",
             "notes",
             "items",
         ]
@@ -611,6 +719,11 @@ class OrderWriteSerializer(serializers.ModelSerializer):
                 {"business": "No tienes un negocio creado."}
             )
         attrs["business"] = business
+        if self.instance is None and not attrs.get("payment_method"):
+            # Sin método explícito, el pedido nace en la moneda del negocio.
+            attrs["payment_method"] = (
+                "pago_movil" if business.currency == "VES" else "zelle"
+            )
 
         contact = attrs.get("contact") or getattr(self.instance, "contact", None)
         if contact is not None and contact.business_id != business.id:
@@ -643,6 +756,7 @@ class OrderWriteSerializer(serializers.ModelSerializer):
             due_date=validated_data.get("due_date"),
             shipping_amount=validated_data.get("shipping_amount"),
             paid_amount=validated_data.get("paid_amount"),
+            payment_method=validated_data.get("payment_method"),
             notes=validated_data.get("notes", ""),
         )
 

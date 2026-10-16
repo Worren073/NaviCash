@@ -49,7 +49,7 @@ class TestOrders:
         )
 
     def _fund_wallet(self, business, amount: str) -> None:
-        wallet = Wallet.objects.get(business=business)
+        wallet = Wallet.objects.get(business=business, role="primary")
         wallet.saldo = Decimal(amount)
         wallet.save()
         return wallet

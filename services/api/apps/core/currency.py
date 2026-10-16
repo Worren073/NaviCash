@@ -39,6 +39,27 @@ CURRENCY_CHOICES: Final[list[tuple[str, str]]] = [
     (code, f"{info['simbolo']} — {info['nombre']}") for code, info in CURRENCIES.items()
 ]
 
+#: Monedas permitidas para un negocio: una principal y su secundaria (VES/USD).
+BUSINESS_CURRENCY_CODES: Final[tuple[str, ...]] = ("VES", "USD")
+
+#: Opciones de moneda principal del negocio (para DRF).
+BUSINESS_CURRENCY_CHOICES: Final[list[tuple[str, str]]] = [
+    (code, f"{CURRENCIES[code]['simbolo']} — {CURRENCIES[code]['nombre']}")
+    for code in BUSINESS_CURRENCY_CODES
+]
+
+
+def counterpart_currency(code: str) -> str:
+    """Devuelve la otra moneda del negocio (VES <-> USD).
+
+    Args:
+        code: moneda principal del negocio (``"VES"`` o ``"USD"``).
+
+    Returns:
+        La moneda complementaria (``"USD"`` para ``"VES"`` y viceversa).
+    """
+    return "USD" if code == "VES" else "VES"
+
 
 def round_money(value: Decimal) -> Decimal:
     """Redondea un ``Decimal`` a ``MONEY_DECIMALS`` con redondeo "mitad hacia arriba".

@@ -30,7 +30,7 @@ class WalletSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Wallet
-        fields = ["id", "name", "currency", "tipo", "color", "saldo", "saldo_inicial", "created_at"]
+        fields = ["id", "name", "currency", "tipo", "role", "color", "saldo", "saldo_inicial", "created_at"]
         read_only_fields = ["id", "created_at"]
 
     def validate_name(self, value: str) -> str:

@@ -1,9 +1,10 @@
 """services — Lógica de negocio del módulo Business.
 
 ``create_business`` es la ÚNICA puerta de entrada para crear un negocio: crea
-su billetera (tipo ``business``) y acredita el capital inicial vía
+sus DOS billeteras (tipo ``business``: principal en la moneda base y secundaria
+en la otra) y acredita el capital inicial a la principal vía
 ``adjust_balance`` (auditoría ``capital_inicial``, ADR-08). El resumen del
-dashboard agrega SIEMPRE solo la billetera del negocio: nunca ve lo personal.
+dashboard agrega SIEMPRE solo las billeteras del negocio: nunca ve lo personal.
 """
 
 from __future__ import annotations
@@ -17,7 +18,13 @@ from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
 from apps.business.models import Business
-from apps.core.currency import round_money, usd_to_currency
+from apps.core.currency import (
+    BUSINESS_CURRENCY_CODES,
+    convert_to_usd,
+    counterpart_currency,
+    round_money,
+    usd_to_currency,
+)
 from apps.core.exceptions import BusinessRuleError
 from apps.crm.models import Invoice, InvoicePayment, Order, OrderPayment, Product
 from apps.rates.service import get_current_official_rate
@@ -28,23 +35,26 @@ from apps.wallets.services import adjust_balance
 
 @transaction.atomic
 def create_business(user, *, name: str, currency: str, initial_capital: Decimal) -> Business:
-    """Crea el negocio del usuario y su cuenta (billetera de negocio).
+    """Crea el negocio del usuario y sus DOS cuentas (billeteras de negocio).
 
-    El capital inicial es EXTERNO (aportado en efectivo por el dueño, no sale
-    de billeteras personales): se acredita a la cuenta del negocio al nacer.
+    Se crean dos billeteras tipo ``business``: la ``primary`` en la moneda base
+    elegida y la ``secondary`` en la otra moneda (VES/USD). Sus nombres siguen el
+    patrón ``"<nombre>-<MONEDA>"`` (ej. ``Negocio-USD`` / ``Negocio-VES``). El
+    capital inicial es EXTERNO (aportado en efectivo por el dueño, no sale de
+    billeteras personales): se acredita a la cuenta principal al nacer.
 
     Args:
         user: dueño del negocio.
         name: nombre visible (único por usuario).
-        currency: moneda del negocio (ISO 4217).
-        initial_capital: capital inicial (>= 0) en la moneda del negocio.
+        currency: moneda base del negocio (``"VES"`` o ``"USD"``).
+        initial_capital: capital inicial (>= 0) en la moneda base.
 
     Returns:
-        El ``Business`` creado con su billetera.
+        El ``Business`` creado con sus dos cuentas.
 
     Raises:
-        BusinessRuleError: si ya existe un negocio, el nombre está vacío o el
-            capital inicial es negativo.
+        BusinessRuleError: si ya existe un negocio, el nombre está vacío, la
+            moneda no es VES/USD o el capital inicial es negativo.
     """
     if Business.objects.filter(user=user).exists():
         raise BusinessRuleError("Ya tienes un negocio creado.")
@@ -53,50 +63,88 @@ def create_business(user, *, name: str, currency: str, initial_capital: Decimal)
     if not name:
         raise BusinessRuleError("El nombre del negocio no puede estar vacío.")
 
+    currency = (currency or "").upper()
+    if currency not in BUSINESS_CURRENCY_CODES:
+        raise BusinessRuleError("La moneda del negocio debe ser VES o USD.")
+
     initial_capital = round_money(initial_capital)
     if initial_capital < 0:
         raise BusinessRuleError("El capital inicial no puede ser negativo.")
 
-    wallet = Wallet.objects.create(
+    business = Business.objects.create(user=user, name=name, currency=currency)
+
+    primary = Wallet.objects.create(
         user=user,
-        name=name,
+        business=business,
+        name=f"{name}-{currency}",
         currency=currency,
         tipo="business",
         color="#0891b2",
+        role="primary",
     )
-    business = Business.objects.create(user=user, name=name, currency=currency)
-    wallet.business = business
-    wallet.save(update_fields=["business"])
+    secondary_currency = counterpart_currency(currency)
+    Wallet.objects.create(
+        user=user,
+        business=business,
+        name=f"{name}-{secondary_currency}",
+        currency=secondary_currency,
+        tipo="business",
+        color="#7c3aed",
+        role="secondary",
+    )
     if initial_capital > 0:
-        adjust_balance(wallet, initial_capital, reason="capital_inicial")
+        adjust_balance(primary, initial_capital, reason="capital_inicial")
     return business
+
+
+def _to_base(amount: Decimal, currency: str, base: str, rate: Decimal) -> Decimal:
+    """Convierte un monto a la moneda base del negocio (VES/USD).
+
+    Args:
+        amount: monto a convertir.
+        currency: moneda de origen.
+        base: moneda base del negocio.
+        rate: Bs por 1 USD.
+
+    Returns:
+        El monto redondeado en la moneda base.
+    """
+    if currency == base:
+        return round_money(amount)
+    if base == "USD":
+        return convert_to_usd(amount, currency, rate)
+    return usd_to_currency(amount, base, rate)
 
 
 def build_business_summary(business: Business, today: "date | None" = None) -> dict:
     """Agrega las métricas del dashboard del negocio.
 
-    Todas las operaciones se acotan a la billetera del negocio: lo personal
-    jamás contamina estos totales.
+    Todas las operaciones se acotan a LAS CUENTAS del negocio (principal y
+    secundaria): lo personal jamás contamina estos totales. El saldo total se
+    expresa en la moneda base, sumando la cuenta principal y la secundaria
+    convertida con la tasa oficial.
 
     Args:
-        business: negocio (con su ``wallet`` cargada).
+        business: negocio (con sus ``wallets`` cargadas).
         today: fecha de corte (por defecto, la local actual).
 
     Returns:
-        Dict con ``saldo``, ``currency``, ``ingresos_mes``, ``egresos_mes``
-        y ``recent`` (operaciones pagadas recientes, para el listado).
+        Dict con ``saldo`` (total en moneda base), ``currency``, ``accounts``
+        (detalle por cuenta), ``ingresos_mes``, ``egresos_mes`` y ``recent``
+        (operaciones pagadas recientes, para el listado).
     """
     today = today or timezone.localdate()
-    wallet = business.wallet
+    wallets = list(business.wallets.all())
     base = business.currency
     rate = get_current_official_rate()
     rate_value: "Decimal | None" = rate.effective_rate if rate else None
+    one = rate_value or Decimal("1")
 
     month_start = today.replace(day=1)
     month_end = date(today.year + (today.month // 12), today.month % 12 + 1, 1)
     totals = (
         Transaction.objects.filter(
-            wallet=wallet,
+            wallet__business=business,
             estado="pagado",
             fecha_pagado__date__gte=month_start,
             fecha_pagado__date__lt=month_end,
@@ -107,23 +155,34 @@ def build_business_summary(business: Business, today: "date | None" = None) -> d
     )
 
     recent = list(
-        Transaction.objects.filter(wallet=wallet, estado="pagado")
+        Transaction.objects.filter(wallet__business=business, estado="pagado")
         .select_related("category", "contact")
         .order_by("-fecha_pagado", "-fecha")[:6]
     )
 
+    accounts = [
+        {
+            "id": str(w.pk),
+            "name": w.name,
+            "currency": w.currency,
+            "role": w.role,
+            "balance": str(round_money(w.saldo)),
+        }
+        for w in wallets
+    ]
+    total = sum(
+        (_to_base(w.saldo, w.currency, base, one) for w in wallets), Decimal("0.00")
+    )
+
     return {
-        "saldo": str(round_money(wallet.saldo)),
+        "saldo": str(round_money(total)),
         "currency": base,
+        "accounts": accounts,
         "ingresos_mes": str(
-            round_money(
-                usd_to_currency(totals["ingresos"] or Decimal("0.00"), base, rate_value or Decimal("1"))
-            )
+            round_money(usd_to_currency(totals["ingresos"] or Decimal("0.00"), base, one))
         ),
         "egresos_mes": str(
-            round_money(
-                usd_to_currency(totals["egresos"] or Decimal("0.00"), base, rate_value or Decimal("1"))
-            )
+            round_money(usd_to_currency(totals["egresos"] or Decimal("0.00"), base, one))
         ),
         "recent": recent,
     }
@@ -172,13 +231,13 @@ def _month_key(value: "date | datetime") -> date:
 def build_business_analytics(business: Business, months: int = 12, today: "date | None" = None) -> dict:
     """Agrega las analíticas del negocio para el tablero financiero.
 
-    Todo se acota a la billetera del negocio (operaciones pagadas) y a sus
+    Todo se acota a las billeteras del negocio (operaciones pagadas) y a sus
     facturas/pedidos/productos (el CRM). Las series con ``monto_usd`` se
     convierten a la moneda del negocio con la tasa oficial vigente, igual que
     ``build_business_summary``.
 
     Args:
-        business: negocio (con su ``wallet`` cargada).
+        business: negocio (con sus ``wallets`` cargadas).
         months: ventana de la serie P&L (3-24; el llamador ya lo clampea).
         today: fecha de corte (por defecto, la local actual).
 
@@ -189,7 +248,6 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
         listos para graficar; las fechas usan formato ``YYYY-MM``.
     """
     today = today or timezone.localdate()
-    wallet = business.wallet
     base = business.currency
     rate = get_current_official_rate()
     rate_value: "Decimal | None" = rate.effective_rate if rate else None
@@ -199,7 +257,7 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
     series = _month_series(today, months)
 
     paid = Transaction.objects.filter(
-        wallet=wallet, estado="pagado", tipo__in=["cobro", "pago"],
+        wallet__business=business, estado="pagado", tipo__in=["cobro", "pago"],
         fecha_pagado__date__gte=cutoff,
     )
     rows = (
@@ -229,7 +287,7 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
     def _categories(kind: str) -> list[dict]:
         grouped = (
             Transaction.objects.filter(
-                wallet=wallet, estado="pagado", tipo=kind, fecha_pagado__date__gte=cutoff
+                wallet__business=business, estado="pagado", tipo=kind, fecha_pagado__date__gte=cutoff
             )
             .values("category__name")
             .annotate(total=Sum("monto_usd"))

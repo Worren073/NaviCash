@@ -41,6 +41,7 @@ from apps.crm.models import (
     WhatsAppConfig,
 )
 from apps.crm.services import GOODS_OUT_STATUSES, requires_integer_amounts
+from apps.crm.payment_methods import PAYMENT_METHOD_CODES
 from apps.crm.tax_id import TAX_ID_TYPES, tax_id_search_term
 from apps.crm.whatsapp_service import (
     WhatsAppSendError,
@@ -228,9 +229,16 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 {"detail": "Debes indicar el monto del pago.", "code": "validation_error"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        payment_method = request.data.get("payment_method") or None
+        if payment_method is not None and payment_method not in PAYMENT_METHOD_CODES:
+            return Response(
+                {"detail": "Método de pago inválido.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         record_invoice_payment(
             invoice,
             Decimal(str(amount)),
+            payment_method=payment_method,
             note=request.data.get("note", ""),
         )
         return Response(self.get_serializer(invoice).data)
@@ -331,9 +339,16 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"detail": "Debes indicar el monto del pago.", "code": "validation_error"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        payment_method = request.data.get("payment_method") or None
+        if payment_method is not None and payment_method not in PAYMENT_METHOD_CODES:
+            return Response(
+                {"detail": "Método de pago inválido.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         record_order_payment(
             order,
             Decimal(str(amount)),
+            payment_method=payment_method,
             note=request.data.get("note", ""),
         )
         return Response(self.get_serializer(self._fresh_order(order)).data)

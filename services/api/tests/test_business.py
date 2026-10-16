@@ -181,10 +181,12 @@ class TestSegregation:
         resp = api_client.get("/api/wallets")
         ids = {row["id"] for row in resp.data["results"]}
         assert ids == {str(personal_wallet.pk)}
-        # Y el scope business expone solo la del negocio.
+        # Y el scope business expone las DOS cuentas del negocio (VES y USD).
         bresp = api_client.get("/api/wallets?scope=business")
-        assert len(bresp.data["results"]) == 1
-        assert bresp.data["results"][0]["tipo"] == "business"
+        results = bresp.data["results"]
+        assert len(results) == 2
+        assert {row["tipo"] for row in results} == {"business"}
+        assert {row["currency"] for row in results} == {"VES", "USD"}
 
     def test_transactions_list_default_is_private_only(self, api_client) -> None:
         _, personal_wallet = self._seed_both_worlds(api_client)

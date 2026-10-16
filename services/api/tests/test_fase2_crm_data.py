@@ -156,7 +156,7 @@ class TestCrmOriginAndAutoCategory:
             contact,
             [{"description": "Mercancía", "quantity": 2, "unit_price": "20.00"}],
         )
-        wallet = Wallet.objects.get(business=business)
+        wallet = Wallet.objects.get(business=business, role="primary")
         wallet.saldo = Decimal("500.00")
         wallet.save()
         payment = record_order_payment(order, Decimal("40.00"))
