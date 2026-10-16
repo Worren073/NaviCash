@@ -419,6 +419,7 @@ export default {
       notConfigured: "Instagram no está configurado en el servidor.",
       oauthError: "No se pudo conectar Instagram. Inténtalo de nuevo.",
       success: "Instagram conectado.",
+      cancelled: "Conexión de Instagram cancelada.",
     },
   },
   invoices: {

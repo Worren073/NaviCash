@@ -15,7 +15,7 @@ from django.core import signing
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.db.models import F, Prefetch, Q
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -723,11 +723,34 @@ _OAUTH_STATE_MAX_AGE = 600  # 10 min para completar el flujo OAuth.
 _INSTAGRAM_REFRESH_MARGIN = timedelta(days=7)
 _MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
+_OAUTH_MODES = ("popup", "page")
 
 
-def _instagram_redirect(query: str) -> HttpResponseRedirect:
+def _instagram_completion_html(status: str, mode: str) -> HttpResponse:
+    """Página mínima que cierra el popup o vuelve a la app según el modo OAuth.
+
+    - ``popup``: el flujo se abrió en una ventana emergente; la página se cierra
+      sola (``window.close``) y la app detecta el cierre y refresca el estado.
+    - ``page``: navegación completa (p. ej. móvil); se redirige a la bandeja con
+      el resultado en el query string.
+
+    Solo interpola un ``status`` fijo (``connected``/``error``) y la base pública
+    de la app, ambos controlados por el servidor: no se reflejan datos de usuario.
+    """
     base = (settings.APP_BASE_URL or "").rstrip("/")
-    return HttpResponseRedirect(f"{base}/business/chats?{query}")
+    target = f"{base}/business/chats?instagram={status}"
+    if mode == "popup":
+        script = "window.close();"
+    else:
+        script = f"window.location.replace({json.dumps(target)});"
+    html = (
+        '<!doctype html><html lang="es"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        "<title>NaviCash</title></head><body>"
+        f"<script>{script}</script>"
+        "</body></html>"
+    )
+    return HttpResponse(html, content_type="text/html")
 
 
 def _attachment_kind_from_content_type(content_type: str) -> str:
@@ -919,8 +942,13 @@ class InstagramOAuthStartView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        mode = request.query_params.get("mode")
+        if mode not in _OAUTH_MODES:
+            mode = "page"
         state = signing.dumps(
-            {"uid": request.user.id}, salt=_OAUTH_STATE_SALT, compress=True
+            {"uid": request.user.id, "mode": mode},
+            salt=_OAUTH_STATE_SALT,
+            compress=True,
         )
         return Response({"authorize_url": build_authorize_url(state)})
 
@@ -936,34 +964,41 @@ class InstagramOAuthCallbackView(APIView):
         code = request.query_params.get("code")
         state = request.query_params.get("state")
         error = request.query_params.get("error") or request.query_params.get("error_reason")
-        if error or not code or not state:
-            return _instagram_redirect("instagram=error")
 
-        try:
-            data = signing.loads(
-                state, salt=_OAUTH_STATE_SALT, max_age=_OAUTH_STATE_MAX_AGE
-            )
-            user_id = data.get("uid")
-        except signing.BadSignature:
-            return _instagram_redirect("instagram=error")
+        mode = "page"
+        user_id = None
+        if state:
+            try:
+                data = signing.loads(
+                    state, salt=_OAUTH_STATE_SALT, max_age=_OAUTH_STATE_MAX_AGE
+                )
+                user_id = data.get("uid")
+                state_mode = data.get("mode")
+                if state_mode in _OAUTH_MODES:
+                    mode = state_mode
+            except signing.BadSignature:
+                return _instagram_completion_html("error", "page")
+
+        if error or not code or not state:
+            return _instagram_completion_html("error", mode)
 
         user = get_user_model().objects.filter(pk=user_id).first()
         if user is None:
-            return _instagram_redirect("instagram=error")
+            return _instagram_completion_html("error", mode)
         business = Business.objects.filter(user=user).first()
         if business is None:
-            return _instagram_redirect("instagram=error")
+            return _instagram_completion_html("error", mode)
 
         try:
             short = exchange_code(code)
             long_lived = exchange_long_lived(short.get("access_token", ""))
         except InstagramError:
-            return _instagram_redirect("instagram=error")
+            return _instagram_completion_html("error", mode)
 
         ig_user_id = str(short.get("user_id", ""))
         token = long_lived.get("access_token", "")
         if not ig_user_id or not token:
-            return _instagram_redirect("instagram=error")
+            return _instagram_completion_html("error", mode)
 
         profile = fetch_profile(ig_user_id, token)
         expires_in = long_lived.get("expires_in") or 0
@@ -985,9 +1020,9 @@ class InstagramOAuthCallbackView(APIView):
                 config.access_token = token
                 config.save(update_fields=["access_token_encrypted", "updated_at"])
         except IntegrityError:
-            return _instagram_redirect("instagram=error")
+            return _instagram_completion_html("error", mode)
 
-        return _instagram_redirect("instagram=connected")
+        return _instagram_completion_html("connected", mode)
 
 
 class InstagramConfigView(APIView):

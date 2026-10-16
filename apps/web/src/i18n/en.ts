@@ -420,6 +420,7 @@ export default {
       notConfigured: "Instagram isn't configured on the server.",
       oauthError: "Couldn't connect Instagram. Please try again.",
       success: "Instagram connected.",
+      cancelled: "Instagram connection cancelled.",
     },
   },
   invoices: {

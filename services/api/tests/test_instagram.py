@@ -18,6 +18,7 @@ import hmac
 import json
 from datetime import timedelta
 from decimal import Decimal
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.core import signing
@@ -386,8 +387,11 @@ class TestInstagramOAuth:
 
         state = signing.dumps({"uid": api_client.user.id}, salt=_OAUTH_STATE_SALT, compress=True)
         resp = api_client.get(OAUTH_CALLBACK_URL, {"code": "the-code", "state": state})
-        assert resp.status_code == 302
-        assert "instagram=connected" in resp["Location"]
+        assert resp.status_code == 200
+        assert resp.headers["Content-Type"].startswith("text/html")
+        body = resp.content.decode()
+        assert "instagram=connected" in body
+        assert "window.location.replace" in body
 
         config = InstagramConfig.objects.get(user=api_client.user)
         assert config.ig_user_id == "IG-BIZ-9"
@@ -396,28 +400,64 @@ class TestInstagramOAuth:
         assert config.access_token_encrypted != "long-lived"
         assert config.token_expires_at is not None
 
-    def test_callback_bad_state_redirects_error(self, api_client, business) -> None:
+    def test_start_popup_mode_embeds_mode_in_state(self, api_client) -> None:
+        resp = api_client.get(OAUTH_START_URL, {"mode": "popup"})
+        assert resp.status_code == 200
+        query = urlparse(resp.data["authorize_url"]).query
+        state = parse_qs(query)["state"][0]
+        assert signing.loads(state, salt=_OAUTH_STATE_SALT)["mode"] == "popup"
+
+    def test_callback_popup_mode_closes_window(self, api_client, business, monkeypatch) -> None:
+        def fake_post(url, data=None, json=None, headers=None, timeout=None):
+            return _FakeResponse(
+                200,
+                {"access_token": "short", "user_id": "IG-BIZ-9", "permissions": ["instagram_business_basic"]},
+            )
+
+        def fake_get(url, params=None, timeout=None, **kwargs):
+            if "refresh_access_token" in url:
+                return _FakeResponse(200, {"access_token": "refreshed", "expires_in": 5184000})
+            if url.endswith("/access_token"):
+                return _FakeResponse(200, {"access_token": "long-lived", "expires_in": 5184000})
+            return _FakeResponse(200, {"id": "IG-BIZ-9", "username": "tienda_real"})
+
+        monkeypatch.setattr("apps.crm.instagram_service.httpx.post", fake_post)
+        monkeypatch.setattr("apps.crm.instagram_service.httpx.get", fake_get)
+
+        state = signing.dumps(
+            {"uid": api_client.user.id, "mode": "popup"},
+            salt=_OAUTH_STATE_SALT,
+            compress=True,
+        )
+        resp = api_client.get(OAUTH_CALLBACK_URL, {"code": "the-code", "state": state})
+        assert resp.status_code == 200
+        assert resp.headers["Content-Type"].startswith("text/html")
+        body = resp.content.decode()
+        assert "window.close()" in body
+        assert "window.location.replace" not in body
+
+    def test_callback_bad_state_returns_error(self, api_client, business) -> None:
         resp = api_client.get(OAUTH_CALLBACK_URL, {"code": "x", "state": "invalido"})
-        assert resp.status_code == 302
-        assert "instagram=error" in resp["Location"]
+        assert resp.status_code == 200
+        assert "instagram=error" in resp.content.decode()
         assert InstagramConfig.objects.count() == 0
 
-    def test_callback_exchange_failure_redirects_error(self, api_client, business, monkeypatch) -> None:
+    def test_callback_exchange_failure_returns_error(self, api_client, business, monkeypatch) -> None:
         def fake_post(*args, **kwargs):
             return _FakeResponse(400, {"error": {"message": "bad code"}})
 
         monkeypatch.setattr("apps.crm.instagram_service.httpx.post", fake_post)
         state = signing.dumps({"uid": api_client.user.id}, salt=_OAUTH_STATE_SALT, compress=True)
         resp = api_client.get(OAUTH_CALLBACK_URL, {"code": "x", "state": state})
-        assert resp.status_code == 302
-        assert "instagram=error" in resp["Location"]
+        assert resp.status_code == 200
+        assert "instagram=error" in resp.content.decode()
         assert InstagramConfig.objects.count() == 0
 
     def test_callback_requires_business(self, api_client, monkeypatch) -> None:
         state = signing.dumps({"uid": api_client.user.id}, salt=_OAUTH_STATE_SALT, compress=True)
         resp = api_client.get(OAUTH_CALLBACK_URL, {"code": "x", "state": state})
-        assert resp.status_code == 302
-        assert "instagram=error" in resp["Location"]
+        assert resp.status_code == 200
+        assert "instagram=error" in resp.content.decode()
 
 
 # ---------------------------------------------------------------------------

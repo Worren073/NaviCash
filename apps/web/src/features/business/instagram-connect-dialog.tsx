@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { sileo } from "sileo";
@@ -74,21 +74,106 @@ export function InstagramConnectDialog({
   const queryClient = useQueryClient();
   const connected = Boolean(config?.connected);
 
+  const popupRef = useRef<Window | null>(null);
+  const pollRef = useRef<number | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
   const start = useMutation({
-    mutationFn: () => api.get<InstagramOAuthStart>("/business/instagram/oauth/start/"),
-    onSuccess: (data) => {
-      if (!data.authorize_url) {
-        sileo.error({ title: t("chats.instagramDialog.notConfigured") });
-        return;
-      }
-      // Redirige el navegador al consentimiento de Instagram.
-      window.location.assign(data.authorize_url);
-    },
-    onError: (err) => {
+    // `mode=popup` hace que el callback cierre solo la ventana emergente;
+    // `mode=page` mantiene la redirección de página completa (móvil/fallback).
+    mutationFn: (mode: "popup" | "page") =>
+      api.get<InstagramOAuthStart>(`/business/instagram/oauth/start/?mode=${mode}`),
+  });
+
+  const reportError = useCallback(
+    (err: unknown) => {
       const msg = err instanceof ApiErrorClass ? err.message : t("errors.generic");
       sileo.error({ title: msg });
     },
-  });
+    [t]
+  );
+
+  const redirectToInstagram = useCallback(() => {
+    start.mutate("page", {
+      onSuccess: (data) => {
+        if (!data.authorize_url) {
+          sileo.error({ title: t("chats.instagramDialog.notConfigured") });
+          return;
+        }
+        window.location.assign(data.authorize_url);
+      },
+      onError: reportError,
+    });
+  }, [start, t, reportError]);
+
+  const refreshStatus = useCallback(() => {
+    void (async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.instagramConfig });
+      const cfg = queryClient.getQueryData<InstagramConfig>(queryKeys.instagramConfig);
+      if (cfg?.connected) {
+        sileo.success({ title: t("chats.instagramDialog.success") });
+      } else {
+        sileo.info({ title: t("chats.instagramDialog.cancelled") });
+      }
+    })();
+  }, [queryClient, t]);
+
+  const handleConnect = useCallback(() => {
+    // En pantallas táctiles el popup se abre como pestaña y no se autocierra:
+    // se usa la redirección de página completa.
+    const coarsePointer = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    if (coarsePointer) {
+      redirectToInstagram();
+      return;
+    }
+
+    // Ventana emergente abierta de forma síncrona (evita el bloqueador de popups).
+    const popup = window.open(
+      "about:blank",
+      "navicash-instagram-oauth",
+      "width=600,height=740"
+    );
+    if (!popup) {
+      redirectToInstagram();
+      return;
+    }
+    // Se corta el acceso al opener por seguridad: la app detecta el cierre.
+    popup.opener = null;
+    popupRef.current = popup;
+
+    start.mutate("popup", {
+      onSuccess: (data) => {
+        if (!data.authorize_url) {
+          popup.close();
+          popupRef.current = null;
+          sileo.error({ title: t("chats.instagramDialog.notConfigured") });
+          return;
+        }
+        popup.location.href = data.authorize_url;
+        stopPolling();
+        pollRef.current = window.setInterval(() => {
+          if (popupRef.current?.closed) {
+            stopPolling();
+            popupRef.current = null;
+            refreshStatus();
+          }
+        }, 600);
+      },
+      onError: (err) => {
+        popup.close();
+        popupRef.current = null;
+        reportError(err);
+      },
+    });
+  }, [redirectToInstagram, start, stopPolling, refreshStatus, reportError, t]);
 
   const disconnect = useMutation({
     mutationFn: () => api.delete("/business/instagram/config/"),
@@ -180,7 +265,7 @@ export function InstagramConnectDialog({
                 type="button"
                 variant="glow"
                 className="gap-1"
-                onClick={() => start.mutate()}
+                onClick={handleConnect}
                 disabled={start.isPending}
               >
                 <Instagram className="h-4 w-4" />
