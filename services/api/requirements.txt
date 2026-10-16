@@ -17,7 +17,7 @@ redis>=5,<6
 
 # Servidor WSGI para producción (AUDIT M7): el Dockerfile arranca gunicorn
 # cuando DEBUG=0 (runserver solo en dev).
-gunicorn>=23,<24
+gunicorn>=26.1.0,<27
 
 # Hashing de contraseñas robusto (Argon2, preferido sobre PBKDF2)
 argon2-cffi>=23.1,<24
