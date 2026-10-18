@@ -13,6 +13,7 @@ from apps.core.views import health
 
 urlpatterns = [
     # Sonda de salud (sin auth ni throttle): keep-alive externo / diagnóstico.
+    path("health/", health),
     path("api/health", health),
     # API de NaviCash (/api/auth, /api/rates, /api/wallets, ...)
     path("api/", include("apps.accounts.urls")),
