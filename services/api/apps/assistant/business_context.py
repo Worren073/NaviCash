@@ -96,6 +96,7 @@ def build_business_context(user, today: date | None = None) -> dict:
         "ingresos_mes": summary["ingresos_mes"],
         "egresos_mes": summary["egresos_mes"],
         "kpis": analytics["kpis"],
+        "analytics_currency": analytics["currency"],
         "pnl": analytics["pnl"],
         "aging": analytics["aging"],
         "income_categories": analytics["incomeCategories"][:_MAX_ROWS],

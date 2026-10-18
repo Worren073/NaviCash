@@ -115,7 +115,7 @@ export default {
     transferRateLabel: "Rate used for the transfer",
     transferCustomPlaceholder: "e.g. 860.00",
     transferVenta: "Sell ({{from}} → {{to}})",
-    transferCompra: "Buy ({{to}} → {{from}})",
+    transferCompra: "Buy ({{from}} → {{to}})",
     transferPreview: "You will receive",
     transferSuccess: "Transfer registered.",
     transferInsufficient: "You don't have enough balance in the source account.",

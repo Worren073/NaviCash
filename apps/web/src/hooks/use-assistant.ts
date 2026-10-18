@@ -156,6 +156,7 @@ export function useAssistant() {
       const q = question.toLowerCase();
       if (!businessSummary) return t("assistant.noBusiness");
       const currency = businessSummary.currency;
+      const analyticsCurrency = businessAnalytics?.currency ?? currency;
       if (/saldo|balance|cu[aá]nto tengo|caja|dinero/.test(q)) {
         return t("assistant.businessBalanceReply", {
           total: formatMoney(businessSummary.saldo, currency, { symbol: true }),
@@ -165,14 +166,14 @@ export function useAssistant() {
       if (/cobrar|me deben|recibir|cartera|factura/.test(q)) {
         if (!k) return t("assistant.businessFallback");
         return t("assistant.businessReceivablesReply", {
-          amount: formatMoney(String(k.receivable), currency, { symbol: true }),
-          overdue: formatMoney(String(k.overdue), currency, { symbol: true }),
+          amount: formatMoney(String(k.receivable), analyticsCurrency, { symbol: true }),
+          overdue: formatMoney(String(k.overdue), analyticsCurrency, { symbol: true }),
         });
       }
       if (/pagar|debo|proveedor|pedido/.test(q)) {
         if (!k) return t("assistant.businessFallback");
         return t("assistant.businessPayablesReply", {
-          amount: formatMoney(String(k.payable), currency, { symbol: true }),
+          amount: formatMoney(String(k.payable), analyticsCurrency, { symbol: true }),
         });
       }
       return t("assistant.businessFallback");

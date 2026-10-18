@@ -309,6 +309,61 @@ class TestBusinessAnalyticsCrm:
 
 
 @pytest.mark.django_db
+class TestBusinessAnalyticsUsdNormalization:
+    """El tablero SIEMPRE se normaliza a USD aunque la base del negocio sea VES."""
+
+    def test_ves_business_amounts_converted_to_usd(self, api_client) -> None:
+        # Tasa sembrada por ``_seed_rate``: 100 VES = 1 USD.
+        company = _create_business(api_client, currency="VES")
+        today = timezone.localdate()
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=company, name="Cliente VES", type="cliente"
+        )
+        # Cobro pagado en VES (monto_usd congelado 40): el P&L no debe reescalar.
+        wallet = Business.objects.get(user=api_client.user).wallet
+        TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="cobro", estado="pagado",
+            monto=Decimal("4000.00"), moneda="VES", monto_usd=Decimal("40.00"),
+            fecha_pagado=_aware(_month_start(0)), fecha=today,
+        )
+        # Saldo pendiente en VES: 1000 Bs -> 10 USD.
+        Invoice.objects.create(
+            user=api_client.user, business=company, contact=contact,
+            number="F-00001", issue_date=today, due_date=today + timedelta(days=10),
+            status="enviada", subtotal=Decimal("1000.00"), tax_amount=Decimal("0.00"),
+            total=Decimal("1000.00"), amount_paid=Decimal("0.00"),
+            balance_due=Decimal("1000.00"), currency="VES",
+        )
+        # Pago histórico en VES: 500 Bs -> 5 USD (top cliente).
+        paid_invoice = Invoice.objects.create(
+            user=api_client.user, business=company, contact=contact,
+            number="F-00002", issue_date=today, due_date=today,
+            status="pagada", subtotal=Decimal("500.00"), tax_amount=Decimal("0.00"),
+            total=Decimal("500.00"), amount_paid=Decimal("500.00"),
+            balance_due=Decimal("0.00"), currency="VES",
+        )
+        InvoicePayment.objects.create(
+            user=api_client.user, invoice=paid_invoice, amount=Decimal("500.00"),
+            paid_at=_aware(today - timedelta(days=2)),
+        )
+        # Inventario a costo en VES: 3 x 200 Bs = 600 Bs -> 6 USD.
+        Product.objects.create(
+            user=api_client.user, business=company, name="Café 1kg",
+            unit_price=Decimal("300.00"), cost_price=Decimal("200.00"),
+            stock_quantity=Decimal("3"), category=None,
+        )
+        resp = api_client.get("/api/business/analytics")
+        assert resp.status_code == 200
+        data = resp.data
+        assert data["currency"] == "USD"
+        assert data["kpis"]["incomePeriod"] == 40.0
+        assert data["pnl"][-1]["income"] == 40.0
+        assert data["kpis"]["receivable"] == 10.0
+        assert data["kpis"]["inventoryValue"] == 6.0
+        assert data["topClients"] == [{"label": "Cliente VES", "value": 5.0}]
+
+
+@pytest.mark.django_db
 class TestBusinessAnalyticsGuard:
     """Validación del endpoint."""
 

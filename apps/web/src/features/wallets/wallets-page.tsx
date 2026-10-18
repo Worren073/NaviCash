@@ -682,7 +682,7 @@ export function TransferWalletDialog({
 
               <p className="rounded-lg border border-glass-border bg-surface-container-low px-3 py-2 text-sm text-on-surface-variant">
                 {isBuy
-                  ? t("wallet.transferCompra", { to: target.currency, from: source.currency })
+                  ? t("wallet.transferCompra", { from: source.currency, to: target.currency })
                   : t("wallet.transferVenta", { from: source.currency, to: target.currency })}
               </p>
 

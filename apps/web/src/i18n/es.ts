@@ -115,7 +115,7 @@ export default {
     transferRateLabel: "Tasa a la que se hizo el traspaso",
     transferCustomPlaceholder: "p. ej. 860.00",
     transferVenta: "Venta ({{from}} → {{to}})",
-    transferCompra: "Compra ({{to}} → {{from}})",
+    transferCompra: "Compra ({{from}} → {{to}})",
     transferPreview: "Recibirás",
     transferSuccess: "Transferencia registrada.",
     transferInsufficient: "No tienes suficiente saldo en la cuenta de origen.",

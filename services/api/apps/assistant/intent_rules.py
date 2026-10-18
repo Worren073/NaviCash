@@ -147,7 +147,7 @@ def _answer_business_balance(context: dict) -> str:
 def _answer_business_cashflow(context: dict) -> str:
     """Flujo de caja: ingresos/egresos del período y margen."""
     kpis = context.get("kpis") or {}
-    currency = context.get("currency", "USD")
+    currency = context.get("analytics_currency", "USD")
     income = _decimal(kpis.get("incomePeriod"))
     expense = _decimal(kpis.get("expensePeriod"))
     net = income - expense
@@ -166,7 +166,7 @@ def _answer_business_cashflow(context: dict) -> str:
 def _answer_business_receivables(context: dict) -> str:
     """Cuentas por cobrar y cartera vencida."""
     kpis = context.get("kpis") or {}
-    currency = context.get("currency", "USD")
+    currency = context.get("analytics_currency", "USD")
     receivable = _decimal(kpis.get("receivable"))
     overdue = _decimal(kpis.get("overdue"))
     open_inv = context.get("open_invoices") or {}
@@ -183,9 +183,9 @@ def _answer_business_receivables(context: dict) -> str:
 
 
 def _answer_business_payables(context: dict) -> str:
-    """Cuentas por pagar y pedidos pendientes."""
+    """Cuentas por pagar y pedidos."""
     kpis = context.get("kpis") or {}
-    currency = context.get("currency", "USD")
+    currency = context.get("analytics_currency", "USD")
     payable = _decimal(kpis.get("payable"))
     orders = context.get("pending_orders") or {}
     return (
@@ -214,7 +214,7 @@ def _answer_business_top_clients(context: dict) -> str:
     clients = context.get("top_clients") or []
     if not clients:
         return "Aún no hay pagos de clientes en el período para destacar."
-    currency = context.get("currency", "USD")
+    currency = context.get("analytics_currency", "USD")
     names = " · ".join(f"{c['label']}: {_fmt(c['value'])} {currency}" for c in clients[:5])
     return "Tus mejores clientes del período:\n" + names
 

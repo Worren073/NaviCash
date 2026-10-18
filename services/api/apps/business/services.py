@@ -209,18 +209,17 @@ def _month_series(today: date, months: int) -> list[date]:
     return series
 
 
-def _to_business_amount(amount: Decimal, currency: str, base: str, rate_value: Decimal) -> Decimal:
-    """Convierte un monto a la moneda del negocio (v1: solo desde USD).
+def _to_usd(amount: Decimal, currency: str, rate_value: Decimal) -> Decimal:
+    """Convierte un monto de la moneda indicada a USD con la tasa oficial vigente.
 
-    Un monto ya en la moneda del negocio se devuelve tal cual; uno en USD se
-    convierte con la tasa oficial vigente; cualquier otra moneda se usa a su
-    valor nominal (no se mezcla con el resto del tablero sin tasa conjunta).
+    Un monto ya en USD se devuelve tal cual (identidad); cualquier otra moneda
+    (ej. VES) se divide por la tasa (``rate_value``) para normalizar el tablero
+    completo a dólares. Si no hay tasa disponible se usa la nominal para no
+    romper el tablero (situación transitoria sin tasa oficial sembrada).
     """
-    if currency == base:
-        return amount
     if currency == "USD":
-        return usd_to_currency(amount, base, rate_value or Decimal("1"))
-    return amount
+        return amount
+    return convert_to_usd(amount, currency, rate_value or Decimal("1"))
 
 
 def _month_key(value: "date | datetime") -> date:
@@ -232,9 +231,10 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
     """Agrega las analíticas del negocio para el tablero financiero.
 
     Todo se acota a las billeteras del negocio (operaciones pagadas) y a sus
-    facturas/pedidos/productos (el CRM). Las series con ``monto_usd`` se
-    convierten a la moneda del negocio con la tasa oficial vigente, igual que
-    ``build_business_summary``.
+    facturas/pedidos/productos (el CRM). El tablero SIEMPRE se normaliza a USD
+    (moneda de referencia de los reportes): las series con ``monto_usd`` ya están
+    en dólares y los saldos/promedios en otra moneda (ej. VES) se dividen por la
+    tasa oficial vigente. Así todos los KPIs, series y rankings comparten unidad.
 
     Args:
         business: negocio (con sus ``wallets`` cargadas).
@@ -248,7 +248,6 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
         listos para graficar; las fechas usan formato ``YYYY-MM``.
     """
     today = today or timezone.localdate()
-    base = business.currency
     rate = get_current_official_rate()
     rate_value: "Decimal | None" = rate.effective_rate if rate else None
     one = rate_value or Decimal("1")
@@ -271,8 +270,8 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
     income_total = Decimal("0.00")
     expense_total = Decimal("0.00")
     for m in series:
-        income = usd_to_currency(by_month.get((m, "cobro"), Decimal("0.00")), base, one)
-        expense = usd_to_currency(by_month.get((m, "pago"), Decimal("0.00")), base, one)
+        income = _to_usd(by_month.get((m, "cobro"), Decimal("0.00")), "USD", one)
+        expense = _to_usd(by_month.get((m, "pago"), Decimal("0.00")), "USD", one)
         income_total += income
         expense_total += expense
         pnl.append(
@@ -296,7 +295,7 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
         return [
             {
                 "label": row["category__name"] or "Sin categoría",
-                "value": round(float(usd_to_currency(row["total"] or Decimal("0.00"), base, one)), 2),
+                "value": round(float(row["total"] or Decimal("0.00")), 2),
             }
             for row in grouped
         ]
@@ -310,7 +309,7 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
     receivable = Decimal("0.00")
     overdue = Decimal("0.00")
     for inv in open_invoices:
-        value = _to_business_amount(inv.balance_due, inv.currency, base, one)
+        value = _to_usd(inv.balance_due, inv.currency, one)
         receivable += value
         days = max(0, (today - inv.due_date).days)
         if days <= 30:
@@ -326,15 +325,17 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
 
     payable = Decimal("0.00")
     for order in Order.objects.filter(business=business, balance_due__gt=0).exclude(status="anulado"):
-        payable += _to_business_amount(order.balance_due, order.currency, base, one)
+        payable += _to_usd(order.balance_due, order.currency, one)
 
-    inventory_value = (
+    inventory_value = _to_usd(
         Product.objects.filter(business=business)
         .annotate(
             line_value=F("stock_quantity") * Coalesce(F("cost_price"), Decimal("0.00"))
         )
         .aggregate(total=Sum("line_value"))["total"]
-        or Decimal("0.00")
+        or Decimal("0.00"),
+        business.currency,
+        one,
     )
 
     def _top_sources(qs, name_path: str, currency_path: str) -> list[dict]:
@@ -346,8 +347,8 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
         )
         merged: dict[str, Decimal] = {}
         for row in grouped:
-            total = _to_business_amount(
-                row["total"] or Decimal("0.00"), row["_currency"] or base, base, one
+            total = _to_usd(
+                row["total"] or Decimal("0.00"), row["_currency"] or "USD", one
             )
             name = row["_name"] or "—"
             merged[name] = merged.get(name, Decimal("0.00")) + total
@@ -370,7 +371,7 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
     margin_pct = round(float((income_total - expense_total) / income_total * 100), 1) if income_total > 0 else None
 
     return {
-        "currency": base,
+        "currency": "USD",
         "months": months,
         "pnl": pnl,
         "incomeCategories": _categories("cobro"),
