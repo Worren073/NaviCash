@@ -52,7 +52,7 @@ function SidePanelContent({
   const desktop = `fixed right-0 top-0 z-50 flex h-dvh ${width} max-w-[92vw] flex-col gap-4 overflow-y-auto rounded-l-2xl border-l border-glass-border bg-white/80 p-6 shadow-[-8px_0_32px_rgba(15,23,42,0.25)] backdrop-blur-2xl data-[state=open]:animate-[panel-in-right_0.36s_cubic-bezier(0.22,1,0.36,1)] data-[state=closed]:animate-[panel-out-right_0.28s_ease-in] motion-reduce:animate-none`;
 
   const mobile =
-    "fixed left-[50%] top-[50%] z-50 grid max-h-[85dvh] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-2xl border border-glass-border bg-white/45 p-6 shadow-[0_8px_32px_rgba(15,23,42,0.25)] backdrop-blur-2xl data-[state=open]:animate-[panel-in-center_0.28s_ease-out] data-[state=closed]:animate-[panel-out-center_0.2s_ease-in] motion-reduce:animate-none";
+    "fixed left-[50%] top-[50%] z-50 flex max-h-[85dvh] w-full max-w-[calc(100%-2rem)] flex-col gap-4 overflow-x-hidden overflow-y-auto rounded-2xl border border-glass-border bg-white/45 p-6 shadow-[0_8px_32px_rgba(15,23,42,0.25)] backdrop-blur-2xl data-[state=open]:animate-[panel-in-center_0.28s_ease-out] data-[state=closed]:animate-[panel-out-center_0.2s_ease-in] motion-reduce:animate-none";
 
   return (
     <DialogPrimitive.Portal>

@@ -482,6 +482,7 @@ body {
   color: var(--color-on-surface);
   -webkit-tap-highlight-color: transparent;
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 /* Ocultar spinners de inputs numéricos (diseño stitch) */

@@ -9,6 +9,7 @@ export function Segmented<T extends string>({
   layoutId,
   size = "md",
   disabled = false,
+  scrollable = false,
 }: {
   options: Array<{ value: T; label: string }>;
   value: T;
@@ -16,6 +17,8 @@ export function Segmented<T extends string>({
   layoutId: string;
   size?: "sm" | "md" | "lg";
   disabled?: boolean;
+  /** Permite desplazar horizontalmente las opciones cuando no caben en el ancho disponible (móvil). */
+  scrollable?: boolean;
 }) {
   const padBySize = {
     sm: "px-3 py-1.5 text-xs",
@@ -28,6 +31,7 @@ export function Segmented<T extends string>({
         "flex rounded-full border border-glass-border bg-surface-container-highest p-1",
         size === "lg" && "p-1.5",
         disabled && "opacity-70",
+        scrollable && "max-w-full overflow-x-auto scrollbar-hide",
       )}
     >
       {options.map((opt) => {
@@ -41,6 +45,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(opt.value)}
             className={cn(
               "relative flex-1 rounded-full font-medium transition-colors",
+              scrollable && "shrink-0",
               padBySize[size],
               active ? "text-white" : "text-on-surface-variant"
             )}

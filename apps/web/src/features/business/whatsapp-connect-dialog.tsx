@@ -47,7 +47,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
     <div>
       <span className={LABEL_CLASS}>{label}</span>
       <div className="flex items-stretch gap-2">
-        <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-xl border border-glass-border bg-glass-surface px-3 py-2.5 text-xs text-on-surface-variant">
+        <code className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap rounded-xl border border-glass-border bg-glass-surface px-3 py-2.5 text-xs text-on-surface-variant">
           {value}
         </code>
         <Button

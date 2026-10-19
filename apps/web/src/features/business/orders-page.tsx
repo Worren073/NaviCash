@@ -110,6 +110,7 @@ export default function OrdersPage() {
         <Segmented
           layoutId="seg-order-status"
           size="sm"
+          scrollable
           options={ORDER_STATUS_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))}
           value={statusFilter}
           onChange={setStatusFilter}

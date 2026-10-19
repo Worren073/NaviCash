@@ -324,6 +324,7 @@ export default function BusinessContactsPage() {
             <Segmented
               layoutId="seg-contact-tax-type"
               size="sm"
+              scrollable
               options={TAX_TYPE_OPTIONS.map((o) => ({
                 value: o.value,
                 label: t(o.label),
@@ -345,6 +346,7 @@ export default function BusinessContactsPage() {
             <Segmented
               layoutId="seg-contact-type"
               size="sm"
+              scrollable
               options={TYPE_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))}
               value={typeFilter}
               onChange={setTypeFilter}

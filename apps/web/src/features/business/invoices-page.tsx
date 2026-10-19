@@ -100,6 +100,7 @@ export default function InvoicesPage() {
         <Segmented
           layoutId="seg-invoice-status"
           size="sm"
+          scrollable
           options={INVOICE_STATUS_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))}
           value={statusFilter}
           onChange={setStatusFilter}
