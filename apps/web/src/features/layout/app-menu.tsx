@@ -1,14 +1,16 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { Briefcase, CalendarRange, GraduationCap, ListChecks, PiggyBank } from "lucide-react";
+import { Briefcase, GraduationCap } from "lucide-react";
 import { HomeIcon } from "@/components/icons";
 
 import { GlassPopover } from "@/components/ui/glass-popover";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { queryKeys } from "@/hooks/use-queries";
 import { resetNaviTour } from "@/features/assistant/navi-tour-content";
 import { useNavView } from "@/features/navigation/nav-view";
+import { BOTTOM_NAV, PRIMARY_NAV, SECONDARY_NAV } from "@/features/navigation/nav-config";
 
 function MenuLink({
   to,
@@ -57,6 +59,14 @@ export function AppMenu({ open, onClose }: { open: boolean; onClose: () => void 
   const replayTour = useReplayTour();
   const { view, changeView } = useNavView();
 
+  // Enlaces de la vista activa que ya viven en la bottom-nav no se repiten
+  // aquí: el menú lista solo los que faltan (personales: Mensualidades/Compras;
+  // negocio: Chats/Pedidos/Inventario/Cobranza).
+  const inBottomNav = new Set(BOTTOM_NAV[view].map((item) => item.to));
+  const menuItems = [...PRIMARY_NAV[view], ...SECONDARY_NAV[view]].filter(
+    (item) => !inBottomNav.has(item.to)
+  );
+
   return (
     <GlassPopover open={open} onClose={onClose} className="w-60 bg-white/90 backdrop-blur-[60px]">
       <div className="p-2">
@@ -102,9 +112,22 @@ export function AppMenu({ open, onClose }: { open: boolean; onClose: () => void 
         <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
           {t("menu.title")}
         </p>
-        <MenuLink to="/savings" onNavigate={onClose} label={t("menu.savings")} icon={<PiggyBank className="h-5 w-5 text-emerald-500" />} />
-        <MenuLink to="/subscriptions" onNavigate={onClose} label={t("menu.subscriptions")} icon={<CalendarRange className="h-5 w-5 text-primary" />} />
-        <MenuLink to="/checklists" onNavigate={onClose} label={t("menu.checklists")} icon={<ListChecks className="h-5 w-5 text-sky-500" />} />
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <MenuLink
+              key={item.to}
+              to={item.to}
+              onNavigate={onClose}
+              label={t(item.label)}
+              icon={
+                <Icon
+                  className={cn("h-5 w-5", item.iconClassName ?? "text-on-surface-variant")}
+                />
+              }
+            />
+          );
+        })}
         <button
           type="button"
           onClick={() => {

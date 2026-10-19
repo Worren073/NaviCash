@@ -195,8 +195,9 @@ function TopBar() {
 function BottomNav({ onVoiceOpen }: { onVoiceOpen: () => void }) {
   const { view } = useNavView();
   const items = BOTTOM_NAV[view];
-  // 5 iconos en ambas vistas: 4 enlaces + "+" en personal; 5 enlaces sin "+"
-  // en negocio (la bottom-nav no supera nunca los 5 elementos).
+  // 5 elementos en ambas vistas: 4 enlaces + el "+" en personal, y 5 enlaces
+  // sin "+" en negocio. Cada enlace lleva su nombre debajo del icono; el "+"
+  // es un botón de acción y no se etiqueta. El perfil vive en el TopBar.
   const showAdd = view === "personal";
   const mid = Math.ceil(items.length / 2);
   const left = showAdd ? items.slice(0, mid) : items;
@@ -237,19 +238,23 @@ function NavLink({
       to={to}
       aria-label={t(label)}
       title={t(label)}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex h-12 w-12 items-center justify-center rounded-full",
+        "relative flex h-12 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl",
         active ? "text-on-primary" : "text-on-surface-variant"
       )}
     >
       {active && (
         <motion.div
           layoutId="nav-active-pill"
-          className="absolute inset-0 rounded-full bg-primary"
+          className="absolute inset-0 rounded-2xl bg-primary"
           transition={{ type: "spring", stiffness: 500, damping: 40 }}
         />
       )}
-      <Icon size={24} className="relative z-10" />
+      <Icon size={22} className="relative z-10 shrink-0" />
+      <span className="relative z-10 max-w-full truncate text-[10px] leading-none font-medium tracking-tight">
+        {t(label)}
+      </span>
     </Link>
   );
 }
