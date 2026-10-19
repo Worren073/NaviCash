@@ -278,8 +278,13 @@ export default function AppLayout() {
   const tourShown = onboarding && visible && !assistantOpen && !voiceOpen;
   const tourMounted = onboarding && Boolean(view);
 
+  // lg:pl-28 (112px) reserva el rail colapsado del sidebar fijo
+  // (lg:left-4 + lg:w-[4.75rem] = 93px + 19px de aire): sin esto, en
+  // viewports de 1024-1338px el mx-auto de <main> no deja margen y el
+  // sidebar (z-60) pinta por encima del dashboard. El ancho expandido
+  // (lg:w-64) queda fuera de la reserva: se superpone a propósito.
   return (
-    <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)] lg:pb-0">
+    <div className="min-h-dvh pb-[calc(env(safe-area-inset-bottom)+7rem)] lg:pb-0 lg:pl-28">
       <TopBar />
       <Sidebar onVoiceOpen={() => setVoiceOpen(true)} />
       <main className="mx-auto w-full max-w-lg px-5 pb-8 pt-[calc(env(safe-area-inset-top)+3.5rem)] md:max-w-3xl lg:max-w-6xl lg:pt-[calc(env(safe-area-inset-top)+4.5rem)]">
