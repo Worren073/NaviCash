@@ -124,11 +124,14 @@ export function useBusinessSummary() {
   });
 }
 
-export function useBusinessAnalytics(months: number) {
+export function useBusinessAnalytics(months: number, month?: string | null) {
   return useQuery({
-    queryKey: [...queryKeys.businessAnalytics, months],
+    queryKey: [...queryKeys.businessAnalytics, months, month ?? ""],
     queryFn: ({ signal }) =>
-      api.get<BusinessAnalytics>(`/business/analytics?months=${months}`, { signal }),
+      api.get<BusinessAnalytics>(
+        `/business/analytics?months=${months}${month ? `&month=${month}` : ""}`,
+        { signal }
+      ),
   });
 }
 

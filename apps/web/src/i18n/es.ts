@@ -254,6 +254,7 @@ export default {
     subtitle: "Ganancias, pérdidas y salud financiera de tu negocio.",
     months6: "6 meses",
     months12: "12 meses",
+    allMonths: "Todos los meses",
     total: "Total",
     empty: "Sin datos en este periodo todavía.",
     pnlTitle: "Ganancias y pérdidas",

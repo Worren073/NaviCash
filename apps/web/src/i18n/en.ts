@@ -255,6 +255,7 @@ export default {
     subtitle: "Profit, loss and the financial health of your business.",
     months6: "6 months",
     months12: "12 months",
+    allMonths: "All months",
     total: "Total",
     empty: "No data in this period yet.",
     pnlTitle: "Profit and loss",

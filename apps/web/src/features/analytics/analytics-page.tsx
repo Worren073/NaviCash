@@ -36,6 +36,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { formatCompact, formatMoney } from "@/lib/format";
 import type {
   BusinessAnalyticsCategory,
+  BusinessAnalyticsDailyRow,
   BusinessAnalyticsPnlRow,
 } from "@/lib/types";
 
@@ -92,6 +93,25 @@ function ChartTooltip({ active, payload, label, currency }: ChartTooltipProps) {
 function fmtMonth(ym: string): string {
   const d = new Date(`${ym}-01T12:00:00`);
   return Number.isNaN(d.getTime()) ? ym : d.toLocaleDateString("es-VE", { month: "short" });
+}
+
+function fmtDay(iso: string): string {
+  const day = Number(iso.slice(8, 10));
+  return Number.isNaN(day) || iso.length < 10 ? iso : String(day);
+}
+
+function fmtDayFull(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("es-VE", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function fmtMonthLong(ym: string): string {
+  const d = new Date(`${ym}-01T12:00:00`);
+  return Number.isNaN(d.getTime())
+    ? ym
+    : d.toLocaleDateString("es-VE", { month: "short", year: "numeric" });
 }
 
 function shortLabel(name: string, max = 14): string {
@@ -254,8 +274,33 @@ export default function AnalyticsPage() {
   const { t } = useTranslation();
   const reduce = useReducedMotion();
   const [months, setMonths] = useState<"6" | "12">("12");
+  const [month, setMonth] = useState<string>("");
   const [catMode, setCatMode] = useState<"income" | "expense">("income");
-  const { data, isLoading, isError, refetch } = useBusinessAnalytics(Number(months));
+
+  // Meses ofrecidos: la misma ventana que arma el backend (N meses hasta hoy).
+  const monthOptions = useMemo(() => {
+    const options = [{ value: "", label: t("analytics.allMonths") }];
+    const now = new Date();
+    for (let i = 0; i < Number(months); i += 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label =
+        d.toLocaleDateString("es-VE", { month: "short" }) +
+        // La ventana cruza años: solo entonces se aclara el año corto.
+        (d.getFullYear() !== now.getFullYear() ? ` ${String(d.getFullYear()).slice(2)}` : "");
+      options.push({ value, label });
+    }
+    return options;
+  }, [months, t]);
+
+  // Si la ventana 6/12 deja fuera el mes elegido, se vuelve a "todos"
+  // (valor derivado: sin useEffect ni estados que peleen entre sí).
+  const activeMonth = monthOptions.some((option) => option.value === month) ? month : "";
+
+  const { data, isLoading, isError, refetch } = useBusinessAnalytics(
+    Number(months),
+    activeMonth || null
+  );
   const { hidden } = useHideBalances();
 
   const currency = data?.currency ?? "USD";
@@ -265,6 +310,19 @@ export default function AnalyticsPage() {
     () => data?.pnl ?? Array.from({ length: Number(months) }, () => ({ month: "", income: 0, expense: 0, net: 0 })),
     [data, months]
   );
+  const dailyData: BusinessAnalyticsDailyRow[] = data?.daily ?? [];
+  // Con un mes elegido el gráfico P&L se desglosa por día; sin él, por mes.
+  // Mismo shape para ambos: con mes elegido "month" guarda el día (YYYY-MM-DD)
+  // y el eje X aplica el formateo corto correspondiente.
+  const isDaily = Boolean(activeMonth) && dailyData.length > 0;
+  const seriesData: BusinessAnalyticsPnlRow[] = isDaily
+    ? dailyData.map((row) => ({
+        month: row.date,
+        income: row.income,
+        expense: row.expense,
+        net: row.net,
+      }))
+    : pnlData;
 
   const cats = catMode === "income" ? (data?.incomeCategories ?? []) : (data?.expenseCategories ?? []);
   const aging = (data?.aging ?? []).map((row) => ({
@@ -276,7 +334,7 @@ export default function AnalyticsPage() {
 
   const hasData =
     Boolean(data) &&
-    (pnlData.some((r) => r.income !== 0 || r.expense !== 0) ||
+    (seriesData.some((r) => r.income !== 0 || r.expense !== 0) ||
       (data?.incomeCategories?.length ?? 0) > 0 ||
       (data?.expenseCategories?.length ?? 0) > 0 ||
       (data?.aging?.reduce((s, r) => s + r.value, 0) ?? 0) > 0 ||
@@ -300,22 +358,32 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-on-surface md:text-3xl">
-            {t("analytics.title")}
-          </h1>
-          <p className="mt-1 text-sm text-on-surface-variant">{t("analytics.subtitle")}</p>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-on-surface md:text-3xl">
+              {t("analytics.title")}
+            </h1>
+            <p className="mt-1 text-sm text-on-surface-variant">{t("analytics.subtitle")}</p>
+          </div>
+          <Segmented
+            layoutId="seg-analytics-months"
+            size="sm"
+            options={[
+              { value: "6", label: t("analytics.months6") },
+              { value: "12", label: t("analytics.months12") },
+            ]}
+            value={months}
+            onChange={setMonths}
+          />
         </div>
         <Segmented
-          layoutId="seg-analytics-months"
+          layoutId="seg-analytics-month"
           size="sm"
-          options={[
-            { value: "6", label: t("analytics.months6") },
-            { value: "12", label: t("analytics.months12") },
-          ]}
-          value={months}
-          onChange={setMonths}
+          scrollable
+          options={monthOptions}
+          value={activeMonth}
+          onChange={setMonth}
         />
       </div>
 
@@ -412,17 +480,25 @@ export default function AnalyticsPage() {
           </section>
 
           <Reveal>
-            <ChartCard title={t("analytics.pnlTitle")} empty={!hasData}>
+            <ChartCard
+              title={
+                activeMonth
+                  ? `${t("analytics.pnlTitle")} · ${fmtMonthLong(activeMonth)}`
+                  : t("analytics.pnlTitle")
+              }
+              empty={!hasData}
+            >
               <div className="h-72 w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={pnlData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <ComposedChart data={seriesData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" vertical={false} />
                   <XAxis
                     dataKey="month"
-                    tickFormatter={fmtMonth}
+                    tickFormatter={isDaily ? fmtDay : fmtMonth}
                     tick={{ fill: "var(--color-on-surface-variant)", fontSize: 12 }}
                     axisLine={false}
                     tickLine={false}
+                    interval={isDaily ? "preserveStartEnd" : undefined}
                   />
                   <YAxis
                     tickFormatter={(v: number) => formatCompact(v, currency)}
@@ -431,7 +507,13 @@ export default function AnalyticsPage() {
                     tickLine={false}
                     width={70}
                   />
-                  <Tooltip content={<ChartTooltip currency={currency} />} />
+                  <Tooltip
+                    content={<ChartTooltip currency={currency} />}
+                    labelFormatter={(value) => {
+                      const text = String(value ?? "");
+                      return isDaily ? fmtDayFull(text) : text;
+                    }}
+                  />
                   <Line
                     type="monotone"
                     dataKey="income"

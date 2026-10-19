@@ -86,6 +86,13 @@ export interface BusinessAnalyticsPnlRow {
   net: number;
 }
 
+export interface BusinessAnalyticsDailyRow {
+  date: string;
+  income: number;
+  expense: number;
+  net: number;
+}
+
 export interface BusinessAnalyticsCategory {
   label: string;
   value: number;
@@ -114,7 +121,11 @@ export interface BusinessAnalyticsKpis {
 export interface BusinessAnalytics {
   currency: Currency;
   months: number;
+  /** Mes elegido (YYYY-MM) o null cuando se ve la ventana completa. */
+  month: string | null;
   pnl: BusinessAnalyticsPnlRow[];
+  /** Desglose por día del mes elegido (vacío si no hay mes). */
+  daily: BusinessAnalyticsDailyRow[];
   incomeCategories: BusinessAnalyticsCategory[];
   expenseCategories: BusinessAnalyticsCategory[];
   aging: BusinessAnalyticsAging[];
