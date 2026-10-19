@@ -9,12 +9,12 @@ dashboard agrega SIEMPRE solo las billeteras del negocio: nunca ve lo personal.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import F, Q, Sum
-from django.db.models.functions import Coalesce, TruncMonth
+from django.db.models.functions import Coalesce, TruncDate, TruncMonth
 from django.utils import timezone
 
 from apps.business.models import Business
@@ -227,7 +227,12 @@ def _month_key(value: "date | datetime") -> date:
     return value.date() if isinstance(value, datetime) else value
 
 
-def build_business_analytics(business: Business, months: int = 12, today: "date | None" = None) -> dict:
+def build_business_analytics(
+    business: Business,
+    months: int = 12,
+    today: "date | None" = None,
+    month: "str | None" = None,
+) -> dict:
     """Agrega las analíticas del negocio para el tablero financiero.
 
     Todo se acota a las billeteras del negocio (operaciones pagadas) y a sus
@@ -240,27 +245,60 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
         business: negocio (con sus ``wallets`` cargadas).
         months: ventana de la serie P&L (3-24; el llamador ya lo clampea).
         today: fecha de corte (por defecto, la local actual).
+        month: mes a inspeccionar en formato ``YYYY-MM``. Si se pasa, todo lo
+            que es de periodo (KPIs de ingreso/egreso/margen, categorías y top
+            clientes/proveedores) se acota a ese mes y la serie ``daily``
+            devuelve el desglose por día. Un valor inválido se ignora (mes
+            ``None``) en lugar de fallar, igual que hace ``months``.
 
     Returns:
-        Dict con ``currency``, ``months``, ``pnl``, ``incomeCategories``,
-        ``expenseCategories``, ``aging``, ``topClients``, ``topSuppliers`` y
-        ``kpis``. Los valores monetarios son números (float) redondeados y
-        listos para graficar; las fechas usan formato ``YYYY-MM``.
+        Dict con ``currency``, ``months``, ``month``, ``pnl``, ``daily``,
+        ``incomeCategories``, ``expenseCategories``, ``aging``, ``topClients``,
+        ``topSuppliers`` y ``kpis``. Los valores monetarios son números (float)
+        redondeados y listos para graficar; las fechas usan formato ``YYYY-MM``
+        (serie mensual) o ``YYYY-MM-DD`` (serie diaria, vacía sin mes elegido).
+        Las magnitudes de estado (aging, por cobrar/por pagar, vencido e
+        inventario) siempre describen el presente, nunca el mes elegido.
     """
     today = today or timezone.localdate()
     rate = get_current_official_rate()
     rate_value: "Decimal | None" = rate.effective_rate if rate else None
     one = rate_value or Decimal("1")
 
+    selected: date | None = None
+    if month:
+        try:
+            year_str, month_str = str(month).split("-")
+            selected = date(int(year_str), int(month_str), 1)
+        except (ValueError, TypeError):
+            selected = None
+    period_start = selected
+    period_end = (
+        date(
+            selected.year + (selected.month // 12),
+            selected.month % 12 + 1,
+            1,
+        )
+        - timedelta(days=1)
+        if selected is not None
+        else None
+    )
+
     cutoff = _first_day_months_back(today, months - 1)
     series = _month_series(today, months)
 
+    def _date_window(field: str) -> dict:
+        """Filtro de fechas del periodo: el mes elegido o la ventana completa."""
+        if period_start is not None and period_end is not None:
+            return {f"{field}__date__range": (period_start, period_end)}
+        return {f"{field}__date__gte": cutoff}
+
     paid = Transaction.objects.filter(
         wallet__business=business, estado="pagado", tipo__in=["cobro", "pago"],
-        fecha_pagado__date__gte=cutoff,
     )
     rows = (
-        paid.annotate(month=TruncMonth("fecha_pagado"))
+        paid.filter(fecha_pagado__date__gte=cutoff)
+        .annotate(month=TruncMonth("fecha_pagado"))
         .values("month", "tipo")
         .annotate(total=Sum("monto_usd"))
     )
@@ -269,11 +307,15 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
     pnl = []
     income_total = Decimal("0.00")
     expense_total = Decimal("0.00")
+    daily: list[dict] = []
     for m in series:
         income = _to_usd(by_month.get((m, "cobro"), Decimal("0.00")), "USD", one)
         expense = _to_usd(by_month.get((m, "pago"), Decimal("0.00")), "USD", one)
-        income_total += income
-        expense_total += expense
+        # Sin mes elegido los KPIs de periodo suman la ventana entera; con mes
+        # elegido se suman más abajo, solo de los días de ese mes.
+        if selected is None:
+            income_total += income
+            expense_total += expense
         pnl.append(
             {
                 "month": m.strftime("%Y-%m"),
@@ -283,10 +325,38 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
             }
         )
 
+    if period_start is not None and period_end is not None:
+        # Desglose por día del mes elegido: se puebla la lista completa de días
+        # del mes (los días sin operaciones van en cero) para que el gráfico
+        # conserve el eje temporal aunque no haya movimientos.
+        day_rows = (
+            paid.filter(fecha_pagado__date__range=(period_start, period_end))
+            .annotate(day=TruncDate("fecha_pagado"))
+            .values("day", "tipo")
+            .annotate(total=Sum("monto_usd"))
+        )
+        by_day = {(_month_key(row["day"]), row["tipo"]): row["total"] or Decimal("0.00") for row in day_rows}
+        cursor = period_start
+        while cursor <= period_end:
+            income = _to_usd(by_day.get((cursor, "cobro"), Decimal("0.00")), "USD", one)
+            expense = _to_usd(by_day.get((cursor, "pago"), Decimal("0.00")), "USD", one)
+            income_total += income
+            expense_total += expense
+            daily.append(
+                {
+                    "date": cursor.strftime("%Y-%m-%d"),
+                    "income": round(float(income), 2),
+                    "expense": round(float(expense), 2),
+                    "net": round(float(income - expense), 2),
+                }
+            )
+            cursor += timedelta(days=1)
+
     def _categories(kind: str) -> list[dict]:
         grouped = (
             Transaction.objects.filter(
-                wallet__business=business, estado="pagado", tipo=kind, fecha_pagado__date__gte=cutoff
+                wallet__business=business, estado="pagado", tipo=kind,
+                **_date_window("fecha_pagado"),
             )
             .values("category__name")
             .annotate(total=Sum("monto_usd"))
@@ -357,13 +427,15 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
 
     top_clients = _top_sources(
         InvoicePayment.objects.filter(
-            invoice__business=business, paid_at__date__gte=cutoff
+            invoice__business=business, **_date_window("paid_at")
         ),
         "invoice__contact__name",
         "invoice__currency",
     )
     top_suppliers = _top_sources(
-        OrderPayment.objects.filter(order__business=business, paid_at__date__gte=cutoff),
+        OrderPayment.objects.filter(
+            order__business=business, **_date_window("paid_at")
+        ),
         "order__contact__name",
         "order__currency",
     )
@@ -373,7 +445,9 @@ def build_business_analytics(business: Business, months: int = 12, today: "date 
     return {
         "currency": "USD",
         "months": months,
+        "month": selected.strftime("%Y-%m") if selected is not None else None,
         "pnl": pnl,
+        "daily": daily,
         "incomeCategories": _categories("cobro"),
         "expenseCategories": _categories("pago"),
         "aging": [

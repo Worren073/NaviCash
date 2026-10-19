@@ -83,10 +83,12 @@ class BusinessAnalyticsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request) -> Response:
-        """GET /api/business/analytics?months=6|12 -> tablero completo.
+        """GET /api/business/analytics?months=6|12&month=YYYY-MM -> tablero.
 
         ``months`` define la ventana de la serie P&L (admite 3-24; por defecto
-        12). Si el usuario no tiene negocio devuelve 404.
+        12). ``month`` (opcional) acota lo de periodo a ese mes y agrega la
+        serie diaria ``daily``; un valor inválido se ignora. Si el usuario no
+        tiene negocio devuelve 404.
         """
         business = (
             Business.objects.filter(user=request.user).prefetch_related("wallets").first()
@@ -102,4 +104,5 @@ class BusinessAnalyticsView(APIView):
         except (TypeError, ValueError):
             months = 12
         months = max(3, min(24, months))
-        return Response(build_business_analytics(business, months=months))
+        month = request.query_params.get("month") or None
+        return Response(build_business_analytics(business, months=months, month=month))

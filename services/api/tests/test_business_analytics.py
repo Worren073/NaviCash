@@ -380,3 +380,142 @@ class TestBusinessAnalyticsGuard:
         assert api_client.get("/api/business/analytics?months=2").data["months"] == 3
         assert api_client.get("/api/business/analytics?months=abc").data["months"] == 12
         assert api_client.get("/api/business/analytics").data["months"] == 12
+
+
+def _days_in_month(d: date) -> int:
+    """Cantidad de días del mes al que pertenece ``d``."""
+    next_month = date(d.year + (d.month // 12), d.month % 12 + 1, 1)
+    return (next_month - d).days
+
+
+@pytest.mark.django_db
+class TestBusinessAnalyticsMonth:
+    """Filtro por mes (?month=YYYY-MM): lo de periodo se acota y hay serie diaria."""
+
+    @pytest.fixture
+    def company(self, api_client):
+        return _create_business(api_client)
+
+    def test_daily_series_scoped_to_selected_month(self, api_client) -> None:
+        _create_business(api_client)
+        wallet = Business.objects.get(user=api_client.user).wallet
+        today = date.today()
+        current = _month_start(0)
+        previous = _month_start(1)
+        paid_day = current + timedelta(days=2)
+        if paid_day > today:  # robusto aunque el test corra los días 1-2 del mes
+            paid_day = current
+        day_index = (paid_day - current).days
+        # Dentro del mes elegido: un cobro y un pago.
+        TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="cobro", estado="pagado",
+            monto=Decimal("40.00"), moneda="USD", monto_usd=Decimal("40.00"),
+            fecha_pagado=_aware(paid_day), fecha=today,
+        )
+        TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="pago", estado="pagado",
+            monto=Decimal("15.00"), moneda="USD", monto_usd=Decimal("15.00"),
+            fecha_pagado=_aware(paid_day), fecha=today,
+        )
+        # Mes anterior: fuera del alcance del filtro.
+        TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="cobro", estado="pagado",
+            monto=Decimal("100.00"), moneda="USD", monto_usd=Decimal("100.00"),
+            fecha_pagado=_aware(previous + timedelta(days=5)), fecha=previous,
+        )
+        month = current.strftime("%Y-%m")
+        resp = api_client.get(f"/api/business/analytics?months=6&month={month}")
+        assert resp.status_code == 200
+        data = resp.data
+        assert data["month"] == month
+        # Todos los días del mes están, cero-rellenados.
+        assert len(data["daily"]) == _days_in_month(current)
+        assert data["daily"][0]["date"] == current.strftime("%Y-%m-%d")
+        assert all(
+            row["income"] == 0 and row["expense"] == 0
+            for index, row in enumerate(data["daily"])
+            if index != day_index
+        )
+        day = data["daily"][day_index]
+        assert day["date"] == paid_day.strftime("%Y-%m-%d")
+        assert day["income"] == 40.0
+        assert day["expense"] == 15.0
+        assert day["net"] == 25.0
+        # Los KPIs de periodo describen SOLO el mes elegido.
+        assert data["kpis"]["incomePeriod"] == 40.0
+        assert data["kpis"]["expensePeriod"] == 15.0
+        assert data["kpis"]["marginPct"] == 62.5
+        # La serie mensual sigue completa: es el contexto de la ventana.
+        assert len(data["pnl"]) == 6
+
+    def test_categories_and_tops_scoped_to_month(self, api_client, company) -> None:
+        today = timezone.localdate()
+        client = BusinessContact.objects.create(
+            user=api_client.user, business=company, name="Cliente Mes", type="cliente"
+        )
+        current = _month_start(0)
+        previous = _month_start(1)
+        # Pagos de facturas: uno dentro del mes elegido y otro en el anterior.
+        for number, amount, when in (
+            ("F-00001", Decimal("300.00"), current + timedelta(days=1)),
+            ("F-00002", Decimal("500.00"), previous + timedelta(days=1)),
+        ):
+            invoice = Invoice.objects.create(
+                user=api_client.user, business=company, contact=client,
+                number=number, issue_date=today, due_date=today,
+                status="pagada", subtotal=amount, tax_amount=Decimal("0.00"),
+                total=amount, amount_paid=amount, balance_due=Decimal("0.00"),
+                currency="USD",
+            )
+            payment = InvoicePayment.objects.create(
+                user=api_client.user, invoice=invoice, amount=amount,
+            )
+            # ``paid_at`` es auto_now_add: hay que fijarlo con un update del
+            # queryset (un update directo en create() lo ignora).
+            InvoicePayment.objects.filter(pk=payment.pk).update(paid_at=_aware(when))
+        # Cobros de transacción en ambos meses, misma categoría.
+        wallet = Business.objects.get(user=api_client.user).wallet
+        ventas = Category.objects.create(
+            user=api_client.user, name="Ventas", icon="trending-up", tipo="ingreso"
+        )
+        TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="cobro", estado="pagado",
+            monto=Decimal("40.00"), moneda="USD", monto_usd=Decimal("40.00"),
+            fecha_pagado=_aware(current + timedelta(days=1)), fecha=today,
+            category=ventas,
+        )
+        TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="cobro", estado="pagado",
+            monto=Decimal("90.00"), moneda="USD", monto_usd=Decimal("90.00"),
+            fecha_pagado=_aware(previous + timedelta(days=1)), fecha=previous,
+            category=ventas,
+        )
+        month = current.strftime("%Y-%m")
+        data = api_client.get(f"/api/business/analytics?months=12&month={month}").data
+        assert data["topClients"] == [{"label": "Cliente Mes", "value": 300.0}]
+        assert data["incomeCategories"] == [{"label": "Ventas", "value": 40.0}]
+        # Sin filtro de mes, la ventana sigue contando los dos meses.
+        data_all = api_client.get("/api/business/analytics?months=12").data
+        assert data_all["topClients"] == [{"label": "Cliente Mes", "value": 800.0}]
+        assert data_all["incomeCategories"] == [{"label": "Ventas", "value": 130.0}]
+
+    def test_invalid_month_ignored(self, api_client) -> None:
+        _create_business(api_client)
+        wallet = Business.objects.get(user=api_client.user).wallet
+        today = date.today()
+        TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="cobro", estado="pagado",
+            monto=Decimal("40.00"), moneda="USD", monto_usd=Decimal("40.00"),
+            fecha_pagado=_aware(_month_start(0)), fecha=today,
+        )
+        TransactionFactory(
+            user=api_client.user, wallet=wallet, tipo="cobro", estado="pagado",
+            monto=Decimal("100.00"), moneda="USD", monto_usd=Decimal("100.00"),
+            fecha_pagado=_aware(_month_start(1)), fecha=_month_start(1),
+        )
+        resp = api_client.get("/api/business/analytics?months=6&month=banana")
+        assert resp.status_code == 200
+        assert resp.data["month"] is None
+        assert resp.data["daily"] == []
+        # Los KPIs siguen describiendo la ventana completa.
+        assert resp.data["kpis"]["incomePeriod"] == 140.0
