@@ -108,6 +108,13 @@ export interface BusinessAnalyticsTop {
   value: number;
 }
 
+export interface BusinessAnalyticsTopProduct {
+  label: string;
+  quantity: number;
+  revenue: number;
+  margin: number;
+}
+
 export interface BusinessAnalyticsKpis {
   incomePeriod: number;
   expensePeriod: number;
@@ -116,6 +123,10 @@ export interface BusinessAnalyticsKpis {
   payable: number;
   overdue: number;
   inventoryValue: number;
+  /** Unidades de servicios facturadas en el periodo. */
+  serviceUnits: number;
+  /** Monto facturado por servicios (USD) en el periodo. */
+  serviceRevenue: number;
 }
 
 export interface BusinessAnalytics {
@@ -131,6 +142,8 @@ export interface BusinessAnalytics {
   aging: BusinessAnalyticsAging[];
   topClients: BusinessAnalyticsTop[];
   topSuppliers: BusinessAnalyticsTop[];
+  /** Top 5 de productos físicos por unidades vendidas en el periodo. */
+  topProducts: BusinessAnalyticsTopProduct[];
   kpis: BusinessAnalyticsKpis;
 }
 

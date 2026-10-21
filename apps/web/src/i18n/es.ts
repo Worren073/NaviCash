@@ -273,6 +273,11 @@ export default {
     },
     topClientsTitle: "Top clientes",
     topSuppliersTitle: "Top proveedores",
+    topProductsTitle: "Productos más vendidos",
+    topProductsHint: "Barras por unidades vendidas; el detalle muestra ingreso y margen.",
+    units: "u.",
+    revenue: "Ingreso",
+    margin: "Margen",
     kpis: {
       incomePeriod: "Ingresos del periodo",
       expensePeriod: "Egresos del periodo",
@@ -281,6 +286,7 @@ export default {
       payable: "Por pagar",
       overdue: "Vencido",
       inventory: "Inventario",
+      serviceUnits: "Servicios vendidos",
     },
   },
   contacts: {

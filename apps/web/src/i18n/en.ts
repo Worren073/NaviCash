@@ -274,6 +274,11 @@ export default {
     },
     topClientsTitle: "Top customers",
     topSuppliersTitle: "Top suppliers",
+    topProductsTitle: "Best-selling products",
+    topProductsHint: "Bars by units sold; details show revenue and margin.",
+    units: "u.",
+    revenue: "Revenue",
+    margin: "Margin",
     kpis: {
       incomePeriod: "Period income",
       expensePeriod: "Period expenses",
@@ -282,6 +287,7 @@ export default {
       payable: "Payable",
       overdue: "Overdue",
       inventory: "Inventory",
+      serviceUnits: "Services sold",
     },
   },
   contacts: {

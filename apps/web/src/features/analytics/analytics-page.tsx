@@ -21,6 +21,8 @@ import {
   Boxes,
   HandCoins,
   Percent,
+  Package,
+  Sparkles,
   TrendingDown,
   TrendingUp,
   Wallet,
@@ -90,6 +92,40 @@ function ChartTooltip({ active, payload, label, currency }: ChartTooltipProps) {
   );
 }
 
+function ProductTooltip({
+  active,
+  payload,
+  currency,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload?: { label?: string; quantity?: number; revenue?: number; margin?: number } }>;
+  currency: string;
+}) {
+  const { t } = useTranslation();
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  const rows: Array<[string, string]> = [
+    [
+      t("analytics.units"),
+      new Intl.NumberFormat("es-VE", { maximumFractionDigits: 2 }).format(row.quantity ?? 0),
+    ],
+    [t("analytics.revenue"), formatMoney(row.revenue ?? 0, currency, { symbol: true })],
+    [t("analytics.margin"), formatMoney(row.margin ?? 0, currency, { symbol: true })],
+  ];
+  return (
+    <div className="glass-panel clip-rounded-lg rounded-lg px-3 py-2 text-xs shadow-lg">
+      <div className="mb-1.5 font-semibold text-on-surface">{row.label ?? ""}</div>
+      {rows.map(([name, value]) => (
+        <div key={name} className="flex items-center justify-between gap-4">
+          <span className="text-on-surface-variant">{name}</span>
+          <span className="font-semibold text-on-surface">{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function fmtMonth(ym: string): string {
   const d = new Date(`${ym}-01T12:00:00`);
   return Number.isNaN(d.getTime()) ? ym : d.toLocaleDateString("es-VE", { month: "short" });
@@ -148,6 +184,55 @@ function KpiCard({
       </div>
       <div className="text-2xl font-semibold text-on-surface">
         {hidden ? "••••" : value == null ? "—" : <AnimatedNumber value={value} format={format} delay={delay} />}
+      </div>
+    </div>
+  );
+}
+
+function ServiceKpiCard({
+  units,
+  revenue,
+  currency,
+  hidden,
+  delay = 0,
+}: {
+  units: number | null;
+  revenue: number | null;
+  currency: string;
+  hidden: boolean;
+  delay?: number;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="glass-panel clip-rounded-lg flex min-h-28 flex-col justify-between rounded-lg p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-on-surface-variant">
+          {t("analytics.kpis.serviceUnits")}
+        </span>
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+          style={{ background: "#a78bfa1a", color: "#a78bfa" }}
+        >
+          <Sparkles className="h-4 w-4" />
+        </div>
+      </div>
+      <div>
+        <div className="text-2xl font-semibold text-on-surface">
+          {units == null ? (
+            "—"
+          ) : (
+            <AnimatedNumber
+              value={units}
+              format={(n) =>
+                `${new Intl.NumberFormat("es-VE", { maximumFractionDigits: 2 }).format(n)} ${t("analytics.units")}`
+              }
+              delay={delay}
+            />
+          )}
+        </div>
+        <div className="mt-0.5 text-xs text-on-surface-variant">
+          {hidden ? "••••" : revenue == null ? "—" : formatMoney(revenue, currency, { symbol: true })}
+        </div>
       </div>
     </div>
   );
@@ -331,6 +416,7 @@ export default function AnalyticsPage() {
   }));
   const clients = data?.topClients ?? [];
   const suppliers = data?.topSuppliers ?? [];
+  const products = data?.topProducts ?? [];
 
   const hasData =
     Boolean(data) &&
@@ -339,7 +425,8 @@ export default function AnalyticsPage() {
       (data?.expenseCategories?.length ?? 0) > 0 ||
       (data?.aging?.reduce((s, r) => s + r.value, 0) ?? 0) > 0 ||
       (data?.topClients?.length ?? 0) > 0 ||
-      (data?.topSuppliers?.length ?? 0) > 0);
+      (data?.topSuppliers?.length ?? 0) > 0 ||
+      (data?.topProducts?.length ?? 0) > 0);
 
   const moneyFormat = (amount: number) => formatMoney(amount, currency, { symbol: true });
   const pctFormat = (amount: number) =>
@@ -390,7 +477,7 @@ export default function AnalyticsPage() {
       {isLoading ? (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4 md:gap-3">
-            {Array.from({ length: 7 }).map((_, i) => (
+            {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-28 w-full" />
             ))}
           </div>
@@ -475,6 +562,15 @@ export default function AnalyticsPage() {
                 accent="#22d3ee"
                 hidden={hidden}
                 delay={0.22}
+              />
+            </Reveal>
+            <Reveal delay={0.7}>
+              <ServiceKpiCard
+                units={kpis?.serviceUnits ?? null}
+                revenue={kpis?.serviceRevenue ?? null}
+                currency={currency}
+                hidden={hidden}
+                delay={0.24}
               />
             </Reveal>
           </section>
@@ -692,6 +788,54 @@ export default function AnalyticsPage() {
               </ChartCard>
             </Reveal>
           </div>
+
+          <Reveal delay={0.1}>
+            <ChartCard
+              title={t("analytics.topProductsTitle")}
+              empty={products.length === 0}
+            >
+              <div className="h-64 min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={products}
+                    layout="vertical"
+                    margin={{ top: 4, right: 32, left: 0, bottom: 4 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="var(--color-outline-variant)"
+                      horizontal={false}
+                    />
+                    <XAxis type="number" hide />
+                    <YAxis
+                      type="category"
+                      dataKey="label"
+                      width={132}
+                      tickFormatter={shortLabel}
+                      tick={{ fill: "var(--color-on-surface-variant)", fontSize: 12 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip content={<ProductTooltip currency={currency} />} />
+                    <Bar dataKey="quantity" fill="#22d3ee" radius={[0, 6, 6, 0]} maxBarSize={22}>
+                      <LabelList
+                        dataKey="quantity"
+                        position="right"
+                        formatter={(item: unknown) =>
+                          `${new Intl.NumberFormat("es-VE", { maximumFractionDigits: 2 }).format(Number(item ?? 0))} ${t("analytics.units")}`
+                        }
+                        style={{ fill: "var(--color-on-surface-variant)", fontSize: 12 }}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-on-surface-variant">
+                <Package className="h-3.5 w-3.5" />
+                {hidden ? "••••" : t("analytics.topProductsHint")}
+              </p>
+            </ChartCard>
+          </Reveal>
         </>
       )}
     </div>
