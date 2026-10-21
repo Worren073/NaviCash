@@ -148,10 +148,12 @@ def _candidates(user, today: date) -> list[dict]:
                 }
             )
 
-    # 4) Stock bajo del inventario del negocio (una vez por día).
+    # 4) Stock bajo del inventario del negocio (una vez por día; solo productos:
+    #    los servicios no tienen existencias).
     for product in Product.objects.select_related("business").filter(
         user=user,
         is_active=True,
+        kind="producto",
         low_stock_threshold__isnull=False,
     ):
         if product.stock_quantity <= product.low_stock_threshold:

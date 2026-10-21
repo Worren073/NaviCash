@@ -398,7 +398,7 @@ def build_business_analytics(
         payable += _to_usd(order.balance_due, order.currency, one)
 
     inventory_value = _to_usd(
-        Product.objects.filter(business=business)
+        Product.objects.filter(business=business, kind="producto")
         .annotate(
             line_value=F("stock_quantity") * Coalesce(F("cost_price"), Decimal("0.00"))
         )

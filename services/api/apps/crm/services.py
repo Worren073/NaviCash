@@ -156,9 +156,13 @@ def _withdraw_stock(invoice: Invoice) -> None:
 
     Bloquea las filas con ``select_for_update`` para evitar carreras y rechaza
     la operación si alguna línea supera el stock disponible. Registra cada
-    movimiento en ``StockAdjustment``.
+    movimiento en ``StockAdjustment``. Los servicios (sin existencias) se
+    ignoran.
     """
-    lines = list(invoice.items.filter(product__isnull=False).select_related("product"))
+    lines = list(
+        invoice.items.filter(product__isnull=False, product__kind="producto")
+        .select_related("product")
+    )
     if not lines:
         return
     product_ids = [line.product_id for line in lines]
@@ -185,8 +189,11 @@ def _withdraw_stock(invoice: Invoice) -> None:
 
 
 def _restore_stock(invoice: Invoice) -> None:
-    """Republica existencias de una factura que ya no está en curso."""
-    for line in invoice.items.filter(product__isnull=False).select_related("product"):
+    """Republica existencias de una factura que ya no está en curso (sin servicios)."""
+    for line in (
+        invoice.items.filter(product__isnull=False, product__kind="producto")
+        .select_related("product")
+    ):
         product = line.product
         product.stock_quantity = round_money(product.stock_quantity + line.quantity)
         product.save(update_fields=["stock_quantity", "updated_at"])
@@ -627,6 +634,8 @@ def _restock(order: Order) -> None:
     for line in lines:
         if line.product_id:
             product = locked[line.product_id]
+            if product.kind == "servicio":
+                continue
         else:
             product = _resolve_new_product(order, line)
         product.stock_quantity = round_money(product.stock_quantity + line.quantity)

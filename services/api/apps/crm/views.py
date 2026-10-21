@@ -415,7 +415,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwner]
 
     def get_queryset(self):
-        """Productos del usuario, con búsqueda y filtros de categoría/activo."""
+        """Productos del usuario, con búsqueda y filtros de categoría/activo/tipo."""
         qs = Product.objects.filter(user=self.request.user).select_related(
             "category", "supplier"
         )
@@ -428,6 +428,9 @@ class ProductViewSet(viewsets.ModelViewSet):
         active = self.request.query_params.get("active")
         if active in ("true", "false"):
             qs = qs.filter(is_active=active == "true")
+        kind = self.request.query_params.get("kind")
+        if kind in ("producto", "servicio"):
+            qs = qs.filter(kind=kind)
         return qs.order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
@@ -459,6 +462,11 @@ class ProductViewSet(viewsets.ModelViewSet):
         ``delta`` es un número con signo (p.ej. `+5` entrada, `-2` salida).
         """
         product = self.get_object()
+        if product.kind == "servicio":
+            return Response(
+                {"detail": "Los servicios no tienen existencias que ajustar.", "code": "validation_error"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         delta = request.data.get("delta")
         if delta is None:
             return Response(

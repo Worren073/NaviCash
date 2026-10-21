@@ -467,3 +467,225 @@ class TestInventory:
         assert resp.status_code == 201, resp.data
         product.refresh_from_db()
         assert product.stock_quantity == Decimal("49.5")
+
+
+@pytest.mark.django_db
+class TestProductKind:
+    """Artículos tipo producto | servicio: reglas de stock y alcance."""
+
+    URL = "/api/business/products/"
+
+    @pytest.fixture
+    def business(self, api_client):
+        return create_business(
+            api_client.user, name="Tienda Demo", currency="USD", initial_capital=Decimal("0")
+        )
+
+    @pytest.fixture
+    def contact(self, api_client, business):
+        return BusinessContact.objects.create(
+            user=api_client.user, business=business, name="Cliente A", type="cliente"
+        )
+
+    @pytest.fixture
+    def supplier(self, api_client, business):
+        return BusinessContact.objects.create(
+            user=api_client.user, business=business, name="Proveedor A", type="proveedor"
+        )
+
+    def _build(self, api_client, business, **kwargs):
+        fields = {
+            "user": api_client.user,
+            "business": business,
+            "name": "Arroz 1kg",
+            "sku": "ARZ-01",
+            "unit": "kg",
+            "unit_price": Decimal("1.50"),
+            "stock_quantity": Decimal("50"),
+        }
+        fields.update(kwargs)
+        return Product.objects.create(**fields)
+
+    # --- Alta y normalización ---
+
+    def test_create_service_normalizes_stock_and_unit(self, api_client, business) -> None:
+        """Un servicio se guarda sin existencias, sin umbral y en «Unidad»."""
+        resp = api_client.post(
+            self.URL,
+            {
+                "name": "Consultoría",
+                "kind": "servicio",
+                "unit": "kg",
+                "unit_price": "50.00",
+                "cost_price": "20.00",
+                "stock_quantity": "5",
+                "low_stock_threshold": "2",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.data
+        assert resp.data["kind"] == "servicio"
+        assert resp.data["stock_quantity"] == "0.00"
+        assert resp.data["low_stock_threshold"] is None
+        assert resp.data["unit"] == "unidad"
+        assert resp.data["cost_price"] == "20.00"
+        assert resp.data["is_low_stock"] is False
+
+    def test_kind_defaults_to_producto(self, api_client, business) -> None:
+        """Sin declarar tipo, el artículo es producto (compatibilidad hacia atrás)."""
+        resp = api_client.post(
+            self.URL,
+            {"name": "Pan", "unit_price": "1.00", "stock_quantity": "3"},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.data
+        assert resp.data["kind"] == "producto"
+
+    def test_switching_to_service_keeps_stock_for_switch_back(self, api_client, business) -> None:
+        """producto → servicio ignora el stock sin borrarlo; volver lo restaura."""
+        product = self._build(api_client, business, kind="producto", stock_quantity=Decimal("50"))
+        resp = api_client.patch(
+            f"{self.URL}{product.id}/", {"kind": "servicio"}, format="json"
+        )
+        assert resp.status_code == 200, resp.data
+        # El stock queda intacto en BD pero el artículo ya no lo usa.
+        assert resp.data["low_stock_threshold"] is None
+        resp = api_client.patch(
+            f"{self.URL}{product.id}/", {"kind": "producto"}, format="json"
+        )
+        assert resp.status_code == 200, resp.data
+        product.refresh_from_db()
+        assert product.stock_quantity == Decimal("50")
+
+    # --- Filtro ?kind= ---
+
+    def test_kind_filter(self, api_client, business) -> None:
+        """GET filtra por tipo de artículo."""
+        self._build(api_client, business, name="Arroz", sku="ARZ-01", kind="producto")
+        self._build(
+            api_client, business, name="Consultoría", sku="CON-01", kind="servicio",
+            unit="unidad", stock_quantity=Decimal("0"),
+        )
+        assert len(api_client.get(self.URL).data["results"]) == 2
+        assert len(api_client.get(f"{self.URL}?kind=producto").data["results"]) == 1
+        assert len(api_client.get(f"{self.URL}?kind=servicio").data["results"]) == 1
+
+    # --- Ajuste de stock ---
+
+    def test_adjust_service_rejected(self, api_client, business) -> None:
+        """No se puede ajustar existencias de un servicio."""
+        service = self._build(
+            api_client, business, name="Consultoría", sku="CON-01", kind="servicio",
+            unit="unidad", stock_quantity=Decimal("0"),
+        )
+        resp = api_client.post(
+            f"{self.URL}{service.id}/adjust/", {"delta": "5", "reason": "Entrada"}
+        )
+        assert resp.status_code == 400
+        assert "servicio" in str(resp.data["detail"]).lower()
+        assert not StockAdjustment.objects.filter(product=service).exists()
+
+    # --- Facturación ---
+
+    def test_invoice_service_does_not_touch_stock(self, api_client, business, contact) -> None:
+        """Facturar un servicio no descuenta stock; al anular no repone."""
+        product = self._build(api_client, business, kind="producto", stock_quantity=Decimal("50"))
+        service = self._build(
+            api_client, business, name="Consultoría", sku="CON-01", kind="servicio",
+            unit="unidad", unit_price=Decimal("50.00"), stock_quantity=Decimal("0"),
+        )
+        resp = api_client.post(
+            "/api/business/invoices/",
+            {
+                "contact": str(contact.id),
+                "items": [
+                    {"product": str(product.id), "description": "Arroz", "quantity": "10"},
+                    {"product": str(service.id), "description": "Consultoría", "quantity": "1"},
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.data
+        assert resp.data["items"][1]["unit_price"] == "50.00"
+        product.refresh_from_db()
+        service.refresh_from_db()
+        assert product.stock_quantity == Decimal("40")
+        assert service.stock_quantity == Decimal("0")
+        assert StockAdjustment.objects.filter(product=product).count() == 1
+        assert not StockAdjustment.objects.filter(product=service).exists()
+
+        resp = api_client.post(f"/api/business/invoices/{resp.data['id']}/cancel/")
+        assert resp.status_code == 200
+        product.refresh_from_db()
+        assert product.stock_quantity == Decimal("50")
+        assert not StockAdjustment.objects.filter(product=service).exists()
+
+    # --- Pedidos (compras) ---
+
+    def test_order_rejects_service(self, api_client, business, supplier) -> None:
+        """El pedido de compra no admite servicios (solo mercancía)."""
+        service = self._build(
+            api_client, business, name="Consultoría", sku="CON-01", kind="servicio",
+            unit="unidad", stock_quantity=Decimal("0"),
+        )
+        resp = api_client.post(
+            "/api/business/orders/",
+            {
+                "contact": str(supplier.id),
+                "items": [
+                    {
+                        "product": str(service.id),
+                        "description": "Consultoría",
+                        "quantity": "1",
+                        "unit_price": "50.00",
+                    }
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "servicio" in str(resp.data).lower()
+
+    # --- Alcance: valuación, alertas y asistente ---
+
+    def test_service_excluded_from_inventory_value(self, api_client, business) -> None:
+        """inventoryValue suma solo productos; un servicio (aunque tenga stock viejo) no."""
+        self._build(
+            api_client, business, name="Arroz", sku="ARZ-01", kind="producto",
+            stock_quantity=Decimal("4"), cost_price=Decimal("5.00"),
+        )
+        self._build(
+            api_client, business, name="Consultoría", sku="CON-01", kind="servicio",
+            unit="unidad", stock_quantity=Decimal("5"), cost_price=Decimal("10.00"),
+        )
+        from apps.business.services import build_business_analytics
+
+        data = build_business_analytics(business)
+        assert data["kpis"]["inventoryValue"] == Decimal("20.00")
+
+    def test_service_excluded_from_low_stock_notification(self, api_client, business) -> None:
+        """Un servicio nunca genera la alerta de stock bajo."""
+        self._build(
+            api_client, business, name="Consultoría", sku="CON-01", kind="servicio",
+            unit="unidad", stock_quantity=Decimal("0"), low_stock_threshold=Decimal("5"),
+        )
+        from apps.notifications.services import refresh_notifications
+
+        result = refresh_notifications(api_client.user, scope="business")
+        assert not any(n.kind == "product_low_stock" for n in result)
+
+    def test_service_excluded_from_assistant_inventory(self, api_client, business) -> None:
+        """El resumen de inventario del asistente cuenta solo productos."""
+        self._build(
+            api_client, business, name="Arroz", sku="ARZ-01", kind="producto",
+            stock_quantity=Decimal("4"), cost_price=Decimal("5.00"),
+        )
+        self._build(
+            api_client, business, name="Consultoría", sku="CON-01", kind="servicio",
+            unit="unidad", stock_quantity=Decimal("0"),
+        )
+        from apps.assistant.business_context import _inventory
+
+        summary = _inventory(business)
+        assert summary["product_count"] == 1
+        assert summary["total_value"] == "20.00"

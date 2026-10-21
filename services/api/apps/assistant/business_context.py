@@ -78,7 +78,7 @@ def build_business_context(user, today: date | None = None) -> dict:
             "unit": p.unit,
             "threshold": str(p.low_stock_threshold) if p.low_stock_threshold is not None else None,
         }
-        for p in Product.objects.filter(business=business)
+        for p in Product.objects.filter(business=business, kind="producto")
         if p.low_stock_threshold is not None and p.stock_quantity <= p.low_stock_threshold
     ][:_MAX_ROWS]
 
@@ -188,8 +188,14 @@ def _sum_by_currency(rows: list) -> dict[str, str]:
 
 
 def _inventory(business: Business) -> dict:
-    """Resumen del inventario: número de productos, valor y top por valor."""
-    products = list(Product.objects.filter(business=business, is_active=True))
+    """Resumen del inventario: número de productos, valor y top por valor.
+
+    Solo ``kind="producto"``: los servicios no tienen existencias ni valor de
+    inventario.
+    """
+    products = list(
+        Product.objects.filter(business=business, is_active=True, kind="producto")
+    )
     lines = []
     total_value = Decimal("0")
     for p in products:

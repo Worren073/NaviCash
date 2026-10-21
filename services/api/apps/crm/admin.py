@@ -102,6 +102,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = [
         "name",
         "sku",
+        "kind",
         "business",
         "category",
         "supplier",
@@ -111,7 +112,7 @@ class ProductAdmin(admin.ModelAdmin):
         "low_stock_threshold",
         "is_active",
     ]
-    list_filter = ["is_active", "category"]
+    list_filter = ["kind", "is_active", "category"]
     search_fields = ["name", "sku", "description"]
     inlines = [StockAdjustmentInline]
 

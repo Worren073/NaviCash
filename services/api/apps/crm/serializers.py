@@ -557,6 +557,11 @@ class OrderItemWriteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "El producto no pertenece a tu catálogo."
                 )
+            if product.kind == "servicio":
+                raise serializers.ValidationError(
+                    "Los servicios no se compran por pedido: el pedido integra "
+                    "mercancía al inventario. Registra el costo como un gasto."
+                )
             description = description or product.name
             unit = product.unit
             unit_price = attrs.get("unit_price") or product.cost_price or Decimal("0")
@@ -902,6 +907,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "name",
             "sku",
             "description",
+            "kind",
             "unit",
             "unit_price",
             "wholesale_price",
@@ -963,6 +969,18 @@ class ProductSerializer(serializers.ModelSerializer):
         # en enteros (existencias y umbral de alerta). En alta, adelante; en
         # edición, se usa la unidad que quede vigente tras el cambio.
         from apps.crm.services import requires_integer_amounts
+
+        # Un servicio no tiene existencias: se normaliza en silencio (stock 0,
+        # sin umbral, unidad «Unidad»). El stock ya existente se ignora pero
+        # no se borra, por si el artículo vuelve a ser producto.
+        kind = attrs.get("kind")
+        if kind is None and self.instance is not None:
+            kind = self.instance.kind
+        if kind == "servicio":
+            attrs["stock_quantity"] = Decimal("0")
+            attrs["low_stock_threshold"] = None
+            attrs["unit"] = "unidad"
+            return attrs
 
         unit = attrs.get("unit")
         if unit is None and self.instance is not None:

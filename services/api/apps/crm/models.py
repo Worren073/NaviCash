@@ -631,12 +631,16 @@ class ProductCategory(OwnedModel):
 
 
 class Product(OwnedModel):
-    """Producto del inventario del negocio.
+    """Artículo del inventario del negocio: producto o servicio.
 
     ``stock_quantity`` se descuenta al crear/envíar facturas y se repone al
     anularlas (ver ``apps.crm.services``). Los precios de venta son dos: el
     general (``unit_price``) y el mayorista (``wholesale_price``), que se elige
     según el ``customer_type`` del cliente al armar la factura.
+
+    Con ``kind="servicio"`` el artículo se factura igual pero no tiene
+    existencias: no se descuenta/repoe stock, no se ajusta, no entra en la
+    valuación de inventario ni en las alertas de stock bajo.
     """
 
     business = models.ForeignKey(
@@ -650,6 +654,12 @@ class Product(OwnedModel):
         max_length=40, blank=True, default="", verbose_name="Código/SKU"
     )
     description = models.TextField(blank=True, default="", verbose_name="Descripción")
+    kind = models.CharField(
+        max_length=12,
+        choices=[("producto", "Producto"), ("servicio", "Servicio")],
+        default="producto",
+        verbose_name="Tipo de artículo",
+    )
     unit = models.CharField(
         max_length=12,
         choices=[("unidad", "Unidad"), ("kg", "Kg")],
@@ -737,6 +747,8 @@ class Product(OwnedModel):
         ]
 
     def __str__(self) -> str:
+        if self.kind == "servicio":
+            return self.name
         return f"{self.name} ({self.stock_quantity} {self.unit})"
 
 
