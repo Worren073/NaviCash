@@ -443,7 +443,9 @@ export function InvoiceForm({ onCreated, onCancel }: InvoiceFormProps) {
                 <option value="">{t("invoices.form.fromCatalogue")}</option>
                 {catalogue.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} · {t("inventory.stock")}: {p.stock_quantity}
+                    {p.kind === "servicio"
+                      ? `${p.name} · ${t("inventory.kindOptions.servicio")}`
+                      : `${p.name} · ${t("inventory.stock")}: ${p.stock_quantity}`}
                   </option>
                 ))}
               </select>

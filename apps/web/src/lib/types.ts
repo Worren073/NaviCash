@@ -230,6 +230,7 @@ export interface Product {
   name: string;
   sku: string | null;
   description: string;
+  kind: "producto" | "servicio";
   unit: string | null;
   unit_price: string;
   wholesale_price: string | null;

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Reveal } from "@/components/ui/reveal";
+import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   SidePanel,
@@ -177,6 +178,9 @@ function ProductCard({
               <span className="truncate text-sm font-semibold text-on-surface">
                 {product.name}
               </span>
+              {product.kind === "servicio" && (
+                <Badge variant="secondary">{t("inventory.kindOptions.servicio")}</Badge>
+              )}
               {product.is_low_stock && (
                 <Badge variant="warning">{t("inventory.lowStock")}</Badge>
               )}
@@ -193,27 +197,33 @@ function ProductCard({
       <div className="flex shrink-0 items-center gap-2">
         <div className="text-right">
           <div className="text-sm font-semibold text-on-surface">{formatMoney(product.unit_price)}</div>
-          <div className="text-xs text-on-surface-variant">
-            {product.stock_quantity}{" "}
-            {product.unit === "kg"
-              ? t("inventory.units.kg")
-              : product.unit
-                ? t("inventory.units.unidad")
-                : ""}
-          </div>
+          {product.kind === "servicio" ? (
+            <div className="text-xs text-on-surface-variant">{t("inventory.noStock")}</div>
+          ) : (
+            <div className="text-xs text-on-surface-variant">
+              {product.stock_quantity}{" "}
+              {product.unit === "kg"
+                ? t("inventory.units.kg")
+                : product.unit
+                  ? t("inventory.units.unidad")
+                  : ""}
+            </div>
+          )}
         </div>
         <div className="flex gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdjust();
-            }}
-            aria-label={t("inventory.adjust")}
-          >
-            <Scale className="h-4 w-4" />
-          </Button>
+          {product.kind === "producto" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdjust();
+              }}
+              aria-label={t("inventory.adjust")}
+            >
+              <Scale className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -250,16 +260,19 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [kindFilter, setKindFilter] = useState<"" | "producto" | "servicio">("");
   const { data: categoriesData } = useProductCategories();
   const categories = useMemo(() => categoriesData?.results ?? [], [categoriesData]);
 
   const { data, isLoading, isError } = useProducts(
     debouncedSearch || undefined,
-    categoryFilter || undefined
+    categoryFilter || undefined,
+    undefined,
+    kindFilter || undefined
   );
   const products = useMemo(() => data?.results ?? [], [data]);
   const lowStock = useMemo(
-    () => products.filter((p) => p.is_low_stock),
+    () => products.filter((p) => p.kind === "producto" && p.is_low_stock),
     [products],
   );
 
@@ -371,6 +384,19 @@ export default function InventoryPage() {
           ))}
         </select>
       </div>
+
+      <Segmented<"" | "producto" | "servicio">
+        size="sm"
+        scrollable
+        options={[
+          { value: "", label: t("inventory.kindFilters.all") },
+          { value: "producto", label: t("inventory.kindFilters.products") },
+          { value: "servicio", label: t("inventory.kindFilters.services") },
+        ]}
+        value={kindFilter}
+        onChange={setKindFilter}
+        layoutId="inventory-kind-filter"
+      />
 
       {isError ? (
         <p className="glass-panel clip-rounded-lg rounded-lg p-6 text-center text-sm text-on-surface-variant">

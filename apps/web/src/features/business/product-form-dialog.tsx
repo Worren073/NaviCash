@@ -39,6 +39,7 @@ export function ProductFormDialog({
 
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
+  const [kind, setKind] = useState<"producto" | "servicio">("producto");
   const [unit, setUnit] = useState<"unidad" | "kg">("unidad");
   const [category, setCategory] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
@@ -52,6 +53,7 @@ export function ProductFormDialog({
     if (open) {
       setName(product?.name ?? "");
       setSku(product?.sku ?? "");
+      setKind(product?.kind === "servicio" ? "servicio" : "producto");
       setUnit(product?.unit === "kg" ? "kg" : "unidad");
       setCategory(product?.category ?? "");
       setUnitPrice(product?.unit_price ?? "");
@@ -73,10 +75,15 @@ export function ProductFormDialog({
     if (numberLtZero(unitPrice, wholesalePrice, costPrice, threshold, initialStock))
       return t("inventory.nonNegative");
     // Con la unidad «Unidad» las cantidades van en enteros (sin decimales).
-    if (unit === "unidad" && (nonInteger(initialStock) || nonInteger(threshold)))
+    // Los servicios no tienen existencias: no aplica.
+    if (
+      kind === "producto" &&
+      unit === "unidad" &&
+      (nonInteger(initialStock) || nonInteger(threshold))
+    )
       return t("inventory.integerRequired");
     return null;
-  }, [name, unit, unitPrice, wholesalePrice, costPrice, threshold, initialStock, t]);
+  }, [name, kind, unit, unitPrice, wholesalePrice, costPrice, threshold, initialStock, t]);
 
   // Ganancia sobre el costo (markup): (venta − costo) / costo. Requiere un
   // costo positivo y un precio de venta; en falta se muestra «—».
@@ -101,12 +108,14 @@ export function ProductFormDialog({
       const base = {
         name: name.trim(),
         sku: sku.trim(),
-        unit,
+        kind,
+        // Un servicio se guarda siempre en «Unidad» y sin existencias.
+        unit: kind === "servicio" ? "unidad" : unit,
         category: category || null,
         unit_price: unitPrice,
         wholesale_price: wholesalePrice || null,
         cost_price: costPrice,
-        low_stock_threshold: threshold || null,
+        low_stock_threshold: kind === "servicio" ? null : threshold || null,
         is_active: isActive,
       };
       if (product) {
@@ -114,7 +123,7 @@ export function ProductFormDialog({
       }
       return api.post<Product>("/business/products/", {
         ...base,
-        ...(initialStock ? { stock_quantity: initialStock } : {}),
+        ...(initialStock && kind === "producto" ? { stock_quantity: initialStock } : {}),
       });
     },
     onSuccess: async () => {
@@ -141,10 +150,33 @@ export function ProductFormDialog({
             {product ? t("inventory.editTitle") : t("inventory.createTitle")}
           </SidePanelTitle>
           <SidePanelDescription>
-            {product ? "" : t("inventory.initialStockHint")}
+            {product || kind === "servicio" ? "" : t("inventory.initialStockHint")}
           </SidePanelDescription>
         </SidePanelHeader>
         <div className="space-y-4">
+          <div className="block">
+            <span className="mb-1 block text-sm font-medium text-on-surface">
+              {t("inventory.kind")}
+            </span>
+            <Segmented<"producto" | "servicio">
+              options={[
+                { value: "producto", label: t("inventory.kindOptions.producto") },
+                { value: "servicio", label: t("inventory.kindOptions.servicio") },
+              ]}
+              value={kind}
+              onChange={(next) => {
+                setKind(next);
+                if (next === "servicio") setUnit("unidad");
+              }}
+              layoutId="product-kind-segmented"
+            />
+            {kind === "servicio" && (
+              <span className="mt-1 block text-xs text-on-surface-variant">
+                {t("inventory.kindHint")}
+              </span>
+            )}
+          </div>
+
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-on-surface">
               {t("inventory.name")} *
@@ -167,20 +199,22 @@ export function ProductFormDialog({
                 placeholder={t("inventory.skuPlaceholder")}
               />
             </label>
-            <div className="block">
-              <span className="mb-1 block text-sm font-medium text-on-surface">
-                {t("inventory.unit")}
-              </span>
-              <Segmented<"unidad" | "kg">
-                options={[
-                  { value: "unidad", label: t("inventory.units.unidad") },
-                  { value: "kg", label: t("inventory.units.kg") },
-                ]}
-                value={unit}
-                onChange={setUnit}
-                layoutId="product-unit-segmented"
-              />
-            </div>
+            {kind === "producto" && (
+              <div className="block">
+                <span className="mb-1 block text-sm font-medium text-on-surface">
+                  {t("inventory.unit")}
+                </span>
+                <Segmented<"unidad" | "kg">
+                  options={[
+                    { value: "unidad", label: t("inventory.units.unidad") },
+                    { value: "kg", label: t("inventory.units.kg") },
+                  ]}
+                  value={unit}
+                  onChange={setUnit}
+                  layoutId="product-unit-segmented"
+                />
+              </div>
+            )}
           </div>
 
           <label className="block">
@@ -275,22 +309,24 @@ export function ProductFormDialog({
                 onChange={setWholesalePrice}
               />
             </label>
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-on-surface">
-                {t("inventory.threshold")}
-              </span>
-              <NumericInput
-                mode={unit === "unidad" ? "integer" : "decimal"}
-                value={threshold}
-                onChange={setThreshold}
-              />
-              <span className="mt-1 block text-xs text-on-surface-variant">
-                {t("inventory.thresholdHint")}
-              </span>
-            </label>
+            {kind === "producto" && (
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-on-surface">
+                  {t("inventory.threshold")}
+                </span>
+                <NumericInput
+                  mode={unit === "unidad" ? "integer" : "decimal"}
+                  value={threshold}
+                  onChange={setThreshold}
+                />
+                <span className="mt-1 block text-xs text-on-surface-variant">
+                  {t("inventory.thresholdHint")}
+                </span>
+              </label>
+            )}
           </div>
 
-          {!product && (
+          {!product && kind === "producto" && (
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-on-surface">
                 {t("inventory.initialStock")}

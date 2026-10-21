@@ -81,7 +81,11 @@ export function OrderForm({ prefill = [], onCreated, onCancel }: OrderFormProps)
     [suppliersData],
   );
   const { data: productsData } = useProducts();
-  const catalogue = useMemo(() => productsData?.results ?? [], [productsData]);
+  // El pedido integra mercancía al inventario: los servicios no aplican.
+  const catalogue = useMemo(
+    () => (productsData?.results ?? []).filter((p) => p.kind !== "servicio"),
+    [productsData],
+  );
   const { data: categoriesData } = useProductCategories();
   const categories = useMemo(() => categoriesData?.results ?? [], [categoriesData]);
 

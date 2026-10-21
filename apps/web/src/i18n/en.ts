@@ -761,6 +761,18 @@ export default {
     namePlaceholder: "e.g. Coffee 1 kg",
     sku: "Code (SKU)",
     skuPlaceholder: "e.g. COF-1KG",
+    kind: "Item type",
+    kindOptions: {
+      producto: "Product",
+      servicio: "Service",
+    },
+    kindHint: "Invoiced the same way, but with no stock or low-stock alerts.",
+    kindFilters: {
+      all: "All",
+      products: "Products",
+      services: "Services",
+    },
+    noStock: "No stock",
     category: "Category",
     categoriesTitle: "Categories",
     categoryName: "Category name",

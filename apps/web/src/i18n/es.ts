@@ -760,6 +760,18 @@ export default {
     namePlaceholder: "p. ej. Café 1 kg",
     sku: "Código (SKU)",
     skuPlaceholder: "p. ej. CAF-1KG",
+    kind: "Tipo de artículo",
+    kindOptions: {
+      producto: "Producto",
+      servicio: "Servicio",
+    },
+    kindHint: "Se factura igual, pero no tiene existencias ni alertas de stock.",
+    kindFilters: {
+      all: "Todos",
+      products: "Productos",
+      services: "Servicios",
+    },
+    noStock: "Sin existencias",
     category: "Categoría",
     categoriesTitle: "Categorías",
     categoryName: "Nombre de la categoría",

@@ -216,14 +216,20 @@ export function useProductCategories() {
   });
 }
 
-export function useProducts(search?: string, category?: string, active?: string) {
+export function useProducts(
+  search?: string,
+  category?: string,
+  active?: string,
+  kind?: string
+) {
   return useQuery({
-    queryKey: [...queryKeys.products, { search, category, active }],
+    queryKey: [...queryKeys.products, { search, category, active, kind }],
     queryFn: ({ signal }) => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (category) params.set("category", category);
       if (active) params.set("active", active);
+      if (kind) params.set("kind", kind);
       return api.get<Paginated<Product>>(`/business/products?${params.toString()}`, {
         signal,
       });
