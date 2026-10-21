@@ -26,7 +26,15 @@ from apps.core.currency import (
     usd_to_currency,
 )
 from apps.core.exceptions import BusinessRuleError
-from apps.crm.models import Invoice, InvoicePayment, Order, OrderPayment, Product
+from apps.crm.models import (
+    Invoice,
+    InvoiceItem,
+    InvoicePayment,
+    Order,
+    OrderPayment,
+    Product,
+)
+from apps.crm.services import GOODS_OUT_STATUSES
 from apps.rates.service import get_current_official_rate
 from apps.transactions.models import Transaction
 from apps.wallets.models import Wallet
@@ -254,11 +262,15 @@ def build_business_analytics(
     Returns:
         Dict con ``currency``, ``months``, ``month``, ``pnl``, ``daily``,
         ``incomeCategories``, ``expenseCategories``, ``aging``, ``topClients``,
-        ``topSuppliers`` y ``kpis``. Los valores monetarios son números (float)
-        redondeados y listos para graficar; las fechas usan formato ``YYYY-MM``
-        (serie mensual) o ``YYYY-MM-DD`` (serie diaria, vacía sin mes elegido).
-        Las magnitudes de estado (aging, por cobrar/por pagar, vencido e
-        inventario) siempre describen el presente, nunca el mes elegido.
+        ``topSuppliers``, ``topProducts`` y ``kpis``. Los valores monetarios son
+        números (float) redondeados y listos para graficar; las fechas usan
+        formato ``YYYY-MM`` (serie mensual) o ``YYYY-MM-DD`` (serie diaria,
+        vacía sin mes elegido). ``topProducts`` es el top 5 de artículos
+        físicos por unidades vendidas (con ingreso y margen en USD) y
+        ``kpis.serviceUnits``/``kpis.serviceRevenue`` resumen por separado los
+        servicios facturados. Las magnitudes de estado (aging, por cobrar/por
+        pagar, vencido e inventario) siempre describen el presente, nunca el mes
+        elegido.
     """
     today = today or timezone.localdate()
     rate = get_current_official_rate()
@@ -440,6 +452,63 @@ def build_business_analytics(
         "order__currency",
     )
 
+    def _sold_items(kind: str):
+        """Líneas de facturas emitidas del periodo, por tipo de artículo."""
+        # ``issue_date`` es DateField: no aplica el sufijo ``__date`` de
+        # ``_date_window`` (pensado para DateTimeField como ``paid_at``).
+        date_filter = (
+            {"invoice__issue_date__range": (period_start, period_end)}
+            if period_start is not None and period_end is not None
+            else {"invoice__issue_date__gte": cutoff}
+        )
+        return InvoiceItem.objects.filter(
+            invoice__business=business,
+            invoice__status__in=GOODS_OUT_STATUSES,
+            product__kind=kind,
+            **date_filter,
+        )
+
+    # Productos más vendidos: top 5 por unidades (solo artículos físicos).
+    product_rows: dict[str, dict] = {}
+    for line in _sold_items("producto").select_related("product").values(
+        "product__name", "description", "quantity", "total", "unit_price",
+        "cost_price", "invoice__currency",
+    ):
+        label = line["product__name"] or line["description"] or "—"
+        currency = line["invoice__currency"] or "USD"
+        bucket = product_rows.setdefault(
+            label, {"quantity": Decimal("0"), "revenue": Decimal("0.00"), "margin": Decimal("0.00")}
+        )
+        quantity = line["quantity"] or Decimal("0")
+        bucket["quantity"] += quantity
+        bucket["revenue"] += _to_usd(line["total"] or Decimal("0.00"), currency, one)
+        if line["cost_price"] is not None:
+            bucket["margin"] += _to_usd(
+                (line["unit_price"] - line["cost_price"]) * quantity, currency, one
+            )
+    top_products = [
+        {
+            "label": label,
+            "quantity": float(data["quantity"]),
+            "revenue": round(float(data["revenue"]), 2),
+            "margin": round(float(data["margin"]), 2),
+        }
+        for label, data in sorted(
+            product_rows.items(), key=lambda item: item[1]["quantity"], reverse=True
+        )[:5]
+    ]
+
+    # Servicios vendidos (KPI aparte): unidades y monto facturado del periodo.
+    service_units = Decimal("0")
+    service_revenue = Decimal("0.00")
+    for line in _sold_items("servicio").values(
+        "quantity", "total", "invoice__currency"
+    ):
+        service_units += line["quantity"] or Decimal("0")
+        service_revenue += _to_usd(
+            line["total"] or Decimal("0.00"), line["invoice__currency"] or "USD", one
+        )
+
     margin_pct = round(float((income_total - expense_total) / income_total * 100), 1) if income_total > 0 else None
 
     return {
@@ -455,6 +524,7 @@ def build_business_analytics(
         ],
         "topClients": top_clients,
         "topSuppliers": top_suppliers,
+        "topProducts": top_products,
         "kpis": {
             "incomePeriod": round(float(income_total), 2),
             "expensePeriod": round(float(expense_total), 2),
@@ -463,5 +533,7 @@ def build_business_analytics(
             "payable": round(float(payable), 2),
             "overdue": round(float(overdue), 2),
             "inventoryValue": round(float(inventory_value), 2),
+            "serviceUnits": float(service_units),
+            "serviceRevenue": round(float(service_revenue), 2),
         },
     }

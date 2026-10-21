@@ -13,6 +13,7 @@ from apps.business.services import create_business
 from apps.crm.models import (
     BusinessContact,
     Invoice,
+    InvoiceItem,
     InvoicePayment,
     Order,
     OrderPayment,
@@ -519,3 +520,140 @@ class TestBusinessAnalyticsMonth:
         assert resp.data["daily"] == []
         # Los KPIs siguen describiendo la ventana completa.
         assert resp.data["kpis"]["incomePeriod"] == 140.0
+
+
+@pytest.mark.django_db
+class TestBusinessAnalyticsTopProducts:
+    """Productos más vendidos (unidades) y KPI aparte de servicios facturados."""
+
+    @pytest.fixture
+    def company(self, api_client):
+        return _create_business(api_client)
+
+    def _invoice(self, api_client, company, contact, number, issue_date, items, status="pagada"):
+        """Factura emitida con líneas; ``items`` = [(product, qty, unit_price, cost)]."""
+        inv = Invoice.objects.create(
+            user=api_client.user, business=company, contact=contact,
+            number=number, issue_date=issue_date, due_date=issue_date,
+            status=status, subtotal=Decimal("0.00"), tax_amount=Decimal("0.00"),
+            total=Decimal("0.00"), amount_paid=Decimal("0.00"),
+            balance_due=Decimal("0.00"), currency="USD",
+        )
+        for product, qty, unit_price, cost in items:
+            InvoiceItem.objects.create(
+                user=api_client.user, invoice=inv, product=product,
+                description=product.name, quantity=qty, unit_price=unit_price,
+                cost_price=cost, discount=Decimal("0.00"),
+                total=(qty * unit_price).quantize(Decimal("0.01")),
+            )
+        return inv
+
+    def test_products_ranked_by_units_excluding_services(self, api_client, company) -> None:
+        today = timezone.localdate()
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=company, name="Cliente A", type="cliente"
+        )
+        arroz = Product.objects.create(
+            user=api_client.user, business=company, name="Arroz", kind="producto",
+            unit_price=Decimal("2.00"), cost_price=Decimal("1.00"),
+            stock_quantity=Decimal("100"),
+        )
+        pan = Product.objects.create(
+            user=api_client.user, business=company, name="Pan", kind="producto",
+            unit_price=Decimal("1.50"), cost_price=Decimal("1.00"),
+            stock_quantity=Decimal("100"),
+        )
+        consultoria = Product.objects.create(
+            user=api_client.user, business=company, name="Consultoría", kind="servicio",
+            unit="unidad", unit_price=Decimal("50.00"), cost_price=Decimal("20.00"),
+            stock_quantity=Decimal("0"),
+        )
+        self._invoice(
+            api_client, company, contact, "F-00001", today,
+            [
+                (arroz, Decimal("10"), Decimal("2.00"), Decimal("1.00")),
+                (pan, Decimal("4"), Decimal("1.50"), Decimal("1.00")),
+                (consultoria, Decimal("3"), Decimal("50.00"), Decimal("20.00")),
+            ],
+        )
+        data = api_client.get("/api/business/analytics?months=6").data
+        # Solo productos físicos, ordenados por unidades descendente.
+        assert [row["label"] for row in data["topProducts"]] == ["Arroz", "Pan"]
+        arroz_row = data["topProducts"][0]
+        assert arroz_row["quantity"] == 10.0
+        assert arroz_row["revenue"] == 20.0
+        assert arroz_row["margin"] == 10.0  # (2-1)*10
+        assert data["topProducts"][1]["quantity"] == 4.0
+        # Los servicios van aparte, en su propio KPI.
+        assert data["kpis"]["serviceUnits"] == 3.0
+        assert data["kpis"]["serviceRevenue"] == 150.0
+
+    def test_top_five_limit(self, api_client, company) -> None:
+        today = timezone.localdate()
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=company, name="Cliente A", type="cliente"
+        )
+        items = []
+        for index in range(7):
+            product = Product.objects.create(
+                user=api_client.user, business=company, name=f"Prod {index}", kind="producto",
+                unit_price=Decimal("1.00"), cost_price=Decimal("0.50"),
+                stock_quantity=Decimal("100"),
+            )
+            items.append((product, Decimal(index + 1), Decimal("1.00"), Decimal("0.50")))
+        self._invoice(api_client, company, contact, "F-00002", today, items)
+        data = api_client.get("/api/business/analytics?months=6").data
+        assert len(data["topProducts"]) == 5
+        assert data["topProducts"][0]["label"] == "Prod 6"  # 7 unidades
+
+    def test_excludes_draft_and_cancelled_invoices(self, api_client, company) -> None:
+        today = timezone.localdate()
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=company, name="Cliente A", type="cliente"
+        )
+        product = Product.objects.create(
+            user=api_client.user, business=company, name="Arroz", kind="producto",
+            unit_price=Decimal("2.00"), cost_price=Decimal("1.00"),
+            stock_quantity=Decimal("100"),
+        )
+        # Borrador y anulada: no son ventas efectivas.
+        self._invoice(
+            api_client, company, contact, "F-00003", today,
+            [(product, Decimal("10"), Decimal("2.00"), Decimal("1.00"))], status="borrador",
+        )
+        self._invoice(
+            api_client, company, contact, "F-00004", today,
+            [(product, Decimal("20"), Decimal("2.00"), Decimal("1.00"))], status="anulada",
+        )
+        data = api_client.get("/api/business/analytics?months=6").data
+        assert data["topProducts"] == []
+        assert data["kpis"]["serviceUnits"] == 0.0
+        assert data["kpis"]["serviceRevenue"] == 0.0
+
+    def test_scoped_to_selected_month(self, api_client, company) -> None:
+        today = timezone.localdate()
+        contact = BusinessContact.objects.create(
+            user=api_client.user, business=company, name="Cliente A", type="cliente"
+        )
+        arroz = Product.objects.create(
+            user=api_client.user, business=company, name="Arroz", kind="producto",
+            unit_price=Decimal("2.00"), cost_price=Decimal("1.00"),
+            stock_quantity=Decimal("100"),
+        )
+        current = _month_start(0)
+        previous = _month_start(1)
+        self._invoice(
+            api_client, company, contact, "F-00005", current,
+            [(arroz, Decimal("10"), Decimal("2.00"), Decimal("1.00"))],
+        )
+        self._invoice(
+            api_client, company, contact, "F-00006", previous,
+            [(arroz, Decimal("50"), Decimal("2.00"), Decimal("1.00"))],
+        )
+        month = current.strftime("%Y-%m")
+        data = api_client.get(f"/api/business/analytics?months=12&month={month}").data
+        assert [row["label"] for row in data["topProducts"]] == ["Arroz"]
+        assert data["topProducts"][0]["quantity"] == 10.0
+        # Sin filtro, la ventana suma los dos meses.
+        data_all = api_client.get("/api/business/analytics?months=12").data
+        assert data_all["topProducts"][0]["quantity"] == 60.0
