@@ -109,6 +109,13 @@ env = environ.Env(
     FIELD_ENCRYPTION_KEY=(str, ""),
     # Base de la Graph API de Meta usada por el conector de WhatsApp.
     WHATSAPP_API_BASE_URL=(str, "https://graph.facebook.com/v21.0"),
+    # --- WhatsApp Embedded Signup / Coexistence -----------------------------
+    # Credenciales de la app de Meta (globales del entorno) para el flujo de
+    # vinculación guiado (Embedded Signup). No se usan en la conexión manual.
+    WHATSAPP_APP_ID=(str, ""),
+    WHATSAPP_APP_SECRET=(str, ""),
+    # "Configuration ID" del flujo de Embedded Signup definido en Meta.
+    WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID=(str, ""),
     # --- Instagram Messaging (Instagram Login, sin Página de Facebook) ------
     # Credenciales de la app de Meta (globales del entorno, no por negocio).
     INSTAGRAM_APP_ID=(str, ""),
@@ -448,6 +455,10 @@ NUDGE_LOCAL_HOUR = env("NUDGE_LOCAL_HOUR")
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY")
 # Base de la Graph API de Meta (WhatsApp Cloud API).
 WHATSAPP_API_BASE_URL = env("WHATSAPP_API_BASE_URL")
+# Embedded Signup / Coexistence: credenciales globales de la app de Meta.
+WHATSAPP_APP_ID = env("WHATSAPP_APP_ID")
+WHATSAPP_APP_SECRET = env("WHATSAPP_APP_SECRET")
+WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID = env("WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID")
 
 # Instagram Messaging (Instagram Login): credenciales globales de la app de Meta
 # y parámetros del OAuth/webhook. Los tokens por negocio se cifran en la BD.

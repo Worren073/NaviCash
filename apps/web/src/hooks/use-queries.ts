@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiErrorClass } from "@/lib/api";
 import type {
@@ -49,6 +49,7 @@ export const queryKeys = {
   chats: ["chats"] as const,
   chatMessages: ["chat-messages"] as const,
   whatsappConfig: ["whatsapp-config"] as const,
+  whatsappEmbeddedConfig: ["whatsapp-embedded-config"] as const,
   instagramConfig: ["instagram-config"] as const,
 };
 
@@ -276,6 +277,33 @@ export function useWhatsAppConfig() {
   return useQuery({
     queryKey: queryKeys.whatsappConfig,
     queryFn: ({ signal }) => api.get<WhatsAppConfig>("/business/whatsapp/config/", { signal }),
+  });
+}
+
+export type WhatsAppEmbeddedSignupMeta = {
+  configured: boolean;
+  app_id: string;
+  config_id: string;
+};
+
+export function useWhatsAppEmbeddedConfig() {
+  return useQuery({
+    queryKey: queryKeys.whatsappEmbeddedConfig,
+    queryFn: ({ signal }) =>
+      api.get<WhatsAppEmbeddedSignupMeta>("/business/whatsapp/embedded-signup/config/", {
+        signal,
+      }),
+  });
+}
+
+export function useWhatsAppEmbeddedSignup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      api.post<WhatsAppConfig>("/business/whatsapp/embedded-signup/exchange/", payload),
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.whatsappConfig, data);
+    },
   });
 }
 

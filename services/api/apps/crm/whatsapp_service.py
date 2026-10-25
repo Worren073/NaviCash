@@ -1,4 +1,4 @@
-"""whatsapp_service — Integración con la WhatsApp Cloud API de Meta.
+"""whatsapp_service – Integración con la WhatsApp Cloud API de Meta.
 
 Agrupa la lógica pura de la integración (sin tocar la base de datos) para que
 sea fácil de probar:
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from typing import Any
 
 import httpx
 from django.conf import settings
@@ -148,7 +149,7 @@ def _error_from_response(response: httpx.Response) -> WhatsAppSendError:
         if code in _WINDOW_ERROR_CODES:
             return WhatsAppSendError(
                 "No se pudo enviar: pasaron más de 24 horas desde el último "
-                "mensaje del cliente. Envíale una plantilla para reiniciar la "
+                "mensaje del cliente. Envía una plantilla para reiniciar la "
                 "conversación.",
                 code="whatsapp_window_closed",
             )
@@ -164,3 +165,47 @@ def _error_from_response(response: httpx.Response) -> WhatsAppSendError:
         "No se pudo enviar el mensaje por WhatsApp. Inténtalo de nuevo.",
         code="whatsapp_send_error",
     )
+
+
+def exchange_embedded_signup_code(app_id: str, app_secret: str, code: str, redirect_uri: str | None = None) -> dict[str, Any]:
+    if not app_id or not app_secret or not code:
+        raise WhatsAppSendError("Faltan datos para completar la vinculación con WhatsApp.", code="whatsapp_embedded_signup_missing")
+    url = f"{settings.WHATSAPP_API_BASE_URL}/oauth/access_token"
+    params = {"client_id": app_id, "client_secret": app_secret, "code": code}
+    if redirect_uri:
+        params["redirect_uri"] = redirect_uri
+    try:
+        response = httpx.get(url, params=params, timeout=15)
+    except httpx.HTTPError:
+        raise WhatsAppSendError("No se pudo contactar a Meta. Inténtalo de nuevo.", code="whatsapp_embedded_signup_unreachable")
+    if response.status_code >= 400:
+        raise _error_from_response(response)
+    return response.json() or {}
+
+
+def get_waba_accounts(user_access_token: str) -> list[dict[str, Any]]:
+    if not user_access_token:
+        raise WhatsAppSendError("Token de acceso inválido para Embedded Signup.", code="whatsapp_embedded_signup_missing")
+    url = f"{settings.WHATSAPP_API_BASE_URL}/me/whatsapp_business_accounts"
+    try:
+        response = httpx.get(url, params={"access_token": user_access_token, "fields": "id,name"}, timeout=15)
+    except httpx.HTTPError:
+        raise WhatsAppSendError("No se pudo obtener las cuentas de WhatsApp Business.", code="whatsapp_embedded_signup_unreachable")
+    if response.status_code >= 400:
+        raise _error_from_response(response)
+    data = response.json() or {}
+    return data.get("data") or []
+
+
+def get_phone_numbers(waba_id: str, access_token: str) -> list[dict[str, Any]]:
+    if not waba_id or not access_token:
+        raise WhatsAppSendError("Faltan datos para obtener el número de teléfono.", code="whatsapp_embedded_signup_missing")
+    url = f"{settings.WHATSAPP_API_BASE_URL}/{waba_id}/phone_numbers"
+    try:
+        response = httpx.get(url, params={"access_token": access_token, "fields": "id,display_phone_number,verified_name,code_verification_status"}, timeout=15)
+    except httpx.HTTPError:
+        raise WhatsAppSendError("No se pudo obtener los números de teléfono.", code="whatsapp_embedded_signup_unreachable")
+    if response.status_code >= 400:
+        raise _error_from_response(response)
+    data = response.json() or {}
+    return data.get("data") or []

@@ -630,6 +630,9 @@ export interface WhatsAppConfig {
   has_access_token?: boolean;
   has_app_secret?: boolean;
   updated_at?: string;
+  connection_method?: "manual" | "embedded_signup" | "coexistence";
+  business_app_connected?: boolean;
+  meta_data?: Record<string, unknown>;
 }
 
 /** Datos editables de la conexión de WhatsApp (alta o actualización). */

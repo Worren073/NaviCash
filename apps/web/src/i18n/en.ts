@@ -379,6 +379,28 @@ export default {
     connectDialog: {
       title: "Connect WhatsApp",
       subtitle: "Use the credentials from your Meta app (WhatsApp Cloud API).",
+      modeManual: "New number",
+      modeExisting: "Existing number",
+      manualSubtitle: "For numbers created directly in WhatsApp Cloud API.",
+      existingSubtitle:
+        "For numbers already used in the WhatsApp Business app (Coexistence).",
+      existingIntro:
+        "Link your existing account by authorizing with Meta. Your WhatsApp Business app keeps working on your phone.",
+      connectMeta: "Connect with Meta",
+      connectingMeta: "Opening Meta…",
+      existingRequirements:
+        "You must be a business admin in Meta Business Manager and the WhatsApp Business account must be active.",
+      existingNotConfigured:
+        "Meta linking is unavailable: an admin must set WHATSAPP_APP_ID, WHATSAPP_APP_SECRET and WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID.",
+      existingSuccess: "WhatsApp linked successfully.",
+      existingError: "Could not complete the WhatsApp linking.",
+      popupBlocked:
+        "The browser blocked the Meta window. Allow pop-ups and try again.",
+      method: "Connection method",
+      methodManual: "Manual",
+      methodEmbedded: "Embedded Signup",
+      methodCoexistence: "Coexistence",
+      connectedVia: "Connected via {{method}}",
       phoneNumberId: "Number ID (phone_number_id)",
       phoneNumberIdPlaceholder: "e.g. 123456789012345",
       phoneNumberIdHint:

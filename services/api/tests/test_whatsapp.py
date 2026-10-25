@@ -532,3 +532,89 @@ class TestChatInbox:
         assert resp.status_code == 400
         assert resp.data["code"] == "whatsapp_window_closed"
         assert ChatMessage.objects.filter(direction="out").count() == 0
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp Embedded Signup / Coexistence
+# ---------------------------------------------------------------------------
+
+EMBEDDED_CONFIG_URL = "/api/business/whatsapp/embedded-signup/config/"
+EMBEDDED_EXCHANGE_URL = "/api/business/whatsapp/embedded-signup/exchange/"
+
+
+@pytest.mark.django_db
+class TestWhatsAppEmbeddedSignup:
+    """Vinculación guiada de números existentes (Embedded Signup/Coexistence)."""
+
+    def test_config_reports_not_configured(self, api_client, settings) -> None:
+        settings.WHATSAPP_APP_ID = ""
+        settings.WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID = ""
+        resp = api_client.get(EMBEDDED_CONFIG_URL)
+        assert resp.status_code == 200
+        assert resp.data["configured"] is False
+
+    def test_config_reports_values(self, api_client, settings) -> None:
+        settings.WHATSAPP_APP_ID = "app-123"
+        settings.WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID = "cfg-456"
+        resp = api_client.get(EMBEDDED_CONFIG_URL)
+        assert resp.status_code == 200
+        assert resp.data["configured"] is True
+        assert resp.data["app_id"] == "app-123"
+        assert resp.data["config_id"] == "cfg-456"
+
+    def test_exchange_requires_server_config(self, api_client, business, settings) -> None:
+        settings.WHATSAPP_APP_ID = ""
+        settings.WHATSAPP_APP_SECRET = ""
+        resp = api_client.post(EMBEDDED_EXCHANGE_URL, {"code": "abc"}, format="json")
+        assert resp.status_code == 400
+        assert resp.data["code"] == "whatsapp_embedded_signup_not_configured"
+
+    def test_exchange_requires_business(self, api_client, settings) -> None:
+        settings.WHATSAPP_APP_ID = "app-123"
+        settings.WHATSAPP_APP_SECRET = "secret-123"
+        resp = api_client.post(EMBEDDED_EXCHANGE_URL, {"code": "abc"}, format="json")
+        assert resp.status_code == 400
+        assert resp.data["code"] == "validation_error"
+
+    def test_exchange_creates_embedded_config(
+        self, api_client, business, settings, monkeypatch
+    ) -> None:
+        settings.WHATSAPP_APP_ID = "app-123"
+        settings.WHATSAPP_APP_SECRET = "secret-123"
+        settings.WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID = "cfg-456"
+
+        monkeypatch.setattr(
+            "apps.crm.views.exchange_embedded_signup_code",
+            lambda **kwargs: {"access_token": "ES-TOKEN"},
+        )
+        monkeypatch.setattr(
+            "apps.crm.views.get_waba_accounts",
+            lambda token: [{"id": "WABA1", "name": "Mi WABA"}],
+        )
+        monkeypatch.setattr(
+            "apps.crm.views.get_phone_numbers",
+            lambda waba_id, token: [
+                {"id": "PHONE1", "display_phone_number": "584001112222"}
+            ],
+        )
+
+        resp = api_client.post(
+            EMBEDDED_EXCHANGE_URL,
+            {"code": "code-xyz", "waba_id": "WABA1", "phone_number_id": "PHONE1"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["connected"] is True
+        assert resp.data["connection_method"] == "embedded_signup"
+        assert resp.data["business_app_connected"] is False
+        assert "access_token" not in resp.data
+
+        cfg = WhatsAppConfig.objects.get(user=api_client.user)
+        assert cfg.phone_number_id == "PHONE1"
+        assert cfg.waba_id == "WABA1"
+        assert cfg.access_token == "ES-TOKEN"
+        assert cfg.app_secret == "secret-123"
+        assert cfg.access_token_encrypted != "ES-TOKEN"
+        assert cfg.connection_method == "embedded_signup"
+        assert cfg.business_app_connected is False
+        assert cfg.verify_token

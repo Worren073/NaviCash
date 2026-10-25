@@ -39,6 +39,7 @@ from apps.crm.models import (
     ProductCategory,
     StockAdjustment,
     WhatsAppConfig,
+    generate_verify_token,
 )
 from apps.crm.services import GOODS_OUT_STATUSES, requires_integer_amounts
 from apps.crm.payment_methods import PAYMENT_METHOD_CODES
@@ -46,7 +47,10 @@ from apps.crm.tax_id import TAX_ID_TYPES, tax_id_search_term
 from apps.crm.whatsapp_service import (
     WhatsAppSendError,
     describe_inbound,
+    exchange_embedded_signup_code,
     extract_changes,
+    get_phone_numbers,
+    get_waba_accounts,
     send_text,
     verify_signature,
 )
@@ -696,7 +700,7 @@ class WhatsAppConfigView(APIView):
         if config is None:
             return Response({"connected": False})
         data = WhatsAppConfigSerializer(config).data
-        data["connected"] = config.is_active
+        data["connected"] = bool(config.is_active and config.phone_number_id and config.access_token_encrypted)
         return Response(data)
 
     def _save(self, request):
@@ -712,7 +716,19 @@ class WhatsAppConfigView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         try:
-            serializer.save(user=request.user, business=business)
+            instance = serializer.save(user=request.user, business=business)
+            # Guardar desde este formulario implica una conexión manual; se
+            # desactiva la marca de Coexistence (el vínculo guiado usa otro
+            # endpoint y vuelve a marcarla).
+            changed = []
+            if instance.connection_method != "manual":
+                instance.connection_method = "manual"
+                changed.append("connection_method")
+            if instance.business_app_connected:
+                instance.business_app_connected = False
+                changed.append("business_app_connected")
+            if changed:
+                instance.save(update_fields=changed)
         except IntegrityError:
             return Response(
                 {
@@ -722,7 +738,7 @@ class WhatsAppConfigView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         data = WhatsAppConfigSerializer(serializer.instance).data
-        data["connected"] = serializer.instance.is_active
+        data["connected"] = bool(serializer.instance.is_active and serializer.instance.phone_number_id and serializer.instance.access_token_encrypted)
         return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request):
@@ -739,6 +755,159 @@ class WhatsAppConfigView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class WhatsAppEmbeddedSignupConfigView(APIView):
+    """Datos públicos de la app de Meta para iniciar Embedded Signup."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        app_id = getattr(settings, "WHATSAPP_APP_ID", "") or ""
+        config_id = getattr(settings, "WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID", "") or ""
+        return Response(
+            {
+                "configured": bool(app_id and config_id),
+                "app_id": app_id,
+                "config_id": config_id,
+            }
+        )
+
+
+class WhatsAppEmbeddedSignupExchangeView(APIView):
+    """Intercambia el code de Meta Embedded Signup por credenciales de WhatsApp.
+
+    Recibe el ``code`` que devuelve el SDK de Meta tras autorizar. Con él se
+    obtiene un token de acceso, se localiza la WABA y el número de teléfono y se
+    guardan cifrados en ``WhatsAppConfig`` (método ``embedded_signup``).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _business(self, request) -> Business | None:
+        return Business.objects.filter(user=request.user).first()
+
+    def _error(self, message: str, code: str = "validation_error"):
+        return Response({"detail": message, "code": code}, status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request):
+        business = self._business(request)
+        if business is None:
+            return self._error("Crea tu negocio antes de conectar WhatsApp.")
+
+        code = (request.data.get("code") or "").strip()
+        waba_id = (request.data.get("waba_id") or "").strip()
+        phone_number_id = (request.data.get("phone_number_id") or "").strip()
+        connection_method = (request.data.get("connection_method") or "embedded_signup").strip()
+        if connection_method not in ("embedded_signup", "coexistence"):
+            connection_method = "embedded_signup"
+
+        app_id = getattr(settings, "WHATSAPP_APP_ID", "") or ""
+        app_secret = getattr(settings, "WHATSAPP_APP_SECRET", "") or ""
+        if not app_id or not app_secret:
+            return self._error(
+                "La vinculación con Meta no está configurada en el servidor. "
+                "Faltan WHATSAPP_APP_ID / WHATSAPP_APP_SECRET.",
+                code="whatsapp_embedded_signup_not_configured",
+            )
+        if not code:
+            return self._error("Falta el código de autorización de Meta.")
+
+        try:
+            token_data = exchange_embedded_signup_code(
+                app_id=app_id, app_secret=app_secret, code=code
+            )
+            access_token = token_data.get("access_token") or ""
+        except WhatsAppSendError as exc:
+            return self._error(exc.message, exc.code)
+        if not access_token:
+            return self._error(
+                "Meta no devolvió un token de acceso. Verifica la configuración de Embedded Signup."
+            )
+
+        waba_list: list[dict] = []
+        if not waba_id:
+            try:
+                waba_list = get_waba_accounts(access_token)
+            except WhatsAppSendError as exc:
+                return self._error(exc.message, exc.code)
+            if waba_list:
+                waba_id = str(waba_list[0].get("id") or "")
+        if not waba_id:
+            return self._error(
+                "No se encontró una cuenta de WhatsApp Business asociada. "
+                "Selecciona una WABA en el flujo de Meta."
+            )
+
+        phones: list[dict] = []
+        try:
+            phones = get_phone_numbers(waba_id, access_token)
+        except WhatsAppSendError:
+            # Si el SDK ya nos dio el número por postMessage, seguimos; de lo
+            # contrario no hay forma de resolverlo.
+            if not phone_number_id:
+                return self._error(
+                    "No se pudo obtener el número de teléfono del WABA. "
+                    "Verifica que el número esté disponible en Meta."
+                )
+
+        selected_phone = None
+        if phone_number_id:
+            for phone in phones:
+                if str(phone.get("id")) == phone_number_id:
+                    selected_phone = phone
+                    break
+        if selected_phone is None and phones:
+            selected_phone = phones[0]
+        if selected_phone is None and not phone_number_id:
+            return self._error(
+                "No se encontró un número de teléfono para vincular. "
+                "Verifica que el número esté disponible en el WABA."
+            )
+
+        resolved_phone_id = str(
+            (selected_phone or {}).get("id") or phone_number_id
+        )
+        display_phone = (selected_phone or {}).get("display_phone_number") or ""
+
+        meta_data = {
+            "source": connection_method,
+            "waba_accounts": waba_list,
+            "phone_numbers": phones,
+        }
+
+        config = WhatsAppConfig.objects.filter(user=request.user).first()
+        if config is None:
+            config = WhatsAppConfig(
+                user=request.user,
+                business=business,
+                phone_number_id=resolved_phone_id,
+            )
+        else:
+            config.user = request.user
+            config.business = business
+            config.phone_number_id = resolved_phone_id
+
+        config.waba_id = str(waba_id)
+        config.display_phone_number = display_phone
+        config.access_token = access_token
+        if app_secret:
+            config.app_secret = app_secret
+        config.connection_method = connection_method
+        config.business_app_connected = connection_method == "coexistence"
+        config.meta_data = meta_data
+        config.is_active = True
+        if not config.verify_token:
+            config.verify_token = generate_verify_token()
+
+        try:
+            config.save()
+        except IntegrityError:
+            return self._error("Ese número de WhatsApp ya está conectado a otra cuenta.")
+
+        data = WhatsAppConfigSerializer(config).data
+        data["connected"] = True
+        return Response(data, status=status.HTTP_200_OK)
 
 
 _OAUTH_STATE_SALT = "navicash.instagram.oauth"

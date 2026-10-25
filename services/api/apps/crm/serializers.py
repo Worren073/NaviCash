@@ -1062,8 +1062,19 @@ class WhatsAppConfigSerializer(serializers.ModelSerializer):
             "has_access_token",
             "has_app_secret",
             "updated_at",
+            "connection_method",
+            "business_app_connected",
+            "meta_data",
         ]
-        read_only_fields = ["verify_token", "has_access_token", "has_app_secret", "updated_at"]
+        read_only_fields = [
+            "verify_token",
+            "has_access_token",
+            "has_app_secret",
+            "updated_at",
+            "connection_method",
+            "business_app_connected",
+            "meta_data",
+        ]
 
     def get_has_access_token(self, obj: WhatsAppConfig) -> bool:
         return bool(obj.access_token_encrypted)

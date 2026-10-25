@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { sileo } from "sileo";
-import { Check, Copy, MessageCircle, Unplug } from "lucide-react";
+import { Check, Copy, Link2, MessageCircle, Unplug } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { queryKeys } from "@/hooks/use-queries";
+import { Segmented } from "@/components/ui/segmented";
+import {
+  queryKeys,
+  useWhatsAppEmbeddedConfig,
+  useWhatsAppEmbeddedSignup,
+} from "@/hooks/use-queries";
 import { api, ApiErrorClass, BASE_URL } from "@/lib/api";
 import type { WhatsAppConfig } from "@/lib/types";
 
@@ -22,6 +27,44 @@ function buildWebhookUrl(): string {
   const path = `${BASE_URL}/business/whatsapp/webhook/`;
   if (BASE_URL.startsWith("http")) return path;
   return `${window.location.origin}${path}`;
+}
+
+type MetaSdk = {
+  init: (opts: Record<string, unknown>) => void;
+  login: (
+    cb: (response: { authResponse?: { code?: string } }) => void,
+    opts: Record<string, unknown>
+  ) => void;
+};
+
+declare global {
+  interface Window {
+    FB?: MetaSdk;
+    fbAsyncInit?: () => void;
+  }
+}
+
+const META_SDK_SRC = "https://connect.facebook.net/es_LA/sdk.js";
+const META_API_VERSION = "v21.0";
+
+/** Carga el SDK de Meta una sola vez y lo inicializa con el App ID. */
+function loadMetaSdk(appId: string): Promise<MetaSdk> {
+  if (window.FB) return Promise.resolve(window.FB);
+  return new Promise((resolve, reject) => {
+    window.fbAsyncInit = () => {
+      window.FB?.init({ appId, cookie: true, xfbml: true, version: META_API_VERSION });
+      if (window.FB) resolve(window.FB);
+      else reject(new Error("Meta SDK no disponible"));
+    };
+    if (document.getElementById("facebook-jssdk")) return;
+    const script = document.createElement("script");
+    script.id = "facebook-jssdk";
+    script.src = META_SDK_SRC;
+    script.async = true;
+    script.defer = true;
+    script.onerror = () => reject(new Error("No se pudo cargar Meta SDK"));
+    document.body.appendChild(script);
+  });
 }
 
 const LABEL_CLASS = "mb-1 block text-sm font-medium text-on-surface";
@@ -77,11 +120,22 @@ export function WhatsAppConnectDialog({
   const queryClient = useQueryClient();
   const connected = Boolean(config?.connected);
 
+  const [mode, setMode] = useState<"manual" | "existing">("manual");
   const [phoneNumberId, setPhoneNumberId] = useState("");
   const [displayNumber, setDisplayNumber] = useState("");
   const [wabaId, setWabaId] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [appSecret, setAppSecret] = useState("");
+  const [linkingMeta, setLinkingMeta] = useState(false);
+
+  const sessionRef = useRef<{
+    wabaId?: string;
+    phoneNumberId?: string;
+    onBizApp?: boolean;
+  }>({});
+
+  const embeddedConfig = useWhatsAppEmbeddedConfig();
+  const exchange = useWhatsAppEmbeddedSignup();
 
   // Al abrir se precargan los datos no secretos de la conexión existente.
   useEffect(() => {
@@ -91,7 +145,42 @@ export function WhatsAppConnectDialog({
     setWabaId(config?.waba_id ?? "");
     setAccessToken("");
     setAppSecret("");
+    setMode("manual");
+    setLinkingMeta(false);
+    sessionRef.current = {};
   }, [open, config]);
+
+  // Meta envía los datos de la sesión de Embedded Signup por postMessage.
+  useEffect(() => {
+    if (!open) return;
+    const onMessage = (event: MessageEvent) => {
+      if (!/facebook\.com$/.test(event.origin.replace(/^https?:\/\//, ""))) return;
+      let data: unknown = event.data;
+      try {
+        if (typeof data === "string") data = JSON.parse(data);
+      } catch {
+        return;
+      }
+      const payload = data as {
+        type?: string;
+        event?: string;
+        data?: {
+          waba_id?: string;
+          phone_number_id?: string;
+          is_on_biz_app?: boolean | string;
+        };
+      };
+      if (payload?.type !== "WA_EMBEDDED_SIGNUP") return;
+      if (payload.data?.waba_id) sessionRef.current.wabaId = payload.data.waba_id;
+      if (payload.data?.phone_number_id) {
+        sessionRef.current.phoneNumberId = payload.data.phone_number_id;
+      }
+      const onBizApp = payload.data?.is_on_biz_app;
+      sessionRef.current.onBizApp = onBizApp === true || onBizApp === "true";
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [open]);
 
   const save = useMutation({
     mutationFn: () => {
@@ -129,8 +218,69 @@ export function WhatsAppConnectDialog({
     },
   });
 
+  const startMetaSignup = async () => {
+    const meta = embeddedConfig.data;
+    if (!meta?.configured || !meta.app_id || !meta.config_id) {
+      sileo.error({ title: t("chats.connectDialog.existingNotConfigured") });
+      return;
+    }
+    setLinkingMeta(true);
+    try {
+      const FB = await loadMetaSdk(meta.app_id);
+      FB.login(
+        (response) => {
+          const code = response.authResponse?.code;
+          if (!code) {
+            setLinkingMeta(false);
+            sileo.error({ title: t("chats.connectDialog.existingError") });
+            return;
+          }
+          exchange.mutate(
+            {
+              code,
+              waba_id: sessionRef.current.wabaId,
+              phone_number_id: sessionRef.current.phoneNumberId,
+              connection_method: sessionRef.current.onBizApp
+                ? "coexistence"
+                : "embedded_signup",
+            },
+            {
+              onSuccess: () => {
+                setLinkingMeta(false);
+                void queryClient.invalidateQueries({ queryKey: queryKeys.whatsappConfig });
+                sileo.success({ title: t("chats.connectDialog.existingSuccess") });
+                onOpenChange(false);
+              },
+              onError: (err) => {
+                setLinkingMeta(false);
+                const msg =
+                  err instanceof ApiErrorClass ? err.message : t("chats.connectDialog.existingError");
+                sileo.error({ title: msg });
+              },
+            }
+          );
+        },
+        {
+          config_id: meta.config_id,
+          response_type: "code",
+          override_default_response_type: true,
+          extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
+        }
+      );
+    } catch {
+      setLinkingMeta(false);
+      sileo.error({ title: t("chats.connectDialog.popupBlocked") });
+    }
+  };
+
   const canSave = phoneNumberId.trim().length > 0 && !save.isPending;
   const webhookUrl = buildWebhookUrl();
+  const methodLabel =
+    config?.connection_method === "embedded_signup"
+      ? t("chats.connectDialog.methodEmbedded")
+      : config?.connection_method === "coexistence"
+        ? t("chats.connectDialog.methodCoexistence")
+        : t("chats.connectDialog.methodManual");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -142,93 +292,149 @@ export function WhatsAppConnectDialog({
             </span>
             {t("chats.connectDialog.title")}
           </DialogTitle>
-          <DialogDescription>{t("chats.connectDialog.subtitle")}</DialogDescription>
+          <DialogDescription>
+            {mode === "existing"
+              ? t("chats.connectDialog.existingSubtitle")
+              : t("chats.connectDialog.manualSubtitle")}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <label className="block">
-            <span className={LABEL_CLASS}>{t("chats.connectDialog.phoneNumberId")}</span>
-            <Input
-              value={phoneNumberId}
-              onChange={(e) => setPhoneNumberId(e.target.value)}
-              placeholder={t("chats.connectDialog.phoneNumberIdPlaceholder")}
-              autoComplete="off"
-            />
-            <span className="mt-1 block text-xs text-on-surface-variant">
-              {t("chats.connectDialog.phoneNumberIdHint")}
-            </span>
-          </label>
+        {!connected && (
+          <Segmented
+            layoutId="whatsapp-connect-mode"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "manual", label: t("chats.connectDialog.modeManual") },
+              { value: "existing", label: t("chats.connectDialog.modeExisting") },
+            ]}
+          />
+        )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+        {mode === "manual" ? (
+          <div className="space-y-4">
             <label className="block">
-              <span className={LABEL_CLASS}>{t("chats.connectDialog.displayNumber")}</span>
+              <span className={LABEL_CLASS}>{t("chats.connectDialog.phoneNumberId")}</span>
               <Input
-                value={displayNumber}
-                onChange={(e) => setDisplayNumber(e.target.value)}
-                placeholder={t("chats.connectDialog.displayNumberPlaceholder")}
+                value={phoneNumberId}
+                onChange={(e) => setPhoneNumberId(e.target.value)}
+                placeholder={t("chats.connectDialog.phoneNumberIdPlaceholder")}
                 autoComplete="off"
               />
+              <span className="mt-1 block text-xs text-on-surface-variant">
+                {t("chats.connectDialog.phoneNumberIdHint")}
+              </span>
             </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className={LABEL_CLASS}>{t("chats.connectDialog.displayNumber")}</span>
+                <Input
+                  value={displayNumber}
+                  onChange={(e) => setDisplayNumber(e.target.value)}
+                  placeholder={t("chats.connectDialog.displayNumberPlaceholder")}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="block">
+                <span className={LABEL_CLASS}>{t("chats.connectDialog.wabaId")}</span>
+                <Input
+                  value={wabaId}
+                  onChange={(e) => setWabaId(e.target.value)}
+                  placeholder={t("chats.connectDialog.wabaIdPlaceholder")}
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+
             <label className="block">
-              <span className={LABEL_CLASS}>{t("chats.connectDialog.wabaId")}</span>
-              <Input
-                value={wabaId}
-                onChange={(e) => setWabaId(e.target.value)}
-                placeholder={t("chats.connectDialog.wabaIdPlaceholder")}
-                autoComplete="off"
+              <span className={LABEL_CLASS}>{t("chats.connectDialog.accessToken")}</span>
+              <textarea
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                rows={2}
+                placeholder={
+                  connected
+                    ? t("chats.connectDialog.secretHint")
+                    : t("chats.connectDialog.accessTokenPlaceholder")
+                }
+                className={TEXTAREA_CLASS}
+              />
+            </label>
+
+            <label className="block">
+              <span className={LABEL_CLASS}>{t("chats.connectDialog.appSecret")}</span>
+              <textarea
+                value={appSecret}
+                onChange={(e) => setAppSecret(e.target.value)}
+                rows={2}
+                placeholder={
+                  connected
+                    ? t("chats.connectDialog.secretHint")
+                    : t("chats.connectDialog.appSecretPlaceholder")
+                }
+                className={TEXTAREA_CLASS}
               />
             </label>
           </div>
-
-          <label className="block">
-            <span className={LABEL_CLASS}>{t("chats.connectDialog.accessToken")}</span>
-            <textarea
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              rows={2}
-              placeholder={
-                connected
-                  ? t("chats.connectDialog.secretHint")
-                  : t("chats.connectDialog.accessTokenPlaceholder")
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2 rounded-xl border border-glass-border bg-glass-surface/60 p-4">
+              <p className="text-sm text-on-surface">
+                {t("chats.connectDialog.existingIntro")}
+              </p>
+              <p className="text-xs text-on-surface-variant">
+                {t("chats.connectDialog.existingRequirements")}
+              </p>
+            </div>
+            {embeddedConfig.data && !embeddedConfig.data.configured && (
+              <p className="rounded-xl border border-error/30 bg-error/10 p-3 text-xs text-error">
+                {t("chats.connectDialog.existingNotConfigured")}
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="glow"
+              className="w-full"
+              onClick={() => void startMetaSignup()}
+              disabled={
+                linkingMeta ||
+                exchange.isPending ||
+                embeddedConfig.isLoading ||
+                !embeddedConfig.data?.configured
               }
-              className={TEXTAREA_CLASS}
-            />
-          </label>
+            >
+              <Link2 className="h-4 w-4" />
+              {linkingMeta || exchange.isPending
+                ? t("chats.connectDialog.connectingMeta")
+                : t("chats.connectDialog.connectMeta")}
+            </Button>
+          </div>
+        )}
 
-          <label className="block">
-            <span className={LABEL_CLASS}>{t("chats.connectDialog.appSecret")}</span>
-            <textarea
-              value={appSecret}
-              onChange={(e) => setAppSecret(e.target.value)}
-              rows={2}
-              placeholder={
-                connected
-                  ? t("chats.connectDialog.secretHint")
-                  : t("chats.connectDialog.appSecretPlaceholder")
-              }
-              className={TEXTAREA_CLASS}
-            />
-          </label>
-
-          {connected && config?.verify_token && (
-            <div className="space-y-3 rounded-xl border border-glass-border bg-glass-surface/60 p-3">
+        {connected && config?.verify_token && (
+          <div className="space-y-3 rounded-xl border border-glass-border bg-glass-surface/60 p-3">
+            <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-medium text-on-surface">
                 {t("chats.connectDialog.webhookTitle")}
               </p>
-              <CopyField
-                label={t("chats.connectDialog.webhookUrl")}
-                value={webhookUrl}
-              />
-              <CopyField
-                label={t("chats.connectDialog.verifyToken")}
-                value={config.verify_token}
-              />
-              <p className="text-xs text-on-surface-variant">
-                {t("chats.connectDialog.steps")}
-              </p>
+              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+                {t("chats.connectDialog.connectedVia", { method: methodLabel })}
+              </span>
             </div>
-          )}
-        </div>
+            <CopyField
+              label={t("chats.connectDialog.webhookUrl")}
+              value={webhookUrl}
+            />
+            <CopyField
+              label={t("chats.connectDialog.verifyToken")}
+              value={config.verify_token}
+            />
+            <p className="text-xs text-on-surface-variant">
+              {t("chats.connectDialog.steps")}
+            </p>
+          </div>
+        )}
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
           {connected ? (
@@ -254,16 +460,18 @@ export function WhatsAppConnectDialog({
             >
               {t("common.cancel")}
             </Button>
-            <Button
-              type="button"
-              variant="glow"
-              onClick={() => save.mutate()}
-              disabled={!canSave}
-            >
-              {save.isPending
-                ? t("chats.connectDialog.saving")
-                : t("chats.connectDialog.save")}
-            </Button>
+            {mode === "manual" && (
+              <Button
+                type="button"
+                variant="glow"
+                onClick={() => save.mutate()}
+                disabled={!canSave}
+              >
+                {save.isPending
+                  ? t("chats.connectDialog.saving")
+                  : t("chats.connectDialog.save")}
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>

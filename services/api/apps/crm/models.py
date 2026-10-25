@@ -793,6 +793,13 @@ def generate_verify_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+WHATSAPP_CONNECTION_METHOD_CHOICES = [
+    ("manual", "Manual"),
+    ("embedded_signup", "Embedded Signup"),
+    ("coexistence", "Coexistence"),
+]
+
+
 class WhatsAppConfig(OwnedModel):
     """Credenciales del negocio para la WhatsApp Cloud API de Meta.
 
@@ -833,6 +840,16 @@ class WhatsAppConfig(OwnedModel):
         verbose_name="Token de verificación del webhook",
     )
     is_active = models.BooleanField(default=True, verbose_name="Activo")
+    connection_method = models.CharField(
+        max_length=20,
+        choices=WHATSAPP_CONNECTION_METHOD_CHOICES,
+        default="manual",
+        verbose_name="Método de conexión",
+    )
+    business_app_connected = models.BooleanField(
+        default=False, verbose_name="Conectado desde WhatsApp Business App (Coexistence)"
+    )
+    meta_data = models.JSONField(default=dict, blank=True, verbose_name="Datos adicionales de Meta")
 
     class Meta:
         verbose_name = "Configuración de WhatsApp"
