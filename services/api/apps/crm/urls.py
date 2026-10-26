@@ -17,9 +17,13 @@ from apps.crm.views import (
     OrderViewSet,
     ProductCategoryViewSet,
     ProductViewSet,
+    MetaDataDeletionStatusView,
+    MetaDataDeletionView,
     WhatsAppConfigView,
     WhatsAppEmbeddedSignupConfigView,
     WhatsAppEmbeddedSignupExchangeView,
+    WhatsAppSyncStatusView,
+    WhatsAppWebhookRetrySubscribeView,
     WhatsAppWebhookView,
 )
 
@@ -48,6 +52,26 @@ urlpatterns = [
         "whatsapp/embedded-signup/exchange/",
         WhatsAppEmbeddedSignupExchangeView.as_view(),
         name="whatsapp-embedded-signup-exchange",
+    ),
+    path(
+        "whatsapp/sync-status/",
+        WhatsAppSyncStatusView.as_view(),
+        name="whatsapp-sync-status",
+    ),
+    path(
+        "whatsapp/subscribe-webhook/",
+        WhatsAppWebhookRetrySubscribeView.as_view(),
+        name="whatsapp-subscribe-webhook",
+    ),
+    path(
+        "whatsapp/meta-data-deletion/",
+        MetaDataDeletionView.as_view(),
+        name="whatsapp-meta-data-deletion",
+    ),
+    path(
+        "whatsapp/meta-data-deletion/status/<str:confirmation_code>/",
+        MetaDataDeletionStatusView.as_view(),
+        name="whatsapp-meta-data-deletion-status",
     ),
     # Instagram Messaging (Instagram Login): OAuth + webhook + estado.
     path(

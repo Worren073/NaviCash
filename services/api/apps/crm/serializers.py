@@ -1064,6 +1064,15 @@ class WhatsAppConfigSerializer(serializers.ModelSerializer):
             "updated_at",
             "connection_method",
             "business_app_connected",
+            "token_type",
+            "token_expires_at",
+            "token_valid",
+            "last_token_check_at",
+            "onboarding_status",
+            "webhook_subscribed",
+            "quality_rating",
+            "verified_name",
+            "messaging_limit_tier",
             "meta_data",
         ]
         read_only_fields = [
@@ -1073,6 +1082,15 @@ class WhatsAppConfigSerializer(serializers.ModelSerializer):
             "updated_at",
             "connection_method",
             "business_app_connected",
+            "token_type",
+            "token_expires_at",
+            "token_valid",
+            "last_token_check_at",
+            "onboarding_status",
+            "webhook_subscribed",
+            "quality_rating",
+            "verified_name",
+            "messaging_limit_tier",
             "meta_data",
         ]
 

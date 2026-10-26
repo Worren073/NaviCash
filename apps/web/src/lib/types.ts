@@ -632,6 +632,15 @@ export interface WhatsAppConfig {
   updated_at?: string;
   connection_method?: "manual" | "embedded_signup" | "coexistence";
   business_app_connected?: boolean;
+  token_type?: string;
+  token_expires_at?: string | null;
+  token_valid?: boolean;
+  last_token_check_at?: string | null;
+  onboarding_status?: "pending" | "connected" | "reconnect_required" | "disconnected";
+  webhook_subscribed?: boolean;
+  quality_rating?: string;
+  verified_name?: string;
+  messaging_limit_tier?: string;
   meta_data?: Record<string, unknown>;
 }
 

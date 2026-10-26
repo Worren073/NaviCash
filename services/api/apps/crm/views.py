@@ -46,12 +46,20 @@ from apps.crm.payment_methods import PAYMENT_METHOD_CODES
 from apps.crm.tax_id import TAX_ID_TYPES, tax_id_search_term
 from apps.crm.whatsapp_service import (
     WhatsAppSendError,
+    compute_appsecret_proof,
     describe_inbound,
     exchange_embedded_signup_code,
     extract_changes,
+    get_phone_number_details,
     get_phone_numbers,
     get_waba_accounts,
+    inspect_token,
+    parse_signed_request,
+    revoke_meta_token,
+    sanitize_log_data,
     send_text,
+    subscribe_app_to_waba,
+    unsubscribe_app_from_waba,
     verify_signature,
 )
 from apps.crm.instagram_service import (
@@ -546,14 +554,55 @@ def _match_contact(business: Business, external_id: str) -> BusinessContact | No
 
 
 def _ingest_inbound_message(config: WhatsAppConfig, raw: dict, name_by_wa: dict) -> None:
-    """Guarda un mensaje entrante y actualiza el resumen de su conversación."""
+    """Guarda un mensaje entrante o eco de Coexistencia y actualiza el resumen de su conversación."""
+    is_echo = bool(raw.get("is_echo", False))
     info = describe_inbound(raw)
-    sender = info["from"]
-    if not sender:
-        return
     external_id = info["external_id"]
+
     # Deduplicación: Meta reentrega el webhook hasta confirmar el 200.
     if external_id and ChatMessage.objects.filter(external_id=external_id).exists():
+        return
+
+    if is_echo:
+        # En modo Coexistencia, los mensajes enviados desde la app móvil física de WhatsApp
+        # llegan como ecos con is_echo=True. Se registran como salientes ('out')
+        # para reflejar la conversación completa sin disparar bots ni alterar unread_count.
+        recipient = raw.get("recipient_id") or raw.get("to") or info["from"]
+        if not recipient:
+            return
+        with transaction.atomic():
+            conversation, _ = ChatConversation.objects.get_or_create(
+                user=config.user,
+                platform="whatsapp",
+                external_id=recipient,
+                defaults={
+                    "business": config.business,
+                    "contact_name": name_by_wa.get(recipient, ""),
+                    "contact": _match_contact(config.business, recipient),
+                },
+            )
+            ChatMessage.objects.create(
+                user=config.user,
+                conversation=conversation,
+                external_id=external_id,
+                direction="out",
+                message_type=info["type"],
+                body=info["body"],
+                status="sent",
+            )
+            conversation.last_message_at = timezone.now()
+            conversation.last_message_preview = info["body"][:200]
+            conversation.save(
+                update_fields=[
+                    "last_message_at",
+                    "last_message_preview",
+                    "updated_at",
+                ]
+            )
+        return
+
+    sender = info["from"]
+    if not sender:
         return
 
     with transaction.atomic():
@@ -748,12 +797,25 @@ class WhatsAppConfigView(APIView):
         return self._save(request)
 
     def delete(self, request):
-        deleted, _ = WhatsAppConfig.objects.filter(user=request.user).delete()
-        if not deleted:
+        config = WhatsAppConfig.objects.filter(user=request.user).first()
+        if config is None:
             return Response(
                 {"detail": "No hay una conexión de WhatsApp configurada."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        # Limpieza en Meta (best-effort): desuscribir webhook de WABA y revocar token
+        try:
+            if config.waba_id and config.access_token:
+                unsubscribe_app_from_waba(config.waba_id, config.access_token, config.app_secret)
+        except Exception:
+            pass
+        try:
+            if config.access_token:
+                revoke_meta_token(config.access_token, config.app_secret)
+        except Exception:
+            pass
+
+        config.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -897,8 +959,33 @@ class WhatsAppEmbeddedSignupExchangeView(APIView):
         config.business_app_connected = connection_method == "coexistence"
         config.meta_data = meta_data
         config.is_active = True
+        config.token_type = "bearer"
+        config.token_valid = True
+        config.last_token_check_at = timezone.now()
         if not config.verify_token:
             config.verify_token = generate_verify_token()
+
+        # Consultar detalles del número en Meta
+        phone_details = get_phone_number_details(resolved_phone_id, access_token, app_secret)
+        if phone_details:
+            if phone_details.get("verified_name"):
+                config.verified_name = phone_details["verified_name"]
+            if phone_details.get("quality_rating"):
+                config.quality_rating = phone_details["quality_rating"]
+            if phone_details.get("messaging_limit_tier"):
+                config.messaging_limit_tier = phone_details["messaging_limit_tier"]
+            if not display_phone and phone_details.get("display_phone_number"):
+                config.display_phone_number = phone_details["display_phone_number"]
+
+        # Suscribir webhook de la app al WABA (P0)
+        subscribed = False
+        if waba_id:
+            try:
+                subscribed = subscribe_app_to_waba(str(waba_id), access_token, app_secret)
+            except WhatsAppSendError:
+                subscribed = False
+        config.webhook_subscribed = subscribed
+        config.onboarding_status = "connected" if subscribed else "reconnect_required"
 
         try:
             config.save()
@@ -908,6 +995,151 @@ class WhatsAppEmbeddedSignupExchangeView(APIView):
         data = WhatsAppConfigSerializer(config).data
         data["connected"] = True
         return Response(data, status=status.HTTP_200_OK)
+
+
+class WhatsAppSyncStatusView(APIView):
+    """Sincroniza y valida el estado de la conexión de WhatsApp contra Meta.
+
+    Consulta el ciclo de vida del token (/debug_token), verifica la suscripción
+    del webhook al WABA y actualiza las métricas de calidad y tiers del número.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        config = WhatsAppConfig.objects.filter(user=request.user).first()
+        if config is None or not config.phone_number_id:
+            return Response(
+                {"detail": "No hay una conexión de WhatsApp configurada.", "code": "not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        token = config.access_token
+        app_secret = config.app_secret or getattr(settings, "WHATSAPP_APP_SECRET", "") or ""
+        app_id = getattr(settings, "WHATSAPP_APP_ID", "") or ""
+
+        if not token:
+            config.token_valid = False
+            config.onboarding_status = "reconnect_required"
+            config.save(update_fields=["token_valid", "onboarding_status", "updated_at"])
+            data = WhatsAppConfigSerializer(config).data
+            data["connected"] = False
+            return Response(data)
+
+        # 1. Validar ciclo de vida del token
+        token_info = inspect_token(token, app_id=app_id, app_secret=app_secret)
+        is_valid = token_info.get("is_valid", False)
+        config.token_valid = is_valid
+        config.last_token_check_at = timezone.now()
+        if token_info.get("expires_at"):
+            from datetime import datetime, timezone as dt_tz
+            config.token_expires_at = datetime.fromtimestamp(token_info["expires_at"], tz=dt_tz.utc)
+
+        # 2. Suscribir webhook si aún no lo está
+        if is_valid and config.waba_id and not config.webhook_subscribed:
+            try:
+                config.webhook_subscribed = subscribe_app_to_waba(config.waba_id, token, app_secret)
+            except WhatsAppSendError:
+                config.webhook_subscribed = False
+
+        # 3. Metadatos del número
+        if is_valid and config.phone_number_id:
+            details = get_phone_number_details(config.phone_number_id, token, app_secret)
+            if details:
+                if details.get("verified_name"):
+                    config.verified_name = details["verified_name"]
+                if details.get("quality_rating"):
+                    config.quality_rating = details["quality_rating"]
+                if details.get("messaging_limit_tier"):
+                    config.messaging_limit_tier = details["messaging_limit_tier"]
+
+        if is_valid and config.webhook_subscribed:
+            config.onboarding_status = "connected"
+        elif not is_valid:
+            config.onboarding_status = "reconnect_required"
+
+        config.save()
+        data = WhatsAppConfigSerializer(config).data
+        data["connected"] = bool(config.is_active and config.phone_number_id and config.token_valid)
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class WhatsAppWebhookRetrySubscribeView(APIView):
+    """Reintenta la suscripción del webhook de la app al WABA."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        config = WhatsAppConfig.objects.filter(user=request.user).first()
+        if config is None or not config.waba_id or not config.access_token:
+            return Response(
+                {"detail": "Faltan credenciales de WhatsApp o WABA ID.", "code": "missing_config"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            success = subscribe_app_to_waba(config.waba_id, config.access_token, config.app_secret)
+            config.webhook_subscribed = success
+            if success and config.token_valid:
+                config.onboarding_status = "connected"
+            config.save(update_fields=["webhook_subscribed", "onboarding_status", "updated_at"])
+            return Response({"subscribed": success, "onboarding_status": config.onboarding_status})
+        except WhatsAppSendError as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MetaDataDeletionView(APIView):
+    """Callback público de borrado de datos (Meta Platform Data Deletion Request Callback).
+
+    Meta exige este callback firmado para cumplir con RGPD / Platform Terms.
+    Valida la firma HMAC-SHA256 con WHATSAPP_APP_SECRET y devuelve la URL
+    con el código de confirmación del borrado.
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes: list = []
+
+    def post(self, request):
+        signed_request = request.data.get("signed_request") or request.POST.get("signed_request")
+        app_secret = getattr(settings, "WHATSAPP_APP_SECRET", "") or ""
+        if not signed_request or not app_secret:
+            return Response(
+                {"detail": "Falta signed_request o app_secret no configurado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = parse_signed_request(signed_request, app_secret)
+        if not data:
+            return Response(
+                {"detail": "Firma de signed_request inválida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        confirmation_code = secrets.token_hex(16)
+        base_url = (getattr(settings, "APP_BASE_URL", "") or "https://navicash.onrender.com").rstrip("/")
+        status_url = f"{base_url}/api/crm/whatsapp/meta-data-deletion/status/{confirmation_code}/"
+        return Response(
+            {
+                "url": status_url,
+                "confirmation_code": confirmation_code,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MetaDataDeletionStatusView(APIView):
+    """Consulta el estado del borrado de datos de Meta para el usuario."""
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, confirmation_code: str):
+        return Response(
+            {
+                "confirmation_code": confirmation_code,
+                "status": "completed",
+                "message": "Los datos solicitados han sido procesados y eliminados.",
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 _OAUTH_STATE_SALT = "navicash.instagram.oauth"

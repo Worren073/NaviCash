@@ -799,6 +799,13 @@ WHATSAPP_CONNECTION_METHOD_CHOICES = [
     ("coexistence", "Coexistence"),
 ]
 
+WHATSAPP_ONBOARDING_STATUS_CHOICES = [
+    ("pending", "Pendiente"),
+    ("connected", "Conectado"),
+    ("reconnect_required", "Reconexión requerida"),
+    ("disconnected", "Desconectado"),
+]
+
 
 class WhatsAppConfig(OwnedModel):
     """Credenciales del negocio para la WhatsApp Cloud API de Meta.
@@ -848,6 +855,36 @@ class WhatsAppConfig(OwnedModel):
     )
     business_app_connected = models.BooleanField(
         default=False, verbose_name="Conectado desde WhatsApp Business App (Coexistence)"
+    )
+    token_type = models.CharField(
+        max_length=30, default="bearer", blank=True, verbose_name="Tipo de token"
+    )
+    token_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Expiración del token"
+    )
+    token_valid = models.BooleanField(
+        default=True, verbose_name="Token válido"
+    )
+    last_token_check_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Última verificación de token"
+    )
+    onboarding_status = models.CharField(
+        max_length=30,
+        choices=WHATSAPP_ONBOARDING_STATUS_CHOICES,
+        default="connected",
+        verbose_name="Estado de onboarding",
+    )
+    webhook_subscribed = models.BooleanField(
+        default=False, verbose_name="Webhook suscrito a WABA"
+    )
+    quality_rating = models.CharField(
+        max_length=32, blank=True, default="", verbose_name="Calificación de calidad"
+    )
+    verified_name = models.CharField(
+        max_length=120, blank=True, default="", verbose_name="Nombre verificado"
+    )
+    messaging_limit_tier = models.CharField(
+        max_length=64, blank=True, default="", verbose_name="Límite de mensajería"
     )
     meta_data = models.JSONField(default=dict, blank=True, verbose_name="Datos adicionales de Meta")
 

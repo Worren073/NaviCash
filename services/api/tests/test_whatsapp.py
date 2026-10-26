@@ -28,14 +28,24 @@ from apps.crm.models import (
     WhatsAppConfig,
 )
 from apps.crm.whatsapp_service import (
+    compute_appsecret_proof,
     describe_inbound,
     extract_changes,
+    inspect_token,
+    parse_signed_request,
+    revoke_meta_token,
+    sanitize_log_data,
+    subscribe_app_to_waba,
+    unsubscribe_app_from_waba,
     verify_signature,
 )
 
 WEBHOOK_URL = "/api/business/whatsapp/webhook/"
 CONFIG_URL = "/api/business/whatsapp/config/"
 CHATS_URL = "/api/business/chats/"
+SYNC_STATUS_URL = "/api/business/whatsapp/sync-status/"
+DATA_DELETION_URL = "/api/business/whatsapp/meta-data-deletion/"
+RETRY_SUBSCRIBE_URL = "/api/business/whatsapp/subscribe-webhook/"
 
 APP_SECRET = "app-secret-value"
 ACCESS_TOKEN = "EAAG-token-de-prueba"
@@ -618,3 +628,177 @@ class TestWhatsAppEmbeddedSignup:
         assert cfg.connection_method == "embedded_signup"
         assert cfg.business_app_connected is False
         assert cfg.verify_token
+
+
+class TestWhatsAppPhase2Hardening:
+    """Pruebas de hardening de la Fase 2 (suscripción WABA, ciclo de token, revocación, ecos y GDPR)."""
+
+    def test_compute_appsecret_proof(self, settings) -> None:
+        settings.WHATSAPP_APP_SECRET = "mi-secret-app"
+        token = "mi-token-acceso"
+        expected = hmac.new(b"mi-secret-app", b"mi-token-acceso", hashlib.sha256).hexdigest()
+        assert compute_appsecret_proof(token) == expected
+
+    def test_sanitize_log_data(self) -> None:
+        payload = {
+            "access_token": "secreto123",
+            "app_secret": "clave_privada",
+            "normal_field": "visible",
+            "nested": {"Authorization": "Bearer xyz", "safe": 42},
+        }
+        sanitized = sanitize_log_data(payload)
+        assert sanitized["access_token"] == "***REDACTED***"
+        assert sanitized["app_secret"] == "***REDACTED***"
+        assert sanitized["normal_field"] == "visible"
+        assert sanitized["nested"]["Authorization"] == "***REDACTED***"
+        assert sanitized["nested"]["safe"] == 42
+
+    def test_delete_config_calls_unsubscribe_and_revoke(
+        self, api_client, configured_whatsapp, monkeypatch
+    ) -> None:
+        unsub_called = []
+        revoke_called = []
+
+        monkeypatch.setattr(
+            "apps.crm.views.unsubscribe_app_from_waba",
+            lambda waba, token, secret: unsub_called.append((waba, token)),
+        )
+        monkeypatch.setattr(
+            "apps.crm.views.revoke_meta_token",
+            lambda token, secret: revoke_called.append(token),
+        )
+
+        resp = api_client.delete(CONFIG_URL)
+        assert resp.status_code == 204
+        assert len(unsub_called) == 1
+        assert len(revoke_called) == 1
+        assert not WhatsAppConfig.objects.filter(user=api_client.user).exists()
+
+    def test_sync_status_endpoint(
+        self, api_client, configured_whatsapp, settings, monkeypatch
+    ) -> None:
+        settings.WHATSAPP_APP_ID = "app-123"
+        settings.WHATSAPP_APP_SECRET = "secret-123"
+
+        monkeypatch.setattr(
+            "apps.crm.views.inspect_token",
+            lambda token, app_id, app_secret: {
+                "is_valid": True,
+                "expires_at": 1750000000,
+                "type": "USER",
+            },
+        )
+        monkeypatch.setattr(
+            "apps.crm.views.get_phone_number_details",
+            lambda phone_id, token, secret: {
+                "verified_name": "Negocio Verificado Oficial",
+                "quality_rating": "GREEN",
+                "messaging_limit_tier": "TIER_10K",
+            },
+        )
+        monkeypatch.setattr(
+            "apps.crm.views.subscribe_app_to_waba",
+            lambda waba, token, secret: True,
+        )
+
+        resp = api_client.post(SYNC_STATUS_URL)
+        assert resp.status_code == 200
+        assert resp.data["token_valid"] is True
+        assert resp.data["verified_name"] == "Negocio Verificado Oficial"
+        assert resp.data["quality_rating"] == "GREEN"
+        assert resp.data["messaging_limit_tier"] == "TIER_10K"
+        assert resp.data["onboarding_status"] == "connected"
+
+        configured_whatsapp.refresh_from_db()
+        assert configured_whatsapp.token_valid is True
+        assert configured_whatsapp.verified_name == "Negocio Verificado Oficial"
+        assert configured_whatsapp.quality_rating == "GREEN"
+        assert configured_whatsapp.webhook_subscribed is True
+
+    def test_meta_data_deletion_callback(self, client, settings) -> None:
+        import base64
+        secret = "secret-meta-gdpr"
+        settings.WHATSAPP_APP_SECRET = secret
+        settings.APP_BASE_URL = "https://app.navicash.com"
+
+        payload_dict = {"user_id": "meta-user-999", "algorithm": "HMAC-SHA256"}
+        payload_bytes = json.dumps(payload_dict).encode("utf-8")
+        payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode("utf-8").rstrip("=")
+
+        expected_sig = hmac.new(secret.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
+        sig_b64 = base64.urlsafe_b64encode(expected_sig).decode("utf-8").rstrip("=")
+
+        signed_request = f"{sig_b64}.{payload_b64}"
+
+        # 1. Petición válida con firma correcta
+        resp = client.post(
+            DATA_DELETION_URL,
+            data=json.dumps({"signed_request": signed_request}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        assert "url" in resp.data
+        assert "confirmation_code" in resp.data
+        assert resp.data["confirmation_code"] in resp.data["url"]
+
+        # 2. Petición con firma alterada
+        tampered_request = f"invalidsig.{payload_b64}"
+        resp_bad = client.post(
+            DATA_DELETION_URL,
+            data=json.dumps({"signed_request": tampered_request}),
+            content_type="application/json",
+        )
+        assert resp_bad.status_code == 400
+
+    def test_coexistence_echo_ingestion(self, client, configured_whatsapp) -> None:
+        """Los mensajes enviados desde la app física (is_echo=True) se registran como salientes sin alterar unread_count."""
+        wa_id = "584149998877"
+        wamid = "wamid.ECHO123"
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": configured_whatsapp.waba_id,
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "messaging_product": "whatsapp",
+                                "metadata": {
+                                    "display_phone_number": configured_whatsapp.display_phone_number,
+                                    "phone_number_id": configured_whatsapp.phone_number_id,
+                                },
+                                "contacts": [{"profile": {"name": "Cliente VIP"}, "wa_id": wa_id}],
+                                "messages": [
+                                    {
+                                        "from": configured_whatsapp.display_phone_number,
+                                        "recipient_id": wa_id,
+                                        "id": wamid,
+                                        "timestamp": "1700000000",
+                                        "type": "text",
+                                        "text": {"body": "Respuesta enviada desde el móvil"},
+                                        "is_echo": True,
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+
+        resp = _post_webhook(client, payload, secret=configured_whatsapp.app_secret)
+        assert resp.status_code == 200
+
+        # La conversación se crea para el cliente con unread_count = 0
+        conv = ChatConversation.objects.get(
+            user=configured_whatsapp.user, external_id=wa_id
+        )
+        assert conv.unread_count == 0
+        assert conv.last_message_preview == "Respuesta enviada desde el móvil"
+
+        # El mensaje queda registrado como dirección OUT y estado SENT
+        msg = ChatMessage.objects.get(external_id=wamid)
+        assert msg.direction == "out"
+        assert msg.status == "sent"
+        assert msg.body == "Respuesta enviada desde el móvil"
