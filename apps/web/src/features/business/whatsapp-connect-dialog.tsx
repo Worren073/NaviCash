@@ -2,7 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { sileo } from "sileo";
-import { Check, Copy, Link2, MessageCircle, Unplug } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Link2,
+  MessageCircle,
+  RefreshCw,
+  ShieldCheck,
+  Unplug,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +29,15 @@ import {
   useWhatsAppEmbeddedSignup,
 } from "@/hooks/use-queries";
 import { api, ApiErrorClass, BASE_URL } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { WhatsAppConfig } from "@/lib/types";
+
+/** Orígenes autorizados de Meta para recibir postMessage (cierre de Window Hijacking). */
+const ALLOWED_META_ORIGINS = new Set([
+  "https://www.facebook.com",
+  "https://web.facebook.com",
+  "https://facebook.com",
+]);
 
 /** URL pública del webhook que se pega en el panel de Meta. */
 function buildWebhookUrl(): string {
@@ -127,6 +144,7 @@ export function WhatsAppConnectDialog({
   const [accessToken, setAccessToken] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [linkingMeta, setLinkingMeta] = useState(false);
+  const [coexistenceConsent, setCoexistenceConsent] = useState(false);
 
   const sessionRef = useRef<{
     wabaId?: string;
@@ -147,14 +165,15 @@ export function WhatsAppConnectDialog({
     setAppSecret("");
     setMode("manual");
     setLinkingMeta(false);
+    setCoexistenceConsent(false);
     sessionRef.current = {};
   }, [open, config]);
 
-  // Meta envía los datos de la sesión de Embedded Signup por postMessage.
+  // Meta envía los datos de la sesión de Embedded Signup por postMessage con validación estricta de origen.
   useEffect(() => {
     if (!open) return;
     const onMessage = (event: MessageEvent) => {
-      if (!/facebook\.com$/.test(event.origin.replace(/^https?:\/\//, ""))) return;
+      if (!ALLOWED_META_ORIGINS.has(event.origin)) return;
       let data: unknown = event.data;
       try {
         if (typeof data === "string") data = JSON.parse(data);
@@ -181,6 +200,31 @@ export function WhatsAppConnectDialog({
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [open]);
+
+  const syncStatus = useMutation({
+    mutationFn: () => api.post<WhatsAppConfig>("/business/whatsapp/sync-status/", {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.whatsappConfig });
+      sileo.success({ title: t("chats.connectDialog.syncStatusSuccess") });
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiErrorClass ? err.message : t("errors.generic");
+      sileo.error({ title: msg });
+    },
+  });
+
+  const retrySubscribe = useMutation({
+    mutationFn: () =>
+      api.post<{ subscribed: boolean }>("/business/whatsapp/subscribe-webhook/", {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.whatsappConfig });
+      sileo.success({ title: t("chats.connectDialog.retrySubscribeSuccess") });
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiErrorClass ? err.message : t("errors.generic");
+      sileo.error({ title: msg });
+    },
+  });
 
   const save = useMutation({
     mutationFn: () => {
@@ -233,6 +277,12 @@ export function WhatsAppConnectDialog({
           if (!code) {
             setLinkingMeta(false);
             sileo.error({ title: t("chats.connectDialog.existingError") });
+            return;
+          }
+          // Validar que Meta devolvió los datos de sesión críticos
+          if (!sessionRef.current.wabaId || !sessionRef.current.phoneNumberId) {
+            setLinkingMeta(false);
+            sileo.error({ title: t("chats.connectDialog.missingSessionData") });
             return;
           }
           exchange.mutate(
@@ -392,6 +442,25 @@ export function WhatsAppConnectDialog({
                 {t("chats.connectDialog.existingNotConfigured")}
               </p>
             )}
+
+            {/* Consentimiento obligatorio de Coexistence antes de conectar */}
+            <label className="flex items-start gap-2.5 rounded-xl border border-glass-border bg-glass-surface/60 p-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={coexistenceConsent}
+                onChange={(e) => setCoexistenceConsent(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-primary shrink-0"
+              />
+              <span className="text-xs text-on-surface-variant leading-relaxed">
+                {t("chats.connectDialog.coexistenceConsent")}
+              </span>
+            </label>
+            {!coexistenceConsent && (
+              <p className="text-xs text-on-surface-variant/70 italic">
+                {t("chats.connectDialog.coexistenceConsentRequired")}
+              </p>
+            )}
+
             <Button
               type="button"
               variant="glow"
@@ -401,7 +470,8 @@ export function WhatsAppConnectDialog({
                 linkingMeta ||
                 exchange.isPending ||
                 embeddedConfig.isLoading ||
-                !embeddedConfig.data?.configured
+                !embeddedConfig.data?.configured ||
+                !coexistenceConsent
               }
             >
               <Link2 className="h-4 w-4" />
@@ -434,6 +504,123 @@ export function WhatsAppConnectDialog({
               {t("chats.connectDialog.steps")}
             </p>
           </div>
+        )}
+
+        {/* ── Alertas de seguridad: token expirado / webhook no suscrito ── */}
+        {connected && config?.token_valid === false && (
+          <div className="flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              {t("chats.connectDialog.tokenExpiredWarning")}
+            </p>
+          </div>
+        )}
+
+        {connected && config?.webhook_subscribed === false && (
+          <div className="flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+            <div className="flex flex-1 items-center justify-between gap-2">
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {t("chats.connectDialog.webhookNotSubscribedWarning")}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => retrySubscribe.mutate()}
+                disabled={retrySubscribe.isPending}
+                className="shrink-0 text-xs"
+              >
+                <RefreshCw className={cn("h-3 w-3", retrySubscribe.isPending && "animate-spin")} />
+                {retrySubscribe.isPending
+                  ? t("chats.connectDialog.retryingSubscribe")
+                  : t("chats.connectDialog.retrySubscribe")}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Panel de salud: estado detallado de la conexión ── */}
+        {connected && (
+          <div className="space-y-2 rounded-xl border border-glass-border bg-glass-surface/60 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="flex items-center gap-1.5 text-sm font-medium text-on-surface">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                {t("chats.connectDialog.healthTitle")}
+              </h4>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => syncStatus.mutate()}
+                disabled={syncStatus.isPending}
+                className="text-xs"
+              >
+                <RefreshCw className={cn("h-3 w-3", syncStatus.isPending && "animate-spin")} />
+                {syncStatus.isPending
+                  ? t("chats.connectDialog.syncingStatus")
+                  : t("chats.connectDialog.syncStatus")}
+              </Button>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <dt className="text-on-surface-variant">{t("chats.connectDialog.healthStatus")}</dt>
+              <dd className={cn(
+                "font-medium",
+                config?.onboarding_status === "reconnect_required" ? "text-amber-500" : "text-primary"
+              )}>
+                {config?.onboarding_status === "reconnect_required"
+                  ? t("chats.connectDialog.healthStatusNeedsReconnect")
+                  : t("chats.connectDialog.healthStatusActive")}
+              </dd>
+
+              {config?.verified_name && (
+                <>
+                  <dt className="text-on-surface-variant">{t("chats.connectDialog.healthVerifiedName")}</dt>
+                  <dd className="text-on-surface">{config.verified_name}</dd>
+                </>
+              )}
+
+              {config?.quality_rating && (
+                <>
+                  <dt className="text-on-surface-variant">{t("chats.connectDialog.healthQuality")}</dt>
+                  <dd className="text-on-surface">{config.quality_rating}</dd>
+                </>
+              )}
+
+              {config?.messaging_limit_tier && (
+                <>
+                  <dt className="text-on-surface-variant">{t("chats.connectDialog.healthTier")}</dt>
+                  <dd className="text-on-surface">{config.messaging_limit_tier}</dd>
+                </>
+              )}
+
+              <dt className="text-on-surface-variant">{t("chats.connectDialog.healthWebhook")}</dt>
+              <dd className={cn(
+                "font-medium",
+                config?.webhook_subscribed ? "text-primary" : "text-amber-500"
+              )}>
+                {config?.webhook_subscribed
+                  ? t("chats.connectDialog.healthWebhookActive")
+                  : t("chats.connectDialog.healthWebhookPending")}
+              </dd>
+            </dl>
+          </div>
+        )}
+
+        {/* ── Botón de reconexión cuando el token ha expirado ── */}
+        {connected && (config?.token_valid === false || config?.onboarding_status === "reconnect_required") && (
+          <Button
+            type="button"
+            variant="glow"
+            className="w-full"
+            onClick={() => void startMetaSignup()}
+            disabled={linkingMeta || exchange.isPending || embeddedConfig.isLoading}
+          >
+            <RefreshCw className={cn("h-4 w-4", linkingMeta && "animate-spin")} />
+            {linkingMeta || exchange.isPending
+              ? t("chats.connectDialog.reconnecting")
+              : t("chats.connectDialog.reconnect")}
+          </Button>
         )}
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">

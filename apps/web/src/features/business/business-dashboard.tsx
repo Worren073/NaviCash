@@ -5,6 +5,7 @@ import {
   BarChart3,
   ChevronRight,
   HandCoins,
+  MessageSquare,
   Package,
   PersonStanding,
   Plus,
@@ -369,6 +370,17 @@ export function BusinessDashboard() {
                 <ShoppingCart className="h-5 w-5" />
               </div>
               <span className="text-sm font-medium text-on-surface">{t("nav.orders")}</span>
+            </Link>
+          </Reveal>
+          <Reveal delay={0.18} className="h-full">
+            <Link
+              to="/business/chats"
+              className="glass-panel clip-rounded-lg flex h-full items-center gap-3 rounded-lg p-4 transition-transform hover:-translate-y-0.5"
+            >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+              <span className="text-sm font-medium text-on-surface">{t("nav.chats")}</span>
             </Link>
           </Reveal>
         </div>

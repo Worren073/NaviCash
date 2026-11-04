@@ -247,6 +247,9 @@ export default {
       creating: "Creando…",
       errorName: "Escribe un nombre para tu negocio.",
       errorCapital: "El capital inicial no puede ser negativo.",
+      channelsHintTitle: "Próximo paso recomendado",
+      channelsHintBody:
+        "Tras crear tu negocio, podrás conectar WhatsApp Business en la sección de Chats para atender clientes y automatizar pedidos.",
     },
   },
   analytics: {
@@ -429,6 +432,33 @@ export default {
       disconnectHint: "Dejarás de recibir y enviar mensajes hasta volver a conectarlo.",
       saved: "Conexión guardada.",
       disconnected: "WhatsApp desconectado.",
+      coexistenceConsent:
+        "Autorizo la vinculación con Meta y la sincronización segura de las conversaciones y hasta 6 meses de historial de mensajes de WhatsApp Business en los servidores de NaviCash bajo cifrado en reposo.",
+      coexistenceConsentRequired: "Debes aceptar el consentimiento de sincronización para continuar.",
+      reconnect: "Reconectar con Meta",
+      reconnecting: "Reconectando…",
+      tokenExpiredWarning:
+        "El token de acceso de WhatsApp ha caducado o fue revocado en Meta. Es necesario reconectar la cuenta para continuar enviando y recibiendo mensajes.",
+      webhookNotSubscribedWarning:
+        "La aplicación no está suscrita a los eventos de tu WABA. Reintenta la suscripción para asegurar la recepción de mensajes.",
+      retrySubscribe: "Reintentar suscripción",
+      retryingSubscribe: "Suscribiendo…",
+      retrySubscribeSuccess: "Webhook suscrito al WABA correctamente.",
+      syncStatus: "Verificar estado",
+      syncingStatus: "Verificando…",
+      syncStatusSuccess: "Estado sincronizado con Meta.",
+      healthTitle: "Estado y Salud de la Conexión",
+      healthStatus: "Estado",
+      healthStatusActive: "Conectado y activo",
+      healthStatusNeedsReconnect: "Reconexión requerida",
+      healthVerifiedName: "Nombre verificado",
+      healthQuality: "Calidad del número",
+      healthTier: "Límite de mensajes",
+      healthWebhook: "Suscripción WABA",
+      healthWebhookActive: "Activa",
+      healthWebhookPending: "Pendiente",
+      missingSessionData:
+        "No se recibieron los identificadores de cuenta o número desde Meta. Por favor inténtalo de nuevo seleccionando tu cuenta de WhatsApp Business.",
     },
     instagramDialog: {
       title: "Conectar Instagram",

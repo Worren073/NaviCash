@@ -226,6 +226,12 @@ export function BusinessOnboarding() {
                   </dd>
                 </div>
               </dl>
+              <div className="mx-auto max-w-md rounded-xl border border-glass-border bg-primary/5 p-3.5 text-xs text-on-surface-variant sm:text-sm">
+                <span className="font-semibold text-primary">
+                  {t("business.onboarding.channelsHintTitle")}:{" "}
+                </span>
+                {t("business.onboarding.channelsHintBody")}
+              </div>
             </div>
           )}
 

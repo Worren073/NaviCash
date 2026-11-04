@@ -248,6 +248,9 @@ export default {
       creating: "Creating…",
       errorName: "Enter a name for your business.",
       errorCapital: "The initial capital can't be negative.",
+      channelsHintTitle: "Recommended next step",
+      channelsHintBody:
+        "After creating your business, you can connect WhatsApp Business under Chats to assist customers and automate orders.",
     },
   },
   analytics: {
@@ -430,6 +433,33 @@ export default {
       disconnectHint: "You'll stop receiving and sending messages until you reconnect it.",
       saved: "Connection saved.",
       disconnected: "WhatsApp disconnected.",
+      coexistenceConsent:
+        "I authorize linking with Meta and secure synchronization of conversations and up to 6 months of WhatsApp Business message history on NaviCash servers under encryption at rest.",
+      coexistenceConsentRequired: "You must accept synchronization consent to continue.",
+      reconnect: "Reconnect with Meta",
+      reconnecting: "Reconnecting…",
+      tokenExpiredWarning:
+        "Your WhatsApp access token has expired or was revoked on Meta. Reconnecting your account is required to keep sending and receiving messages.",
+      webhookNotSubscribedWarning:
+        "The application is not subscribed to your WABA events. Retry subscription to ensure message delivery.",
+      retrySubscribe: "Retry subscription",
+      retryingSubscribe: "Subscribing…",
+      retrySubscribeSuccess: "Webhook subscribed to WABA successfully.",
+      syncStatus: "Check status",
+      syncingStatus: "Checking…",
+      syncStatusSuccess: "Status synchronized with Meta.",
+      healthTitle: "Connection Health & Status",
+      healthStatus: "Status",
+      healthStatusActive: "Connected & active",
+      healthStatusNeedsReconnect: "Reconnect required",
+      healthVerifiedName: "Verified name",
+      healthQuality: "Number quality",
+      healthTier: "Messaging limit",
+      healthWebhook: "WABA Subscription",
+      healthWebhookActive: "Active",
+      healthWebhookPending: "Pending",
+      missingSessionData:
+        "Account or phone identifiers were not received from Meta. Please try again and select your WhatsApp Business Account.",
     },
     instagramDialog: {
       title: "Connect Instagram",

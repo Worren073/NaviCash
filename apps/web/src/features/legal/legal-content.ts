@@ -74,7 +74,15 @@ En la máxima medida permitida por la ley:
 
 Estos Términos se rigen por las leyes de la República Bolivariana de Venezuela. Cualquier disputa se resolverá ante los tribunales competentes de Caracas.
 
-## 11. Contacto
+## 11. Canales de Mensajería y Coexistencia con WhatsApp
+
+Si conectas un canal de WhatsApp Business a tu cuenta o negocio en NaviCash:
+- Declaras ser titular o administrador debidamente autorizado del número de teléfono y del portfolio de Meta Business vinculado.
+- **Coexistencia y Sincronización:** Si utilizas la modalidad de Coexistencia (vinculando un número activo en la aplicación WhatsApp Business), aceptas y autorizas expresamente que Meta Platforms sincronice con su infraestructura de Cloud API el historial de conversaciones y archivos multimedia de hasta seis (6) meses previos a la conexión, a fin de posibilitar su gestión operativa en NaviCash.
+- Eres responsable de cumplir con las Condiciones del Servicio de WhatsApp Business, la Política de Mensajería de Meta y los cargos que Meta facture directamente por las conversaciones generadas.
+- Puedes desconectar el canal en cualquier momento. Al hacerlo, NaviCash desuscribirá el webhook y revocará los tokens concedidos ante Meta.
+
+## 12. Contacto
 
 Para dudas sobre estos Términos o sobre el tratamiento de tus datos: soporte@navicash.app`,
 };
@@ -92,6 +100,7 @@ Los datos que nos proporcionas directamente:
 - Tu perfil: la moneda que usas habitualmente, tu zona horaria, tu idioma y cómo quieres que te avisemos de los vencimientos.
 - Tus datos financieros: cada operación que registres (monto, moneda, categoría, concepto y fecha), las cuentas o billeteras que crees, tus metas de ahorro, las suscripciones y los contactos que guardes.
 - Tus conversaciones con Navi: los mensajes de chat o voz que uses para registrar operaciones con el asistente.
+- Canales de mensajería comercial (WhatsApp): si vinculas tu WhatsApp Business, procesamos identificadores de Meta (WABA ID, Phone Number ID), el historial de mensajes sincronizado (hasta 6 meses en modo Coexistencia), adjuntos y estados de entrega para la gestión de clientes en NaviCash.
 
 Los datos que generamos automáticamente:
 - Tokens para verificar tu correo, recuperar tu contraseña y mantener tu sesión.
@@ -112,6 +121,7 @@ Los datos que generamos automáticamente:
 No vendemos tus datos. Solo los compartimos con:
 - Proveedores de infraestructura (alojamiento, email, base de datos) bajo contrato de tratamiento.
 - Autoridades competentes si nos lo exige la ley.
+- Meta Platforms Ireland Ltd. / Meta Platforms Inc., como proveedor de infraestructura de mensajería (WhatsApp Cloud API) cuando vinculas canales de comunicación comercial.
 - Servicios de inteligencia artificial para que Navi funcione, enviando solo el mensaje actual y el contexto mínimo, sin identificarte.
 
 ## 5. Transferencias Internacionales
@@ -123,7 +133,7 @@ Nuestros servidores pueden estar en Estados Unidos o en la Unión Europea. Si ha
 Puedes ejercerlos en cualquier momento escribiendo a soporte@navicash.app:
 - Acceso: saber qué datos tenemos tuyos.
 - Rectificación: corregir datos inexactos.
-- Supresión: eliminar tu cuenta y tus datos (salvo que la ley nos obligue a conservarlos).
+- Supresión: eliminar tu cuenta y tus datos (salvo que la ley nos obligue a conservarlos). Para integraciones con Meta (WhatsApp), disponemos de una URL de callback de eliminación de datos (Data Deletion) verificada con firma HMAC conforme a los requisitos de la plataforma Meta.
 - Limitación: restringir el tratamiento.
 - Portabilidad: recibir tus datos en un formato estructurado.
 - Oposición: oponerte al tratamiento por interés legítimo.
