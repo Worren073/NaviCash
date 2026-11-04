@@ -24,6 +24,22 @@ jobs:
       - name: Lint with ruff
         run: ruff check services/api/apps/ --select F --ignore F821 --exclude "*/migrations/*"
 
+      - name: Check pending migrations
+        run: |
+          cd services/api
+          python manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_SECRET_KEY: ci-secret-key-for-migrations-check-32chars
+          FIELD_ENCRYPTION_KEY: woRgbP1Xi0STFEoM59CnpX_gCxK_8sIrirwlj6cjCJs=
+
+      - name: Django system checks
+        run: |
+          cd services/api
+          python manage.py check
+        env:
+          DJANGO_SECRET_KEY: ci-secret-key-for-system-checks-32chars
+          FIELD_ENCRYPTION_KEY: woRgbP1Xi0STFEoM59CnpX_gCxK_8sIrirwlj6cjCJs=
+
       - name: Run tests
         run: cd services/api && python -m pytest
 

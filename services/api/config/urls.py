@@ -9,12 +9,15 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-from apps.core.views import health
+from apps.core.views import health, ready
 
 urlpatterns = [
-    # Sonda de salud (sin auth ni throttle): keep-alive externo / diagnóstico.
+    # Sonda de salud (liveness - sin auth ni BD): keep-alive externo / diagnóstico.
     path("health/", health),
     path("api/health", health),
+    # Sonda de preparación (readiness - valida DB y Cache para deploy/K8s).
+    path("ready/", ready),
+    path("api/ready", ready),
     # API de NaviCash (/api/auth, /api/rates, /api/wallets, ...)
     path("api/", include("apps.accounts.urls")),
     path("api/", include("apps.rates.urls")),

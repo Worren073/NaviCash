@@ -118,6 +118,15 @@ services:
       #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - key: FIELD_ENCRYPTION_KEY
         sync: false
+      # WhatsApp Embedded Signup / Coexistence: credenciales globales de Meta.
+      - key: WHATSAPP_APP_ID
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID
+        sync: false
+      - key: WHATSAPP_API_BASE_URL
+        value: https://graph.facebook.com/v21.0
       # Instagram Messaging (Instagram Login): app de Meta con el producto
       # "Instagram" y permisos instagram_business_basic +
       # instagram_business_manage_messages. El redirect URI y el webhook se
