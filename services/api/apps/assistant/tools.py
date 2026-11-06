@@ -298,6 +298,38 @@ TOOLS_BUSINESS = [
             ),
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_whatsapp_health",
+            "description": (
+                "Salud y estado operativo de la línea de WhatsApp Business del "
+                "negocio: calidad (GREEN/YELLOW/RED), límite diario de mensajes (tier), "
+                "nombre comercial verificado por Meta y estado de suscripción del webhook."
+            ),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_chat_metrics",
+            "description": (
+                "Métricas de volumen y atención de clientes en WhatsApp: "
+                "número de conversaciones abiertas y mensajes pendientes sin leer."
+            ),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "diagnose_whatsapp_connection",
+            "description": (
+                "Diagnóstico guiado y asistencia cuando el usuario tiene problemas "
+                "para conectar WhatsApp, el token expiró, el webhook está desconectado "
+                "o Meta rechaza la vinculación (Concierge de Onboarding)."
+            ),
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -331,6 +363,9 @@ def execute_tool(name: str, args: dict, context: dict) -> dict:
         "get_low_stock": _exec_low_stock,
         "get_top_clients": _exec_top_clients,
         "get_open_invoices": _exec_open_invoices,
+        "get_whatsapp_health": _exec_whatsapp_channel_health,
+        "get_chat_metrics": _exec_chat_metrics,
+        "diagnose_whatsapp_connection": _exec_onboarding_diagnose,
     }
     handler = dispatch.get(name)
     if handler is None:
@@ -522,6 +557,105 @@ def _exec_open_invoices(args: dict, context: dict) -> dict:
     if not context.get("business"):
         return _no_business()
     return {"open_invoices": context.get("open_invoices") or {}}
+
+
+def _exec_whatsapp_channel_health(args: dict, context: dict) -> dict:
+    """Salud y límites de la línea de WhatsApp del negocio."""
+    if not context.get("business"):
+        return _no_business()
+    channels = context.get("channels") or {}
+    if not channels.get("whatsapp_connected"):
+        return {
+            "connected": False,
+            "status": channels.get("status", "not_configured"),
+            "reconnect_required": channels.get("reconnect_required", False),
+            "message": (
+                "WhatsApp no está conectado o requiere reconexión. "
+                "El usuario puede conectarlo desde Negocio > Chats con Meta."
+            ),
+        }
+    quality = channels.get("quality_rating") or "UNKNOWN"
+    return {
+        "connected": True,
+        "status": channels.get("status", "connected"),
+        "connection_method": channels.get("connection_method"),
+        "verified_name": channels.get("verified_name", ""),
+        "quality_rating": quality,
+        "messaging_limit_tier": channels.get("messaging_limit_tier", "TIER_250"),
+        "webhook_subscribed": channels.get("webhook_subscribed", False),
+        "reconnect_required": channels.get("reconnect_required", False),
+        "health_summary": (
+            "Excelente" if quality == "GREEN"
+            else "Precaución (revisar quejas/bloqueos)" if quality == "YELLOW"
+            else "Crítico (en riesgo de baneo por Meta)" if quality == "RED"
+            else "Normal"
+        ),
+    }
+
+
+def _exec_chat_metrics(args: dict, context: dict) -> dict:
+    """Métricas de volumen y atención de chats en WhatsApp."""
+    if not context.get("business"):
+        return _no_business()
+    channels = context.get("channels") or {}
+    return {
+        "whatsapp_connected": channels.get("whatsapp_connected", False),
+        "open_chats": channels.get("open_chats", 0),
+        "unread_chats": channels.get("unread_chats", 0),
+    }
+
+
+def _exec_onboarding_diagnose(args: dict, context: dict) -> dict:
+    """Diagnóstico inteligente de onboarding y resolución de incidencias con Meta."""
+    if not context.get("business"):
+        return _no_business()
+    channels = context.get("channels") or {}
+    connected = channels.get("whatsapp_connected", False)
+    status = channels.get("status", "not_configured")
+    reconnect = channels.get("reconnect_required", False)
+    webhook_ok = channels.get("webhook_subscribed", False)
+
+    steps = []
+    if not connected and status == "not_configured":
+        issue = "not_started"
+        diagnosis = "El negocio aún no ha iniciado la vinculación con WhatsApp Business."
+        steps = [
+            "Ve a la pestaña Negocio > Chats en NaviCash.",
+            "Selecciona 'Conectar WhatsApp' y acepta la casilla de Coexistencia.",
+            "Haz clic en 'Conectar con Meta' e inicia sesión con la cuenta de Facebook administradora.",
+            "Selecciona o crea tu cuenta comercial de WhatsApp (WABA) y vincula tu número telefónico.",
+        ]
+    elif reconnect or status == "reconnect_required":
+        issue = "token_expired_or_invalid"
+        diagnosis = "El token de acceso de Meta expiró o los permisos fueron revocados."
+        steps = [
+            "Abre la ventana de configuración de WhatsApp en NaviCash.",
+            "Haz clic en el botón 'Reconectar con Meta' para renovar el token en un solo clic.",
+            "Asegúrate de no haber cambiado la contraseña de la cuenta de Meta recientemente.",
+        ]
+    elif connected and not webhook_ok:
+        issue = "webhook_pending"
+        diagnosis = "La línea está conectada pero el webhook de recepción no está suscrito a tu WABA."
+        steps = [
+            "En el panel de WhatsApp de NaviCash, haz clic en 'Reintentar suscripción'.",
+            "Verifica que tu cuenta de Meta Business tenga permisos de administrador sobre la WABA.",
+        ]
+    elif connected:
+        issue = "healthy"
+        diagnosis = "La conexión con WhatsApp está activa, el webhook suscrito y el token vigente."
+        steps = ["Todo funciona correctamente. Puedes atender clientes y registrar pedidos."]
+    else:
+        issue = "unknown"
+        diagnosis = f"Estado actual de la conexión: {status}."
+        steps = ["Intenta reconectar la cuenta desde Negocio > Chats."]
+
+    return {
+        "issue": issue,
+        "diagnosis": diagnosis,
+        "recommended_steps": steps,
+        "connected": connected,
+        "quality_rating": channels.get("quality_rating"),
+    }
 
 
 # ---------------------------------------------------------------------------

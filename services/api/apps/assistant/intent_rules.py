@@ -114,6 +114,8 @@ def _answer_business(context: dict, text: str) -> str:
         return _answer_business_top_clients(context)
     if _has(text, ["saldo", "balance", "cuanto tengo", "dinero", "caja", "cuenta"]):
         return _answer_business_balance(context)
+    if _has(text, ["whatsapp", "waba", "meta", "chat", "chats", "mensaj", "canal", "coexistencia"]):
+        return _answer_business_whatsapp(context, text)
 
     return _answer_business_generic(context)
 
@@ -217,6 +219,49 @@ def _answer_business_top_clients(context: dict) -> str:
     currency = context.get("analytics_currency", "USD")
     names = " · ".join(f"{c['label']}: {_fmt(c['value'])} {currency}" for c in clients[:5])
     return "Tus mejores clientes del período:\n" + names
+
+
+def _answer_business_whatsapp(context: dict, text: str) -> str:
+    """Respuesta determinista para el estado de WhatsApp y chats del negocio."""
+    channels = context.get("channels") or {}
+    connected = channels.get("whatsapp_connected", False)
+    reconnect = channels.get("reconnect_required", False)
+
+    if not connected:
+        if reconnect or channels.get("status") == "reconnect_required":
+            return (
+                "Tu cuenta de WhatsApp Business requiere reconexión porque el "
+                "token de Meta expiró o fue revocado. Ve a Negocio > Chats y "
+                "haz clic en «Reconectar con Meta» para restablecer el servicio."
+            )
+        return (
+            "Tu negocio aún no tiene WhatsApp Business conectado. Puedes vincularlo "
+            "desde la sección Negocio > Chats haciendo clic en «Conectar con Meta» "
+            "para atender clientes y registrar pedidos."
+        )
+
+    quality = channels.get("quality_rating", "desconocida")
+    tier = channels.get("messaging_limit_tier", "TIER_250")
+    open_chats = channels.get("open_chats", 0)
+    unread = channels.get("unread_chats", 0)
+    name = channels.get("verified_name") or "tu línea"
+
+    msg = (
+        f"Tu WhatsApp Business ({name}) está conectado y activo. "
+        f"Calidad de línea: {quality}, Límite diario: {tier}. "
+        f"Tienes {open_chats} conversación(es) abierta(s)"
+    )
+    if unread > 0:
+        msg += f" y {unread} mensaje(s) pendiente(s) por leer."
+    else:
+        msg += " y todos los mensajes están al día."
+
+    if quality == "RED":
+        msg += " ⚠️ Advertencia: Meta califica tu línea en ROJO (riesgo de baneo). Modera envíos masivos."
+    elif quality == "YELLOW":
+        msg += " ⚠️ Advertencia: Calidad AMARILLA. Revisa si hay clientes bloqueando tu número."
+
+    return msg
 
 
 def _answer_balance(context: dict) -> str:

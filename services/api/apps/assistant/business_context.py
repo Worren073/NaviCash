@@ -20,7 +20,7 @@ from apps.assistant.memory import memory_context
 from apps.business.models import Business
 from apps.business.services import build_business_analytics, build_business_summary
 from apps.core.currency import round_money
-from apps.crm.models import Invoice, Order, Product
+from apps.crm.models import ChatConversation, Invoice, Order, Product, WhatsAppConfig
 from apps.rates.service import get_current_euro_rate, get_current_official_rate
 
 #: Estados de factura que representan cartera por cobrar (abierta).
@@ -49,6 +49,7 @@ def build_business_context(user, today: date | None = None) -> dict:
             "view": "business",
             "business": None,
             "note": "no_business",
+            "channels": None,
             "memoria": memory_context(user),
         }
 
@@ -85,6 +86,7 @@ def build_business_context(user, today: date | None = None) -> dict:
     open_invoices = _open_invoices(business, today)
     pending_orders = _pending_orders(business)
     inventory = _inventory(business)
+    channels = _channels_summary(business)
 
     return {
         "view": "business",
@@ -107,8 +109,45 @@ def build_business_context(user, today: date | None = None) -> dict:
         "low_stock": low_stock,
         "open_invoices": open_invoices,
         "pending_orders": pending_orders,
+        "channels": channels,
         "recent_transactions": recent,
         "memoria": memory_context(user),
+    }
+
+
+def _channels_summary(business: Business) -> dict:
+    """Resumen de canales de comunicación (WhatsApp Business) y chats."""
+    cfg = WhatsAppConfig.objects.filter(business=business).first()
+    chats_qs = ChatConversation.objects.filter(business=business)
+    open_chats = chats_qs.filter(status="abierta").count()
+    unread_chats = sum(c.unread_count for c in chats_qs.filter(unread_count__gt=0))
+
+    if cfg is None:
+        return {
+            "whatsapp_connected": False,
+            "status": "not_configured",
+            "connection_method": None,
+            "reconnect_required": False,
+            "quality_rating": None,
+            "messaging_limit_tier": None,
+            "verified_name": "",
+            "webhook_subscribed": False,
+            "open_chats": 0,
+            "unread_chats": 0,
+        }
+
+    is_connected = bool(cfg.token_valid and cfg.access_token)
+    return {
+        "whatsapp_connected": is_connected,
+        "status": cfg.onboarding_status or ("connected" if is_connected else "disconnected"),
+        "connection_method": cfg.connection_method,
+        "reconnect_required": bool(cfg.reconnect_required or not cfg.token_valid),
+        "quality_rating": cfg.quality_rating or "UNKNOWN",
+        "messaging_limit_tier": cfg.messaging_limit_tier or "TIER_250",
+        "verified_name": cfg.verified_name or "",
+        "webhook_subscribed": bool(cfg.webhook_subscribed),
+        "open_chats": open_chats,
+        "unread_chats": unread_chats,
     }
 
 

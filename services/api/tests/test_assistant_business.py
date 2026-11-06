@@ -18,7 +18,7 @@ from apps.assistant.providers import (
 from apps.assistant.tools import execute_tool
 from apps.business.models import Business
 from apps.business.services import create_business
-from apps.crm.models import BusinessContact, Invoice, Order, Product
+from apps.crm.models import BusinessContact, ChatConversation, Invoice, Order, Product, WhatsAppConfig
 from apps.rates.models import ExchangeRate
 
 
@@ -311,3 +311,141 @@ class TestBusinessPromptAndEndpoint:
             format="json",
         )
         assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+class TestBusinessWhatsAppAssistantTools:
+    """Nuevas herramientas de WhatsApp y diagnóstico de onboarding para Navi."""
+
+    def test_whatsapp_health_when_not_connected(self, api_client) -> None:
+        """Sin WhatsAppConfig, la tool reporta connected=False amigablemente."""
+        _seed_rate()
+        _make_business(api_client.user)
+        context = build_context(api_client.user, view="business")
+        res = execute_tool("get_whatsapp_health", {}, context)
+        assert res["connected"] is False
+        assert res["status"] == "not_configured"
+        assert "no está conectado" in res["message"]
+
+    def test_whatsapp_health_when_connected(self, api_client) -> None:
+        """Con WhatsAppConfig activo, reporta calidad, tier y salud."""
+        _seed_rate()
+        biz = _make_business(api_client.user)
+        WhatsAppConfig.objects.create(
+            user=api_client.user,
+            business=biz,
+            phone_number_id="phone_123",
+            waba_id="waba_456",
+            access_token="fake_token",
+            token_valid=True,
+            verified_name="Tienda Navi",
+            quality_rating="GREEN",
+            messaging_limit_tier="TIER_1K",
+            webhook_subscribed=True,
+            onboarding_status="connected",
+        )
+        context = build_context(api_client.user, view="business")
+        res = execute_tool("get_whatsapp_health", {}, context)
+        assert res["connected"] is True
+        assert res["quality_rating"] == "GREEN"
+        assert res["messaging_limit_tier"] == "TIER_1K"
+        assert res["verified_name"] == "Tienda Navi"
+        assert res["health_summary"] == "Excelente"
+
+    def test_chat_metrics_tool(self, api_client) -> None:
+        """Reporta chats abiertos y no leídos del negocio."""
+        _seed_rate()
+        biz = _make_business(api_client.user)
+        ChatConversation.objects.create(
+            user=api_client.user,
+            business=biz,
+            platform="whatsapp",
+            external_id="+584120000001",
+            status="abierta",
+            unread_count=3,
+        )
+        ChatConversation.objects.create(
+            user=api_client.user,
+            business=biz,
+            platform="whatsapp",
+            external_id="+584120000002",
+            status="cerrada",
+            unread_count=0,
+        )
+        context = build_context(api_client.user, view="business")
+        res = execute_tool("get_chat_metrics", {}, context)
+        assert res["open_chats"] == 1
+        assert res["unread_chats"] == 3
+
+    def test_onboarding_diagnose_cases(self, api_client) -> None:
+        """Diagnostica adecuadamente los diferentes estados de conexión."""
+        _seed_rate()
+        biz = _make_business(api_client.user)
+
+        # Caso 1: No iniciado
+        ctx1 = build_context(api_client.user, view="business")
+        d1 = execute_tool("diagnose_whatsapp_connection", {}, ctx1)
+        assert d1["issue"] == "not_started"
+        assert len(d1["recommended_steps"]) > 0
+
+        # Caso 2: Requiere reconexión (token expirado)
+        cfg = WhatsAppConfig.objects.create(
+            user=api_client.user,
+            business=biz,
+            phone_number_id="p1",
+            waba_id="w1",
+            access_token="tok",
+            token_valid=False,
+            reconnect_required=True,
+        )
+        ctx2 = build_context(api_client.user, view="business")
+        d2 = execute_tool("diagnose_whatsapp_connection", {}, ctx2)
+        assert d2["issue"] == "token_expired_or_invalid"
+
+        # Caso 3: Webhook pendiente
+        cfg.token_valid = True
+        cfg.reconnect_required = False
+        cfg.webhook_subscribed = False
+        cfg.save()
+        ctx3 = build_context(api_client.user, view="business")
+        d3 = execute_tool("diagnose_whatsapp_connection", {}, ctx3)
+        assert d3["issue"] == "webhook_pending"
+
+        # Caso 4: 100% Saludable
+        cfg.webhook_subscribed = True
+        cfg.save()
+        ctx4 = build_context(api_client.user, view="business")
+        d4 = execute_tool("diagnose_whatsapp_connection", {}, ctx4)
+        assert d4["issue"] == "healthy"
+
+    def test_deterministic_intent_answers_whatsapp(self, api_client) -> None:
+        """answer_deterministic responde en lenguaje natural sobre WhatsApp."""
+        _seed_rate()
+        _make_business(api_client.user)
+        context = build_context(api_client.user, view="business")
+        ans = answer_deterministic(context, "como esta mi whatsapp?")
+        assert "no tiene whatsapp business conectado" in ans.lower()
+
+    def test_tenant_isolation_no_leakage(self, api_client, auth_client_factory) -> None:
+        """Los datos de canales del negocio A no se filtran al usuario B."""
+        _seed_rate()
+        biz_a = _make_business(api_client.user)
+        WhatsAppConfig.objects.create(
+            user=api_client.user,
+            business=biz_a,
+            phone_number_id="phone_a",
+            waba_id="waba_a",
+            access_token="token_a",
+            token_valid=True,
+            verified_name="Empresa Secreta A",
+            webhook_subscribed=True,
+        )
+
+        client_b = auth_client_factory()
+        _make_business(client_b.user)
+        context_b = build_context(client_b.user, view="business")
+
+        res_b = execute_tool("get_whatsapp_health", {}, context_b)
+        assert res_b["connected"] is False
+        assert "Empresa Secreta A" not in str(context_b)
+
