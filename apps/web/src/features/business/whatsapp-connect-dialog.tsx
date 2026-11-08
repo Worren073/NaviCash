@@ -33,11 +33,11 @@ import { cn } from "@/lib/utils";
 import type { WhatsAppConfig } from "@/lib/types";
 
 /** Orígenes autorizados de Meta para recibir postMessage (cierre de Window Hijacking). */
-const ALLOWED_META_ORIGINS = new Set([
+const ALLOWED_META_ORIGINS = [
   "https://www.facebook.com",
   "https://web.facebook.com",
   "https://facebook.com",
-]);
+];
 
 /** URL pública del webhook que se pega en el panel de Meta. */
 function buildWebhookUrl(): string {
@@ -152,6 +152,9 @@ export function WhatsAppConnectDialog({
     onBizApp?: boolean;
   }>({});
 
+  /** Código de autorización pendiente del callback FB.login, a la espera del postMessage. */
+  const pendingCodeRef = useRef<string | null>(null);
+
   const embeddedConfig = useWhatsAppEmbeddedConfig();
   const exchange = useWhatsAppEmbeddedSignup();
 
@@ -167,6 +170,7 @@ export function WhatsAppConnectDialog({
     setLinkingMeta(false);
     setCoexistenceConsent(false);
     sessionRef.current = {};
+    pendingCodeRef.current = null;
   }, [open, config]);
 
   // Precarga el SDK de Meta mientras el modal está abierto para que FB.login se ejecute sin retraso
@@ -181,33 +185,67 @@ export function WhatsAppConnectDialog({
   useEffect(() => {
     if (!open) return;
     const onMessage = (event: MessageEvent) => {
-      if (!ALLOWED_META_ORIGINS.has(event.origin)) return;
-      let data: unknown = event.data;
+      if (!event.origin || !ALLOWED_META_ORIGINS.includes(event.origin)) return;
+      let data: Record<string, unknown> | null = null;
       try {
-        if (typeof data === "string") data = JSON.parse(data);
+        data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
       } catch {
         return;
       }
-      const payload = data as {
-        type?: string;
-        event?: string;
-        data?: {
-          waba_id?: string;
-          phone_number_id?: string;
-          is_on_biz_app?: boolean | string;
-        };
-      };
-      if (payload?.type !== "WA_EMBEDDED_SIGNUP") return;
-      if (payload.data?.waba_id) sessionRef.current.wabaId = payload.data.waba_id;
-      if (payload.data?.phone_number_id) {
-        sessionRef.current.phoneNumberId = payload.data.phone_number_id;
+      if (data && typeof data === "object" && (data as Record<string, unknown>).type === "WA_EMBEDDED_SIGNUP") {
+        const payloadData = ((data as Record<string, unknown>).data || {}) as Record<string, unknown>;
+        const wId = payloadData.waba_id || payloadData.wabaId;
+        const pId = payloadData.phone_number_id || payloadData.phoneNumberId;
+        if (wId) sessionRef.current.wabaId = String(wId);
+        if (pId) sessionRef.current.phoneNumberId = String(pId);
+        const onBiz = payloadData.is_on_biz_app ?? payloadData.isOnBizApp;
+        if (onBiz !== undefined) {
+          sessionRef.current.onBizApp = onBiz === true || onBiz === "true";
+        }
+
+        // Si ya tenemos el código del callback FB.login, ejecutar exchange ahora
+        // que ambos datos (code + session info) están disponibles.
+        if (pendingCodeRef.current) {
+          const code = pendingCodeRef.current;
+          pendingCodeRef.current = null;
+
+          // Validación de seguridad: asegurar que Meta envió los IDs críticos
+          if (!sessionRef.current.wabaId || !sessionRef.current.phoneNumberId) {
+            setLinkingMeta(false);
+            sileo.error({ title: t("chats.connectDialog.missingSessionData") });
+            return;
+          }
+
+          exchange.mutate(
+            {
+              code,
+              waba_id: sessionRef.current.wabaId,
+              phone_number_id: sessionRef.current.phoneNumberId,
+              connection_method: sessionRef.current.onBizApp
+                ? "coexistence"
+                : "embedded_signup",
+            },
+            {
+              onSuccess: () => {
+                setLinkingMeta(false);
+                void queryClient.invalidateQueries({ queryKey: queryKeys.whatsappConfig });
+                sileo.success({ title: t("chats.connectDialog.existingSuccess") });
+                onOpenChange(false);
+              },
+              onError: (err) => {
+                setLinkingMeta(false);
+                const msg =
+                  err instanceof ApiErrorClass ? err.message : t("chats.connectDialog.existingError");
+                sileo.error({ title: msg });
+              },
+            }
+          );
+        }
       }
-      const onBizApp = payload.data?.is_on_biz_app;
-      sessionRef.current.onBizApp = onBizApp === true || onBizApp === "true";
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [open]);
+  }, [open, exchange, queryClient, onOpenChange, t]);
 
   const syncStatus = useMutation({
     mutationFn: () => api.post<WhatsAppConfig>("/business/whatsapp/sync-status/", {}),
@@ -287,36 +325,9 @@ export function WhatsAppConnectDialog({
             sileo.error({ title: t("chats.connectDialog.existingError") });
             return;
           }
-          // Validar que Meta devolvió los datos de sesión críticos
-          if (!sessionRef.current.wabaId || !sessionRef.current.phoneNumberId) {
-            setLinkingMeta(false);
-            sileo.error({ title: t("chats.connectDialog.missingSessionData") });
-            return;
-          }
-          exchange.mutate(
-            {
-              code,
-              waba_id: sessionRef.current.wabaId,
-              phone_number_id: sessionRef.current.phoneNumberId,
-              connection_method: sessionRef.current.onBizApp
-                ? "coexistence"
-                : "embedded_signup",
-            },
-            {
-              onSuccess: () => {
-                setLinkingMeta(false);
-                void queryClient.invalidateQueries({ queryKey: queryKeys.whatsappConfig });
-                sileo.success({ title: t("chats.connectDialog.existingSuccess") });
-                onOpenChange(false);
-              },
-              onError: (err) => {
-                setLinkingMeta(false);
-                const msg =
-                  err instanceof ApiErrorClass ? err.message : t("chats.connectDialog.existingError");
-                sileo.error({ title: msg });
-              },
-            }
-          );
+          // Guardar el código y esperar al postMessage con los datos de sesión (wabaId, phoneNumberId)
+          // para evitar race condition: el postMessage puede llegar antes o después del callback.
+          pendingCodeRef.current = code;
         },
         {
           config_id: meta.config_id,
