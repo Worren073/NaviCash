@@ -163,11 +163,19 @@ export function WhatsAppConnectDialog({
     setWabaId(config?.waba_id ?? "");
     setAccessToken("");
     setAppSecret("");
-    setMode("manual");
+    setMode(config?.connected && config.connection_method === "manual" ? "manual" : "existing");
     setLinkingMeta(false);
     setCoexistenceConsent(false);
     sessionRef.current = {};
   }, [open, config]);
+
+  // Precarga el SDK de Meta mientras el modal está abierto para que FB.login se ejecute sin retraso
+  // y el navegador no bloquee la ventana emergente (user gesture preservation).
+  useEffect(() => {
+    if (open && embeddedConfig.data?.app_id) {
+      void loadMetaSdk(embeddedConfig.data.app_id);
+    }
+  }, [open, embeddedConfig.data?.app_id]);
 
   // Meta envía los datos de la sesión de Embedded Signup por postMessage con validación estricta de origen.
   useEffect(() => {
