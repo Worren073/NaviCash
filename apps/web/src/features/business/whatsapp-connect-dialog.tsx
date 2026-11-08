@@ -32,12 +32,7 @@ import { api, ApiErrorClass, BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { WhatsAppConfig } from "@/lib/types";
 
-/** Orígenes autorizados de Meta para recibir postMessage (cierre de Window Hijacking). */
-const ALLOWED_META_ORIGINS = [
-  "https://www.facebook.com",
-  "https://web.facebook.com",
-  "https://facebook.com",
-];
+
 
 /** URL pública del webhook que se pega en el panel de Meta. */
 function buildWebhookUrl(): string {
@@ -155,6 +150,9 @@ export function WhatsAppConnectDialog({
   /** Código de autorización pendiente del callback FB.login, a la espera del postMessage. */
   const pendingCodeRef = useRef<string | null>(null);
 
+  /** Timeout para detectar si postMessage no llega (popup cerrado, red, etc.). */
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const embeddedConfig = useWhatsAppEmbeddedConfig();
   const exchange = useWhatsAppEmbeddedSignup();
 
@@ -171,6 +169,7 @@ export function WhatsAppConnectDialog({
     setCoexistenceConsent(false);
     sessionRef.current = {};
     pendingCodeRef.current = null;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
   }, [open, config]);
 
   // Precarga el SDK de Meta mientras el modal está abierto para que FB.login se ejecute sin retraso
@@ -185,7 +184,7 @@ export function WhatsAppConnectDialog({
   useEffect(() => {
     if (!open) return;
     const onMessage = (event: MessageEvent) => {
-      if (!event.origin || !ALLOWED_META_ORIGINS.includes(event.origin)) return;
+      if (!event.origin || !/^https:\/\/([a-zA-Z0-9-]+\.)*facebook\.com$/i.test(event.origin)) return;
       let data: Record<string, unknown> | null = null;
       try {
         data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
@@ -208,6 +207,9 @@ export function WhatsAppConnectDialog({
         if (pendingCodeRef.current) {
           const code = pendingCodeRef.current;
           pendingCodeRef.current = null;
+
+          // Limpiar timeout de seguridad
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
           // Validación de seguridad: asegurar que Meta envió los IDs críticos
           if (!sessionRef.current.wabaId || !sessionRef.current.phoneNumberId) {
@@ -319,15 +321,31 @@ export function WhatsAppConnectDialog({
       const FB = await loadMetaSdk(meta.app_id);
       FB.login(
         (response) => {
+          if (!response?.authResponse) {
+            // Usuario cerró el popup o canceló el flujo
+            setLinkingMeta(false);
+            pendingCodeRef.current = null;
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            return;
+          }
           const code = response.authResponse?.code;
           if (!code) {
             setLinkingMeta(false);
             sileo.error({ title: t("chats.connectDialog.existingError") });
             return;
           }
-          // Guardar el código y esperar al postMessage con los datos de sesión (wabaId, phoneNumberId)
-          // para evitar race condition: el postMessage puede llegar antes o después del callback.
+          // Guardar el código y esperar al postMessage con los datos de sesión
           pendingCodeRef.current = code;
+
+          // Timeout de seguridad: si postMessage no llega en 15s, limpiar estado
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          timeoutRef.current = setTimeout(() => {
+            if (pendingCodeRef.current) {
+              pendingCodeRef.current = null;
+              setLinkingMeta(false);
+              sileo.error({ title: t("chats.connectDialog.timeoutSessionData") });
+            }
+          }, 15000);
         },
         {
           config_id: meta.config_id,

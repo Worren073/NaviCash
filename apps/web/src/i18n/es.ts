@@ -459,6 +459,7 @@ export default {
       healthWebhookPending: "Pendiente",
       missingSessionData:
         "No se recibieron los identificadores de cuenta o número desde Meta. Por favor inténtalo de nuevo seleccionando tu cuenta de WhatsApp Business.",
+      timeoutSessionData: "Tiempo de espera agotado. Intenta conectar de nuevo.",
     },
     instagramDialog: {
       title: "Conectar Instagram",

@@ -460,6 +460,7 @@ export default {
       healthWebhookPending: "Pending",
       missingSessionData:
         "Account or phone identifiers were not received from Meta. Please try again and select your WhatsApp Business Account.",
+      timeoutSessionData: "Timed out waiting for session data. Try connecting again.",
     },
     instagramDialog: {
       title: "Connect Instagram",
