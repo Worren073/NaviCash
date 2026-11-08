@@ -22,7 +22,7 @@ while [ $attempt -le $max_attempts ]; do
   # pg_isready es más ligero que intentar una conexión completa.
   # Retorna 0 si la BD está lista, non-zero en caso contrario.
   if [ -n "$conn" ]; then
-    ready=$(pg_isready "$conn" 2>&1)
+    ready=$(pg_isready -d "$conn" 2>&1)
   else
     ready=$(PGPASSWORD="$POSTGRES_PASSWORD" pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" 2>&1)
   fi
@@ -33,7 +33,7 @@ while [ $attempt -le $max_attempts ]; do
   fi
 
   if [ $attempt -lt $max_attempts ]; then
-    echo "[wait_for_db] Intento $attempt/$max_attempts falló. Reintentando en 3s..."
+    echo "[wait_for_db] Intento $attempt/$max_attempts falló ($ready). Reintentando en 3s..."
     sleep 3
   fi
   attempt=$((attempt + 1))
