@@ -137,7 +137,7 @@ export function WhatsAppConnectDialog({
   const queryClient = useQueryClient();
   const connected = Boolean(config?.connected);
 
-  const [mode, setMode] = useState<"manual" | "existing">("manual");
+  const [mode, setMode] = useState<"manual" | "existing">("existing");
   const [phoneNumberId, setPhoneNumberId] = useState("");
   const [displayNumber, setDisplayNumber] = useState("");
   const [wabaId, setWabaId] = useState("");
